@@ -44,7 +44,7 @@ import { tickChainArcs, disposeAllChainArcs } from './chainFx.js';
 import { tickEvolveBursts, disposeAllEvolveBursts, setEvolveBurstStateRef } from './fx/evolveBurst.js';
 import { initDissolveBurst, tickDissolveBursts, disposeAllDissolveBursts, setDissolveBurstStateRef } from './fx/dissolveBurst.js';
 import { tickVelocityVeils, disposeAllVelocityVeils } from './fx/ribbonTrail.js';
-import { loadAtlas, ensurePool, tickSpriteSystem, setLowFxProbe as setSpriteLowFxProbe } from './sprites/index.js';
+import { loadAtlas, ensurePool, tickSpriteSystem, warmSpritePools, setLowFxProbe as setSpriteLowFxProbe } from './sprites/index.js';
 import { initProjectileVisuals, releaseProjectileVisuals, flushProjectileVisuals } from './weapons/autoAim.js';
 import { initXP, updateGems, resetXP } from './xp.js';
 import { initSpawnDirector, tickSpawnDirector, secondsUntilNextMiniBoss } from './spawnDirector.js';
@@ -929,7 +929,7 @@ async function boot() {
       // multi-second pipeline-creation hitch on either backend.
       if (_stageLoader) _stageLoader.textContent = 'Warming stage graphics…';
       try {
-        await rendererService.pipeline.compile(scene, camera);
+        await warmSpritePools(() => rendererService.pipeline.compile(scene, camera));
       } catch (error) {
         console.warn('[start.warmStageGraphics]', error);
       }

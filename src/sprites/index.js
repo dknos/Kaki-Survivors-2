@@ -20,6 +20,7 @@ export {
   killSprite,
   setSpriteFlash,
   tickSpriteSystem,
+  warmSpritePools,
   disposeSpritePools,
   setLowFxProbe,
 } from './spritePool.js';

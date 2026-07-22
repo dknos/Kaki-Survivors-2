@@ -303,6 +303,30 @@ export function tickSpriteSystem(dt) {
   }
 }
 
+/**
+ * Temporarily expose otherwise idle pools to a renderer warm-up callback.
+ *
+ * Empty pools are deliberately invisible in normal play, but renderer compile
+ * traversal skips them as a result. That deferred the hit-flash atlas created
+ * by Dash contact until its first live frame. Their instances remain parked
+ * below the world; this only prepares materials/pipelines and restores the
+ * exact prior visibility immediately afterward.
+ */
+export async function warmSpritePools(warm) {
+  if (typeof warm !== 'function' || _pools.size === 0) return false;
+  const visibility = [];
+  try {
+    for (const pool of _pools.values()) {
+      visibility.push([pool.mesh, pool.mesh.visible]);
+      pool.mesh.visible = true;
+    }
+    await warm();
+    return true;
+  } finally {
+    for (const [mesh, visible] of visibility) mesh.visible = visible;
+  }
+}
+
 export function disposeSpritePools() {
   for (const pool of _pools.values()) {
     if (pool.mesh.parent) pool.mesh.parent.remove(pool.mesh);
