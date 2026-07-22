@@ -2658,7 +2658,8 @@ function _tickForestRoomTransition(dt) {
 }
 
 function frame(now) {
-  const realDt = Math.min(0.05, (now - _lastT) / 1000);
+  const elapsedDt = Math.max(0, (now - _lastT) / 1000);
+  const realDt = Math.min(0.05, elapsedDt);
   _lastT = now;
   state.time.real += realDt;
 
@@ -2751,7 +2752,7 @@ function frame(now) {
     state.time.dt = logicDt;
     state.time.game += logicDt;
     sampleInput();
-    tickRacing(logicDt);
+    tickRacing(logicDt, elapsedDt);
 
     const cameraUpdate = updateRacingCamera(logicDt, {
       aspect: ASPECT(),

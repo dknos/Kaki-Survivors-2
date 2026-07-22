@@ -141,6 +141,7 @@ assert.match(inputSource, /passive:\s*false/, 'camera wheel zoom must be able to
 assert.doesNotMatch(inputSource, /justPressed\?\.rs/, 'right-stick click still changes the on-screen-only camera');
 assert.match(managerSource, /MIN_ZOOM\s*=\s*0\.72/, 'camera zoom-in bound is missing');
 assert.match(managerSource, /MAX_ZOOM\s*=\s*1\.42/, 'camera zoom-out bound is missing');
+assert.match(managerSource, /trackBinding\.mode === 'monster' \? null/, 'Monster Smash still binds the full arena to chase collision');
 assert.match(collisionSource, /object\.isInstancedMesh && object\.userData\?\.cameraBlocker !== true/, 'chase collision still raycasts bulk instanced dressing');
 assert.match(collisionSource, /intersectObjects\(this\._boomCandidates, false, this\._hits\)/, 'chase boom allocates a hit array for every ray');
 assert.match(collisionSource, /intersectObjects\(this\._foregroundCandidates, false, this\._hits\)/, 'chase foreground probe allocates a hit array for every ray');

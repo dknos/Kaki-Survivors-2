@@ -224,8 +224,27 @@ try {
     mode: 'monster', monsterVehicle: 'cyber', monsterArena: 'crown-chaos-coliseum',
   }));
   await page.waitForFunction(() => window.__kkRacing?.snapshot?.()?.raceMode === 'monster', null, { timeout: 90000 });
+  assertCamera(await cameraState(page), 'isometric', 'orthographic');
+  assert(await page.evaluate(() => window.kkState?.racing?.cars?.[0]?.visual?.root?.visible === true),
+    'Monster truck is hidden in isometric during countdown');
+  await page.evaluate(() => window.__kkRacing.setCameraMode('chase'));
+  assertCamera(await waitMode(page, 'chase'), 'chase', 'perspective');
+  assert(await page.evaluate(() => window.kkState?.racing?.cars?.[0]?.visual?.root?.visible === true),
+    'Monster truck is hidden in chase during countdown');
+  await page.waitForFunction(() => window.__kkRacing?.snapshot?.()?.phase === 'countdown', null, { timeout: 30000 });
+  const countdownStartedAt = Date.now();
+  try {
+    await page.waitForFunction(() => window.__kkRacing?.snapshot?.()?.phase === 'racing', null, { timeout: 12000 });
+  } catch (error) {
+    const stalled = await page.evaluate(() => ({
+      snapshot: window.__kkRacing?.snapshot?.(),
+      countdown: window.kkState?.racing?.countdown,
+      rootVisible: window.kkState?.racing?.cars?.[0]?.visual?.root?.visible,
+    }));
+    throw new Error('Monster countdown stalled: ' + JSON.stringify(stalled), { cause: error });
+  }
+  assert(Date.now() - countdownStartedAt < 8000, 'Monster countdown stretched under exterior rendering load');
   await page.evaluate(() => {
-    window.__kkRacing.skipCountdown();
     window.__kkRacing.setCameraMode('driver_fpv');
     window.__kkRacing.showMonsterJump();
   });

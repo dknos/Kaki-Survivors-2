@@ -81,7 +81,8 @@ export class RacingCameraManager {
     this.modes = availableCameraModes(this.profile);
     this.input.setAvailability(this.modes);
     this.hasVehiclePosition = false;
-    this.collision.bind(this.trackBinding?.root, [vehicle?.visual?.root].filter(Boolean));
+    const collisionRoot = this.trackBinding?.mode === 'monster' ? null : this.trackBinding?.root;
+    this.collision.bind(collisionRoot, [vehicle?.visual?.root].filter(Boolean));
     this.onVehicleChanged();
     return this;
   }
@@ -89,7 +90,13 @@ export class RacingCameraManager {
   bindTrack(trackRuntime) {
     this.trackBinding = trackRuntime || {};
     this.analyzer.bindTrack(this.trackBinding);
-    this.collision.bind(this.trackBinding.root, [this.vehicleBinding?.visual?.root].filter(Boolean));
+    // Monster Smash is an open arena with an authoritative height query. A
+    // full scene collision refresh here traverses every destructible and arena
+    // mesh, then repeats triangle raycasts during the opening countdown. Ground
+    // clearance still runs in ChaseCameraRig; scenery boom collision is neither
+    // useful nor affordable for this mode.
+    const collisionRoot = this.trackBinding.mode === 'monster' ? null : this.trackBinding.root;
+    this.collision.bind(collisionRoot, [this.vehicleBinding?.visual?.root].filter(Boolean));
     this.onTrackChanged();
     return this;
   }

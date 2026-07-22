@@ -102,29 +102,35 @@ export function rallyAssetIds(courseId, mode = 'circuit', monsterVehicleId = 'me
   if (mode === 'crash') {
     return ['decalAtlas', 'crashVehicleKitV2', 'crashEnvironmentV2', 'skyTwilight'];
   }
+  // Monster Smash builds its own arena and never constructs the chapter rally
+  // environment. Loading that chapter's terrain, sky, and environment kit here
+  // wastes several megabytes and forces their texture uploads into the opening
+  // countdown. Keep this list limited to assets the arena actually consumes.
+  if (mode === 'monster') {
+    return [
+      'monsterDecal',
+      'monsterKeyArt',
+      monsterVehicleId === 'cyber'
+        ? 'cyberKakiBody'
+        : monsterVehicleId === 'tipsy'
+          ? 'tipsyTumblerBody'
+          : 'mightyMeowsterBody',
+      'arenaTrafficKit',
+      'monsterEnvironmentKit',
+      'monsterAudienceBank',
+      'monsterArenaBackdrop',
+      'monsterArenaDirtColor',
+      'monsterArenaDirtNormal',
+      'monsterArenaDirtRoughness',
+      'monsterArenaDirtMacro',
+      'monsterArenaCrowd',
+      'monsterArenaGroundDecals',
+      'monsterArenaVfx',
+    ];
+  }
   const ids = new Set(['decalAtlas']);
   const courseIds = RALLY_COURSE_ASSETS[courseId] || RALLY_COURSE_ASSETS.forest;
   for (const id of courseIds) ids.add(id);
-  if (mode === 'monster') {
-    ids.add('monsterDecal');
-    ids.add('monsterKeyArt');
-    ids.add(monsterVehicleId === 'cyber'
-      ? 'cyberKakiBody'
-      : monsterVehicleId === 'tipsy'
-        ? 'tipsyTumblerBody'
-        : 'mightyMeowsterBody');
-    ids.add('arenaTrafficKit');
-    ids.add('monsterEnvironmentKit');
-    ids.add('monsterAudienceBank');
-    ids.add('monsterArenaBackdrop');
-    ids.add('monsterArenaDirtColor');
-    ids.add('monsterArenaDirtNormal');
-    ids.add('monsterArenaDirtRoughness');
-    ids.add('monsterArenaDirtMacro');
-    ids.add('monsterArenaCrowd');
-    ids.add('monsterArenaGroundDecals');
-    ids.add('monsterArenaVfx');
-  }
   return [...ids];
 }
 

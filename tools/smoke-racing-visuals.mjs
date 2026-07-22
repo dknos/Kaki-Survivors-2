@@ -26,6 +26,7 @@ const VFX_SOURCE = await readFile(path.join(REPO_ROOT, 'src', 'racing', 'racingV
 const RACING_CSS_SOURCE = await readFile(path.join(REPO_ROOT, 'src', 'racing', 'racing.css'), 'utf8');
 const TRIALS_MODE_SOURCE = await readFile(path.join(REPO_ROOT, 'src', 'racing', 'trialsMode.js'), 'utf8');
 const RACING_INDEX_SOURCE = await readFile(path.join(REPO_ROOT, 'src', 'racing', 'index.js'), 'utf8');
+const MAIN_SOURCE = await readFile(path.join(REPO_ROOT, 'src', 'main.js'), 'utf8');
 const RACING_ENVIRONMENT_SOURCE = await readFile(path.join(REPO_ROOT, 'src', 'racing', 'racingEnvironment.js'), 'utf8');
 const MONSTER_ARENA_SOURCE = await readFile(path.join(REPO_ROOT, 'src', 'racing', 'monsterArena.js'), 'utf8');
 const CRASH_ASSETS_SOURCE = await readFile(path.join(REPO_ROOT, 'src', 'racing', 'crash', 'crashAssets.js'), 'utf8');
@@ -88,11 +89,26 @@ check('six rally courses and four isometric modes form 24 complete configuration
         expect(rallyAssetIds(courseId, modeId, 'tipsy').includes('tipsyTumblerBody'), `${courseId}/monster cannot select Tipsy Tumbler`);
         expect(ids.includes('arenaTrafficKit'), `${courseId}/monster is missing its destructible traffic kit`);
         expect(ids.includes('monsterArenaBackdrop'), `${courseId}/monster is missing its exterior world plate`);
+        expect(!ids.includes('environmentKitV2'), `${courseId}/monster still downloads the unused rally environment kit`);
+        expect(!ids.some((id) => id.startsWith('ground')), `${courseId}/monster still downloads unused chapter terrain textures`);
       }
       configurations.push(`${courseId}/${modeId}`);
     }
   }
   equal(configurations.length, 24, 'expected exactly 24 isometric rally configurations');
+});
+
+check('racing countdown follows wall time through expensive opening frames', () => {
+  expect(RACING_INDEX_SOURCE.includes('export function tickRacing(dt, elapsedDt = dt)'),
+    'racing tick has no separate elapsed-time input');
+  expect(RACING_INDEX_SOURCE.includes('session.countdown -= wallDt'),
+    'racing countdown still stretches with the capped physics step');
+  expect(MAIN_SOURCE.includes('tickRacing(logicDt, elapsedDt)'),
+    'main loop still hides raw elapsed time from the racing countdown');
+  expect(RACING_INDEX_SOURCE.includes("phase: raceMode === 'monster' ? 'loading' : 'countdown'"),
+    'Monster Smash does not hold countdown until exterior cameras are warm');
+  expect(RACING_INDEX_SOURCE.includes("for (const mode of ['isometric', 'chase'])"),
+    'Monster Smash does not warm both exterior camera projections');
 });
 
 check('three Trials courses and two vehicle classes form six complete configurations', () => {

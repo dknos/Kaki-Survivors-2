@@ -1790,7 +1790,10 @@ function _updateHud(session) {
   session.crashFlash = Math.max(0, session.crashFlash - state.time.dt);
   session.smashFlash = Math.max(0, (session.smashFlash || 0) - state.time.dt);
   session.roundFlash = Math.max(0, (session.roundFlash || 0) - state.time.dt);
-  if (session.phase === 'countdown') {
+  if (session.phase === 'loading') {
+    hud.callout.textContent = 'LOADING…';
+    hud.callout.className = 'kkr-callout is-visible is-small';
+  } else if (session.phase === 'countdown') {
     const count = Math.ceil(session.countdown);
     hud.callout.textContent = count > 3 ? 'READY?' : String(Math.max(1, count));
     hud.callout.className = 'kkr-callout is-visible';
@@ -2016,6 +2019,33 @@ function _snapshot(session) {
   };
 }
 
+async function _warmMonsterExteriorCameras(session, scene) {
+  const manager = session?.cameraManager;
+  const pipeline = state.rendererService?.pipeline;
+  if (!manager || typeof pipeline?.compile !== 'function') return;
+  const originalMode = manager.getCurrentMode();
+  try {
+    for (const mode of ['isometric', 'chase']) {
+      manager.setCameraMode(mode, { instant: true, save: false });
+      const frame = manager.update(0, {
+        aspect: session.cameraHost?.getAspect?.() || 16 / 9,
+        reducedMotion: !!state._optReduceMotion,
+        paused: false,
+        snap: true,
+      });
+      if (frame?.camera) await pipeline.compile(scene, frame.camera);
+    }
+  } finally {
+    manager.setCameraMode(originalMode, { instant: true, save: false });
+    manager.update(0, {
+      aspect: session.cameraHost?.getAspect?.() || 16 / 9,
+      reducedMotion: !!state._optReduceMotion,
+      paused: false,
+      snap: true,
+    });
+  }
+}
+
 export function enterRacing(scene, courseId = 'forest', options = {}) {
   if (options.mode === 'crash') {
     if (state.racing && state.racing.raceMode !== 'crash') exitRacing(scene);
@@ -2102,7 +2132,7 @@ export function enterRacing(scene, courseId = 'forest', options = {}) {
     cars: [],
     particles: [],
     particleCursor: 0,
-    phase: 'countdown',
+    phase: raceMode === 'monster' ? 'loading' : 'countdown',
     countdown: COUNTDOWN_SECONDS,
     raceTime: 0,
     goFlash: 0,
@@ -2152,13 +2182,23 @@ export function enterRacing(scene, courseId = 'forest', options = {}) {
       monsterVehicleId,
       rendererService: state.rendererService,
     });
-    session.assetLease.ready.then(() => {
+    session.assetLease.ready.then(async () => {
       if (session.disposed) return;
       // Atlas-frame textures clone the lease's shared image source before its
       // asynchronous decode completes. Refresh those owned clones only after
       // the lease is ready; dirtying them earlier is invalid in WebGPU.
       for (const texture of session.owned.textures) {
         requestTextureUploadIfReady(texture);
+      }
+      if (session.raceMode === 'monster') {
+        // Individual model attachment promises resolve from the same lease.
+        // Give them a microtask to mount before compiling both exterior views.
+        await Promise.resolve();
+        if (session.disposed || state.racing !== session) return;
+        try { await _warmMonsterExteriorCameras(session, scene); } catch (_) {}
+        if (session.disposed || state.racing !== session) return;
+        session.countdown = COUNTDOWN_SECONDS;
+        session.phase = 'countdown';
       }
     }).catch((error) => {
       session.assetError = error?.message || String(error);
@@ -2349,12 +2389,13 @@ export function enterRacing(scene, courseId = 'forest', options = {}) {
   }
 }
 
-export function tickRacing(dt) {
+export function tickRacing(dt, elapsedDt = dt) {
   const session = state.racing;
   if (!session || !(dt > 0)) return;
   if (session.raceMode === 'crash') return _crashModeApi?.tickCrashMode(dt);
   if (session.raceMode === 'trials') return tickTrialsMode(dt);
-  session.frameTimeEma += (dt - session.frameTimeEma) * 0.06;
+  const wallDt = Math.min(1, Math.max(0, Number(elapsedDt) || dt));
+  session.frameTimeEma += (wallDt - session.frameTimeEma) * 0.06;
   dt = Math.min(dt, 1 / 30);
   _tickCameraFx(session, dt);
   updateRallyEnvironment(session.environment, session.raceTime + session.countdown, dt);
@@ -2373,7 +2414,10 @@ export function tickRacing(dt) {
   }
   session.goFlash = Math.max(0, session.goFlash - dt);
   if (session.phase === 'countdown') {
-    session.countdown -= dt;
+    // Shader compilation and texture uploads can make the first exterior
+    // frames expensive. The countdown is presentation time, so it must follow
+    // elapsed wall time rather than stretching with the capped physics step.
+    session.countdown -= wallDt;
     if (session.countdown <= 0) {
       session.countdown = 0;
       session.phase = 'racing';
