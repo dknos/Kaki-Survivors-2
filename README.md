@@ -6,6 +6,14 @@ A Vampire-Survivors-style auto-attacking horde game built in **THREE.js** with n
 
 [**Play Now**](https://dknos.github.io/Kaki-Survivors-2/) · [**How to Play**](how-to-play.html) · [Report a Bug](https://github.com/dknos/Kaki-Survivors-2/issues)
 
+## Gallery
+
+| Survivors · Forest | Bullet Hell · Wave One |
+| --- | --- |
+| ![Forest Survivors combat](assets/screenshots/survivors-forest-combat.png) | ![Bullet Hell projectile combat](assets/screenshots/bullet-hell-wave-one.png) |
+| Town hub | Kaki Rally · Forest circuit |
+| ![Town hub](assets/screenshots/town-hub.png) | ![Kaki Rally Forest circuit](assets/screenshots/kaki-rally-forest.png) |
+
 <!-- TODO: assets/screenshot.png (1280x720) -->
 <!-- TODO: assets/demo.gif    (loop, ~3s) -->
 
