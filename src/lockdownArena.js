@@ -114,11 +114,13 @@ const GLOW_RIM_INTENSITY = 0.9;  // slam-in rim emissive baseline
 // fairness instead.
 const MIN_SPAWN_DIST = 6.8;             // placement floor from hero (world units)
 const WAVE_DRIP_SEC = 3.0;              // per-wave spawn-in window (spec 2.5-4s)
-const WAVE_SUB_BURSTS = 4;              // sub-bursts per wave
-// Front-loaded burst weights — an even split made waves a faucet (3 mobs per
-// beat dies before the next lands; no wall ever forms). Burst 1 carries the
-// wall mass + the escape gap in one readable frame; the rest is ramp-in.
-const WAVE_BURST_W = [0.55, 0.20, 0.15, 0.10];
+const WAVE_SUB_BURSTS = 6;              // sub-bursts per wave
+// Keep the same wave roster and three-second staging window, but avoid the
+// old 55% first packet. That packet could expose a fresh barricade pipeline
+// and several enemy instances in one frame, reading as a hang on cold GPUs.
+// The opening is still the largest packet (so the arena reads as a lockdown),
+// with the rest arriving in renderer-friendly batches.
+const WAVE_BURST_W = [0.28, 0.20, 0.16, 0.14, 0.12, 0.10];
 const ESCAPE_GAP_ARC = Math.PI / 2.5;   // 72° kept empty on first sub-burst (spec >= 60°)
 
 // Wave-size scaler per current difficulty D. D ranges 0..SPAWN.difficultyMax
@@ -541,28 +543,40 @@ function _checkClear(arena) {
 }
 
 // ─── reward bundle ────────────────────────────────────────────────────────────
-function _dropRewardBundle(arena) {
-  const cx = arena.center.x;
-  const cz = arena.center.z;
+function _queueRewardBundle(arena) {
+  // Pickups allocate/update their own pooled visuals. Releasing all nine at
+  // once made the clear punctuation the second largest lockdown frame. Queue
+  // one gem per short beat; the value and final chest are unchanged.
+  arena.rewardQueue = { gemIndex: 0, nextAt: state.time.game, chestDropped: false };
 
-  // 8 gem cluster — small radial spray, value 3 each (small splash).
-  const tmp = new THREE.Vector3();
-  for (let i = 0; i < 8; i++) {
-    const a = (i / 8) * Math.PI * 2;
-    const r = 1.2 + Math.random() * 0.6;
-    tmp.set(cx + Math.cos(a) * r, 0.3, cz + Math.sin(a) * r);
-    try { dropGem(tmp.clone(), 3); } catch (_) {}
-  }
-
-  // 1 chest at arena center
-  try { spawnChest(cx, cz); } catch (e) { console.warn('[lockdownArena] spawnChest failed:', e); }
-
-  // FX punch + sfx — match nemesis-slain reward shape
+  // FX punctuation is intentionally immediate; only the pickup work is
+  // spread across frames.
   if (state.fx) {
     state.fx.bloomBoost = Math.max(state.fx.bloomBoost || 0, 0.9);
     state.fx.shake = Math.max(state.fx.shake || 0, 0.4);
   }
   try { if (sfx && sfx.eliteDeath) sfx.eliteDeath(); } catch (_) {}
+}
+
+function _tickRewardBundle(arena, t) {
+  const queue = arena.rewardQueue;
+  if (!queue || t < queue.nextAt) return;
+  const cx = arena.center.x;
+  const cz = arena.center.z;
+
+  if (queue.gemIndex < 8) {
+    const i = queue.gemIndex++;
+    const a = (i / 8) * Math.PI * 2;
+    const r = 1.2 + Math.random() * 0.6;
+    try { dropGem(new THREE.Vector3(cx + Math.cos(a) * r, 0.3, cz + Math.sin(a) * r), 3); } catch (_) {}
+    queue.nextAt = t + 0.075;
+    return;
+  }
+  if (!queue.chestDropped) {
+    queue.chestDropped = true;
+    try { spawnChest(cx, cz); } catch (e) { console.warn('[lockdownArena] spawnChest failed:', e); }
+  }
+  arena.rewardQueue = null;
 }
 
 // ─── public API ───────────────────────────────────────────────────────────────
@@ -605,6 +619,7 @@ export function armLockdown(opts) {
     eliteSpawned: false,
     activeArena: false,
     drip: null,
+    rewardQueue: null,
   };
   _buildDoorMeshes(arena);
   _scene.add(arena.doors.group);
@@ -632,6 +647,7 @@ export function triggerLockdown(arenaId) {
   arena.mobsThisWave = 0;
   arena.eliteSpawned = false;
   arena.drip = null;
+  arena.rewardQueue = null;
   arena.triggeredAt = state.time.game; // watchdog timestamp for force-clear safety net
 
   // Reveal door group + reset opacity (in case a prior run left them hidden
@@ -671,7 +687,10 @@ export function triggerLockdown(arenaId) {
  */
 export function tickLockdownArena(dt) {
   // Anim all arenas (idle ones early-out inside _tickDoorAnim)
-  for (let i = 0; i < _arenas.length; i++) _tickDoorAnim(_arenas[i], dt);
+  for (let i = 0; i < _arenas.length; i++) {
+    _tickDoorAnim(_arenas[i], dt);
+    _tickRewardBundle(_arenas[i], state.time.game);
+  }
 
   if (_activeArenaId == null) return;
   const arena = _arenas.find(a => a.id === _activeArenaId);
@@ -713,7 +732,7 @@ export function tickLockdownArena(dt) {
     _activeArenaId = null;
     if (state.run) state.run.lockdownActive = false;
     try { showBanner('LOCKDOWN TIMED OUT', 2.2, '#ff7a52'); } catch (_) {}
-    _dropRewardBundle(arena);
+    _queueRewardBundle(arena);
     return;
   }
 
@@ -745,7 +764,7 @@ export function tickLockdownArena(dt) {
       if (res.reason === 'all-waves') state.run.lockdownWavesCleared = 3;
     }
     try { showBanner('LOCKDOWN CLEARED', 2.2, '#ffd86b'); } catch (_) {}
-    _dropRewardBundle(arena);
+    _queueRewardBundle(arena);
     return;
   }
   if (res.advance) {
@@ -783,6 +802,7 @@ export function resetLockdownArenas() {
     arena.eliteSpawned = false;
     arena.activeArena = false;
     arena.drip = null;
+    arena.rewardQueue = null;
     if (arena.doors) {
       arena.doors.group.visible = false;
       for (const m of arena.doors.materials) {
