@@ -13,6 +13,10 @@ A Vampire-Survivors-style auto-attacking horde game built in **THREE.js** with n
 | ![Forest Survivors combat](assets/screenshots/survivors-forest-combat.png) | ![Bullet Hell projectile combat](assets/screenshots/bullet-hell-wave-one.png) |
 | Town hub | Kaki Rally · Forest circuit |
 | ![Town hub](assets/screenshots/town-hub.png) | ![Kaki Rally Forest circuit](assets/screenshots/kaki-rally-forest.png) |
+| Draw Your Track workshop | Monster Smash · Crown Chaos Coliseum |
+| ![Draw Your Track workshop](assets/screenshots/draw-your-track-workshop.png) | ![Monster Smash arena chase camera](assets/screenshots/monster-smash-arena-chase.png) |
+| Kaki Trials · side-scroll | Kaki Rally · Forest chase camera |
+| ![Kaki Trials side-scroll](assets/screenshots/kaki-trials-side-scroll.png) | ![Kaki Rally Forest chase camera](assets/screenshots/kaki-rally-forest-chase.png) |
 
 <!-- TODO: assets/screenshot.png (1280x720) -->
 <!-- TODO: assets/demo.gif    (loop, ~3s) -->
