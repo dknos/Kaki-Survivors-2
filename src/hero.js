@@ -30,6 +30,45 @@ const _tmpDir = new THREE.Vector3();
 // Reused accumulator for the procedural pose layer (flinch/dash/idle/attack) —
 // reset each frame, no per-frame allocation.
 const _procOut = { dy: 0, rx: 0, rz: 0, sx: 1, sy: 1, sz: 1 };
+// A wall-hugging Lockdown pack can put dozens of enemies inside the Dash
+// radius. Resolving every death, sprite flash, XP drop and sound in one frame
+// produced multi-second main-thread stalls. Keep the exact once-per-dash hit
+// set, but drain it in small, deterministic slices.
+const DASH_HIT_BUDGET = 12;
+
+function _queueDashHits(hero, cfg) {
+  if (!hero._dashHitQueue) {
+    hero._dashHitQueue = [];
+    hero._dashHitRead = 0;
+    if (hero._dashHitSerial == null) hero._dashHitSerial = 0;
+  }
+  const queue = hero._dashHitQueue;
+  const serial = hero._dashHitSerial;
+  const cands = queryRadius(hero.pos, cfg.radius);
+  for (let i = 0; i < cands.length; i++) {
+    const enemy = cands[i];
+    if (!enemy || !enemy.alive || enemy._dashQueuedSerial === serial) continue;
+    enemy._dashQueuedSerial = serial;
+    queue.push(enemy);
+  }
+}
+
+function _drainDashHits(hero, cfg) {
+  const queue = hero._dashHitQueue;
+  if (!queue || hero._dashHitRead >= queue.length) return;
+  const end = Math.min(queue.length, hero._dashHitRead + DASH_HIT_BUDGET);
+  for (; hero._dashHitRead < end; hero._dashHitRead++) {
+    const enemy = queue[hero._dashHitRead];
+    if (!enemy || !enemy.alive) continue;
+    enemy.knockVx = hero._dashDirX * cfg.knockback;
+    enemy.knockVz = hero._dashDirZ * cfg.knockback;
+    damageEnemy(enemy, cfg.dmg, 'dash');
+  }
+  if (hero._dashHitRead >= queue.length) {
+    queue.length = 0;
+    hero._dashHitRead = 0;
+  }
+}
 
 // ── Mirror Step (Dash evolution) ──────────────────────────────────────────
 // Shared geometry/material caches for the ghost-twin orbital burst.
@@ -362,6 +401,11 @@ export function updateHero(dt) {
       // at the start position that fires one orbital burst before fading.
       const cdMul = h.dashEvolved ? 0.75 : 1.0;
       h.dashCD = cfg.cooldown * cdMul;
+      h._dashHitSerial = (h._dashHitSerial || 0) + 1;
+      // A fresh dash cannot inherit a partially-drained previous queue. In
+      // normal tuning the prior queue drains long before cooldown, but this
+      // makes the invariant explicit under extreme horde QA.
+      if (h._dashHitQueue) { h._dashHitQueue.length = 0; h._dashHitRead = 0; }
       if (h.dashEvolved) {
         try { spawnMirrorStepGhost(h.pos.x, h.pos.z); } catch (_) {}
       }
@@ -401,19 +445,21 @@ export function updateHero(dt) {
       speedMul *= cfg.speedMul;
       // Hit enemies within radius around hero this frame
       try {
-        const cands = queryRadius(h.pos, cfg.radius);
-        for (const e of cands) {
-          if (!e || !e.alive) continue;
-          if (e._dashedThisDash === h.dashUntil) continue; // hit once per dash
-          e._dashedThisDash = h.dashUntil;
-          e.knockVx = h.dashDir.x * cfg.knockback;
-          e.knockVz = h.dashDir.z * cfg.knockback;
-          damageEnemy(e, cfg.dmg, 'dash');
-        }
+        _queueDashHits(h, cfg);
         // Smash any breakable logs the dash sweeps through.
         smashLogsInRadius(h.pos.x, h.pos.z, cfg.radius);
       } catch (_) {}
+      h._dashDirX = h.dashDir.x;
+      h._dashDirZ = h.dashDir.z;
     }
+  }
+
+  // Keep draining after movement ends: the queue contains the exact enemies
+  // the dash swept, and resolving it over a few frames preserves total damage
+  // while preventing one packed wall collision from monopolizing a frame.
+  if (h._dashHitQueue && h._dashHitQueue.length > 0) {
+    const cfg = DASH.levels[Math.min(h.dashLevel, DASH.levels.length - 1)];
+    if (cfg) _drainDashHits(h, cfg);
   }
 
   // Stage hazard slow (pollen drifts, etc.) — read by hero movement.
