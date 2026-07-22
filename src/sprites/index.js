@@ -11,14 +11,36 @@
  *
  * Contract locked in docs/SPRITES_VISUAL_STYLE.md (v1).
  */
-export { loadAtlas, getAtlas, listAtlasIds, disposeAtlases } from './spriteAtlas.js';
 export {
+  loadAtlas,
+  getAtlas,
+  getEnemySpriteSpeciesId,
+  listAtlasIds,
+  validateAtlasSchema,
+  compileEnemyAtlasV2,
+  disposeAtlases,
+} from './spriteAtlas.js';
+export {
+  ENEMY_SPRITE_STATE,
+  ENEMY_SPRITE_DIRECTION,
   ensurePool,
   hasSpritePool,
   spawnSprite,
+  spawnEnemySprite,
   moveSprite,
+  setEnemySpritePosition,
+  setEnemySpriteMotion,
+  setEnemySpriteState,
+  setSpriteAnimation,
+  triggerEnemySpriteHit,
+  playEnemySpriteDeath,
+  releaseEnemySprite,
+  releaseAllSprites,
   killSprite,
   setSpriteFlash,
+  isSpriteSlotAlive,
+  getSpriteSlotSnapshot,
+  getSpritePoolStats,
   tickSpriteSystem,
   warmSpritePools,
   disposeSpritePools,

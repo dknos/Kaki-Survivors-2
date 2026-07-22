@@ -60,6 +60,7 @@ test('pipeline builds one stable graph and retains the gameplay state facade', (
   assert.match(text, /renderPipeline\.dispose\(\)/);
   assert.match(text, /selectiveBloom\?\.dispose\(\)/);
   assert.match(text, /scenePass\.dispose\(\)/);
+  assert.match(text, /renderer\.backend\?\.isWebGPUBackend !== true/);
   assert.match(text, /await scenePass\.compileAsync\(renderer\)/);
   assert.match(text, /renderer\.setRenderTarget\(previousRenderTarget\)/);
   assert.match(text, /renderer\.setMRT\(previousMrt\)/);

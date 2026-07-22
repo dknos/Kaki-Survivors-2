@@ -79,9 +79,6 @@ for (const sym of [
     assert.ok(re.test(poolSrc), `no export of ${sym}`);
   });
 }
-check(`spritePool references NearestFilter`, () => {
-  assert.ok(/\bNearestFilter\b/.test(poolSrc), 'NearestFilter not referenced');
-});
 check(`spritePool references DynamicDrawUsage`, () => {
   assert.ok(/\bDynamicDrawUsage\b/.test(poolSrc), 'DynamicDrawUsage not referenced');
 });
@@ -94,8 +91,8 @@ check(`spritePool references backend-neutral BLOOM_LAYER`, () => {
     `BLOOM_LAYER must come from '../rendering/bloomLayers.js'`);
 });
 check(`spritePool creates its backend-neutral TSL material`, () => {
-  assert.ok(/createSpritePoolMaterial\s*\(\s*atlas\s*,/.test(poolSrc),
-    'createSpritePoolMaterial(atlas, ...) is not used');
+  assert.ok(/createSpritePoolMaterial\s*\(\s*materialAtlas\s*,/.test(poolSrc),
+    'createSpritePoolMaterial(materialAtlas, ...) is not used');
 });
 const materialSrc = read('src/rendering/materials/spritePoolMaterial.js');
 check(`sprite material uses MeshBasicNodeMaterial`, () => {
@@ -122,10 +119,9 @@ for (const sym of ['loadAtlas', 'getAtlas', 'disposeAtlases']) {
     assert.ok(re.test(atlasSrc), `no export of ${sym}`);
   });
 }
-check(`spriteAtlas has _validateSchema function`, () => {
-  assert.ok(/\bfunction\s+_validateSchema\b/.test(atlasSrc)
-    || /\b_validateSchema\s*=\s*(?:function|\()/.test(atlasSrc),
-    '_validateSchema not declared');
+check(`spriteAtlas exports validateAtlasSchema`, () => {
+  assert.ok(/export function validateAtlasSchema\b/.test(atlasSrc),
+    'validateAtlasSchema not declared');
 });
 check(`spriteAtlas references NearestFilter`, () => {
   assert.ok(/\bNearestFilter\b/.test(atlasSrc), 'NearestFilter not referenced');
@@ -157,9 +153,9 @@ check(`main.js imports setLowFxProbe as setSpriteLowFxProbe from ./sprites/index
   assert.ok(re.test(mainSrc),
     'aliased import `setLowFxProbe as setSpriteLowFxProbe` from ./sprites/index.js not found');
 });
-check(`main.js calls tickSpriteSystem(logicDt) in the tick loop`, () => {
-  assert.ok(/\btickSpriteSystem\s*\(\s*logicDt\s*\)/.test(mainSrc),
-    'no tickSpriteSystem(logicDt) call found');
+check(`main.js calls tickSpriteSystem(logicDt, camera) in the tick loop`, () => {
+  assert.ok(/\btickSpriteSystem\s*\(\s*logicDt\s*,\s*camera\s*\)/.test(mainSrc),
+    'no tickSpriteSystem(logicDt, camera) call found');
 });
 check(`main.js calls setSpriteLowFxProbe(...) in bootstrap`, () => {
   assert.ok(/\bsetSpriteLowFxProbe\s*\(/.test(mainSrc),
@@ -184,7 +180,7 @@ function walkJson(dirAbs, out = []) {
 
 const VALID_BLEND      = new Set(['alpha', 'additive']);
 const VALID_BILLBOARD  = new Set(['screen', 'cylinder', 'none']);
-const REQUIRED_FIELDS  = ['image', 'frameWidth', 'frameHeight', 'cols', 'rows', 'frameCount'];
+const V1_REQUIRED_FIELDS  = ['image', 'frameWidth', 'frameHeight', 'cols', 'rows', 'frameCount'];
 
 const atlasJsons = walkJson(SPRITES_PATH);
 if (atlasJsons.length === 0) {
@@ -203,16 +199,16 @@ if (atlasJsons.length === 0) {
     });
     if (!json) continue;  // parse failed — skip downstream checks
 
-    check(`${rel}: version === 1`, () => assert.equal(json.version, 1, `version must be 1`));
-
-    for (const f of REQUIRED_FIELDS) {
+    check(`${rel}: version is 1 or 2`, () => assert.ok(json.version === 1 || json.version === 2));
+    const requiredFields = json.version === 1 ? V1_REQUIRED_FIELDS : ['pages', 'species', 'stateCount', 'directionCount'];
+    for (const f of requiredFields) {
       check(`${rel}: has required field "${f}"`, () => {
         assert.ok(Object.prototype.hasOwnProperty.call(json, f),
           `missing required field "${f}"`);
       });
     }
 
-    check(`${rel}: frameCount <= cols * rows`, () => {
+    if (json.version === 1) check(`${rel}: frameCount <= cols * rows`, () => {
       assert.ok(typeof json.cols === 'number' && typeof json.rows === 'number'
         && typeof json.frameCount === 'number',
         'cols/rows/frameCount must be numbers');
@@ -220,12 +216,35 @@ if (atlasJsons.length === 0) {
         `frameCount ${json.frameCount} > cols*rows ${json.cols * json.rows}`);
     });
 
-    check(`${rel}: sibling image file exists`, () => {
+    if (json.version === 1) check(`${rel}: sibling image file exists`, () => {
       assert.ok(typeof json.image === 'string' && json.image.length > 0,
         'image field must be a non-empty string');
       const sibling = join(dirname(full), json.image);
       assert.ok(existsSync(sibling), `sibling image not on disk: ${json.image}`);
     });
+
+    if (json.version === 2) {
+      check(`${rel}: has one or two valid pages`, () => {
+        assert.ok(Array.isArray(json.pages) && json.pages.length >= 1 && json.pages.length <= 2);
+        for (const page of json.pages) {
+          assert.ok(page.frameCount <= page.cols * page.rows);
+          assert.ok(existsSync(join(dirname(full), page.image)), `missing page image ${page.image}`);
+        }
+      });
+      check(`${rel}: declares four directions and species state ranges`, () => {
+        assert.ok(json.directionCount >= 4);
+        assert.ok(Array.isArray(json.species) && json.species.length > 0);
+        for (const species of json.species) for (const animation of species.states) {
+          assert.ok(animation.fps > 0 && typeof animation.loop === 'boolean');
+          assert.ok(animation.directions.length >= json.directionCount);
+          for (const direction of animation.directions) {
+            const page = json.pages[direction.page];
+            assert.ok(page && direction.from >= 0 && direction.from <= direction.to
+              && direction.to < page.frameCount);
+          }
+        }
+      });
+    }
 
     if (Object.prototype.hasOwnProperty.call(json, 'blendMode')) {
       check(`${rel}: blendMode is alpha|additive`, () => {

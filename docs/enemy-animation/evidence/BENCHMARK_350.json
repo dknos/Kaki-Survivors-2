@@ -1,0 +1,136 @@
+{
+  "generatedAt": "2026-07-22T18:06:28.417Z",
+  "scenario": "isolated deterministic 350-enemy atlas comparison",
+  "environment": "headless Chromium software WebGL2/WebGPU; FPS is comparative, not physical-GPU throughput",
+  "cases": [
+    {
+      "backend": "webgl",
+      "before": {
+        "backend": "webgl",
+        "atlasMode": "v1",
+        "activeSprites": 350,
+        "capacity": 512,
+        "enemyAtlasDrawCalls": 1,
+        "sceneDrawCalls": 2,
+        "triangles": 1025,
+        "textureBaseBytes": 6029312,
+        "textureBytes": 6029312,
+        "cpuAnimationMs": {
+          "mean": 0.003999999999999998,
+          "p50": 0.003999999985098839,
+          "p95": 0.00800000000745058
+        },
+        "frameMs": {
+          "mean": 54.303333333333384,
+          "p50": 50,
+          "p95": 66.70000000000073,
+          "sustainedFps": 18.41507580872873
+        },
+        "renderSubmissionMs": {
+          "p50": 0.3999999985098839,
+          "p95": 0.6000000014901161
+        },
+        "gpuFrameMs": null,
+        "gpuFrameMsReason": "Browser timestamp queries are unavailable in this portable WebGPU/WebGL2 QA harness."
+      },
+      "after": {
+        "backend": "webgl",
+        "atlasMode": "v2",
+        "activeSprites": 350,
+        "capacity": 512,
+        "enemyAtlasDrawCalls": 1,
+        "sceneDrawCalls": 2,
+        "triangles": 1025,
+        "textureBaseBytes": 23592960,
+        "textureBytes": 31457280,
+        "cpuAnimationMs": {
+          "mean": 0.011680000000447034,
+          "p50": 0.01199999999254942,
+          "p95": 0.013999999985098838
+        },
+        "frameMs": {
+          "mean": 55.13666666666666,
+          "p50": 50,
+          "p95": 66.70000000000073,
+          "sustainedFps": 18.13675110331903
+        },
+        "renderSubmissionMs": {
+          "p50": 0.30000000074505806,
+          "p95": 0.5
+        },
+        "gpuFrameMs": null,
+        "gpuFrameMsReason": "Browser timestamp queries are unavailable in this portable WebGPU/WebGL2 QA harness."
+      },
+      "comparison": {
+        "fpsChangePercent": -1.511395925276482,
+        "cpuAnimationChangePercent": 192.00000001117598,
+        "withinFivePercentFpsBudget": true
+      }
+    },
+    {
+      "backend": "webgpu",
+      "before": {
+        "backend": "webgpu",
+        "atlasMode": "v1",
+        "activeSprites": 350,
+        "capacity": 512,
+        "enemyAtlasDrawCalls": 1,
+        "sceneDrawCalls": 2,
+        "triangles": 1025,
+        "textureBaseBytes": 6029312,
+        "textureBytes": 6029312,
+        "cpuAnimationMs": {
+          "mean": 0.006360000000894071,
+          "p50": 0.004000000022351742,
+          "p95": 0.00899999998509884
+        },
+        "frameMs": {
+          "mean": 56.66416666666669,
+          "p50": 50,
+          "p95": 116.69999999999982,
+          "sustainedFps": 17.64783740459137
+        },
+        "renderSubmissionMs": {
+          "p50": 0.4000000022351742,
+          "p95": 0.6999999992549419
+        },
+        "gpuFrameMs": null,
+        "gpuFrameMsReason": "Browser timestamp queries are unavailable in this portable WebGPU/WebGL2 QA harness."
+      },
+      "after": {
+        "backend": "webgpu",
+        "atlasMode": "v2",
+        "activeSprites": 350,
+        "capacity": 512,
+        "enemyAtlasDrawCalls": 1,
+        "sceneDrawCalls": 2,
+        "triangles": 1025,
+        "textureBaseBytes": 23592960,
+        "textureBytes": 31457280,
+        "cpuAnimationMs": {
+          "mean": 0.013320000000298024,
+          "p50": 0.013000000007450581,
+          "p95": 0.01799999997019768
+        },
+        "frameMs": {
+          "mean": 57.77541666666668,
+          "p50": 50,
+          "p95": 116.70000000000073,
+          "sustainedFps": 17.308399622099937
+        },
+        "renderSubmissionMs": {
+          "p50": 0.3999999985098839,
+          "p95": 0.7999999970197678
+        },
+        "gpuFrameMs": null,
+        "gpuFrameMsReason": "Browser timestamp queries are unavailable in this portable WebGPU/WebGL2 QA harness."
+      },
+      "comparison": {
+        "fpsChangePercent": -1.9233959080058316,
+        "cpuAnimationChangePercent": 109.43396223939521,
+        "withinFivePercentFpsBudget": true
+      }
+    }
+  ],
+  "pass": true
+}

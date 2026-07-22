@@ -304,13 +304,23 @@ async function setupForestHorde(qa) {
   await startRun('forest');
   // Prefer the production billboard pool. If atlas bootstrap is still in
   // flight, a bounded wait avoids accidentally cloning a 3D mesh per body.
-  try { await waitUntil(() => hasSpritePool('enemies'), 'enemy sprite pool', 12000); } catch (_) {}
+  try {
+    await waitUntil(
+      () => hasSpritePool('forest-enemies-v2'),
+      'Forest enemy sprite v2 pool',
+      12000,
+    );
+  } catch (_) {
+    // Bootstrap failure deliberately falls through to the v1 atlas/GLB path.
+  }
 
-  const tierIds = ['ant', 'beetle', 'ladybug', 'grasshopper', 'butterfly', 'bee', 'cockroach', 'caterpillar', 'mantis'];
+  const tierIds = ['ant', 'beetle', 'ladybug', 'grasshopper', 'butterfly', 'bee', 'wasp', 'cockroach', 'caterpillar', 'mantis'];
   const tiers = tierIds.map((id) => ENEMY_TIERS.find((tier) => tier.glb === id)).filter(Boolean);
   const center = state.hero.pos;
   let spawned = 0;
-  const count = 216;
+  // Production swarm ceiling. Keep this exact so sprite-runtime revisions are
+  // compared against the same deterministic 350-enemy renderer workload.
+  const count = 350;
   for (let i = 0; i < count; i++) {
     const ring = i % 6;
     const slot = Math.floor(i / 6);

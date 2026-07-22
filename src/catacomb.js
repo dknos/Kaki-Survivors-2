@@ -655,7 +655,7 @@ function _parkOverworldEnemies() {
       enemy._telegraphInit = false;
     }
     if (enemy._isSprite && enemy._spriteSlot >= 0) {
-      try { moveSprite('enemies', enemy._spriteSlot, 0, -500, 0); } catch (_) {}
+      try { moveSprite(enemy._spriteAtlasId || 'enemies', enemy._spriteSlot, 0, -500, 0); } catch (_) {}
     }
     try { if (state.enemies.spatial) state.enemies.spatial.remove(enemy); } catch (_) {}
   }
@@ -675,7 +675,7 @@ function _restoreOverworldEnemies() {
     if (enemy._tellRing) enemy._tellRing.visible = rec.tellVisible;
     if (enemy._isSprite && enemy._spriteSlot >= 0 && enemy.mesh) {
       const p = enemy.mesh.position;
-      try { moveSprite('enemies', enemy._spriteSlot, p.x, 0.06, p.z); } catch (_) {}
+      try { moveSprite(enemy._spriteAtlasId || 'enemies', enemy._spriteSlot, p.x, 0.06, p.z); } catch (_) {}
     }
     try { if (state.enemies.spatial) state.enemies.spatial.insert(enemy); } catch (_) {}
     active.push(enemy);

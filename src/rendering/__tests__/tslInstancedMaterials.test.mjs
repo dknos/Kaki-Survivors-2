@@ -193,6 +193,7 @@ test('sprite pool material retains atlas, billboard, cutout, and per-instance fl
     billboard: 'cylinder',
     alphaTest: 0.55,
     blendMode: 'normal',
+    framePadding: { gutterPixels: 3 },
   };
   const cutout = sprites.createSpritePoolMaterial(atlas);
   assert.equal(cutout.isMeshBasicNodeMaterial, true);
@@ -210,7 +211,11 @@ test('sprite pool material retains atlas, billboard, cutout, and per-instance fl
   assert.equal(cutout.uniforms.uBillboard.value, 1);
   assert.deepEqual(cutout.uniforms.uAnchor.value.toArray(), [0.5, 1]);
   assert.equal(cutout.uniforms.uAlphaTest.value, 0.55);
-  assert.deepEqual(cutout.userData.instanceAttributeContract, ['aFrame', 'aScale', 'aFlash']);
+  assert.deepEqual(cutout.uniforms.uUvInset.value.toArray(), [3 / 32, 3 / 64]);
+  assert.deepEqual(cutout.uniforms.uUvScale.value.toArray(), [26 / 32, 58 / 64]);
+  assert.deepEqual(cutout.userData.instanceAttributeContract, [
+    'aFrame', 'aScale', 'aFlash', 'aFlip', 'aPose',
+  ]);
   assert.equal(cutout.userData.translationOnlyInstanceMatrices, true);
 
   cutout
@@ -224,7 +229,18 @@ test('sprite pool material retains atlas, billboard, cutout, and per-instance fl
   assert.equal(cutout.uniforms.uRows.value, 3);
   assert.equal(cutout.uniforms.uAspect.value, 0.75);
   assert.equal(cutout.uniforms.uAlphaTest.value, 0.7);
-  assert.throws(() => cutout.setAlphaThreshold(0.1), /requires a new material/);
+  cutout.setAlphaThreshold(0.1);
+  assert.equal(cutout.uniforms.uAlphaTest.value, 0.1);
+
+  const renderedEnemyCutout = sprites.createSpritePoolMaterial({
+    ...atlas,
+    alphaTest: 0.5,
+    cutout: true,
+    depthWrite: true,
+  });
+  assert.equal(renderedEnemyCutout.transparent, false);
+  assert.equal(renderedEnemyCutout.depthWrite, true);
+  assert.equal(renderedEnemyCutout.userData.cutout, true);
 
   const blended = sprites.createSpritePoolMaterial({
     ...atlas,
@@ -272,15 +288,17 @@ test('production instanced paths use TSL factories and retain update/dispose own
   assert.match(sources.atmosphere, /particles\.frustumCulled = false/);
   assert.match(sources.atmosphere, /shared-particle-texture-cache/);
 
-  assert.match(sources.sprites, /createSpritePoolMaterial\(atlas, \{ alphaTest \}\)/);
+  assert.match(sources.sprites, /createSpritePoolMaterial\(materialAtlas, \{/);
   assert.match(sources.sprites, /new THREE\.InstancedMesh\(geom, material, cap\)/);
   assert.match(sources.sprites, /mesh\.count = cap/);
   assert.match(sources.sprites, /frameAttr\.needsUpdate = true/);
   assert.match(sources.sprites, /scaleAttr\.needsUpdate = true/);
   assert.match(sources.sprites, /flashAttr\.needsUpdate = true/);
+  assert.match(sources.sprites, /flipAttr\.needsUpdate = true/);
+  assert.match(sources.sprites, /poseAttr\.needsUpdate = true/);
   assert.match(
     sources.sprites,
-    /if \(pool\.mesh\.parent\) pool\.mesh\.parent\.remove\(pool\.mesh\);[\s\S]*pool\.geom\.dispose\(\);[\s\S]*pool\.material\.dispose\(\);[\s\S]*_pools\.clear\(\);/,
+    /if \(page\.mesh\.parent\) page\.mesh\.parent\.remove\(page\.mesh\);[\s\S]*page\.geom\.dispose\(\);[\s\S]*page\.material\.dispose\(\);[\s\S]*_pools\.clear\(\);/,
   );
   assert.doesNotMatch(sources.sprites, /atlas\.texture\.dispose|pool\.atlas\.texture\.dispose/);
 
@@ -322,8 +340,11 @@ test('instanced material source is node-only and records exact released equation
   assert.match(spriteSource, /cross\(vec3\(0, 1, 0\), horizontalCameraDirection\)/);
   assert.match(spriteSource, /float\(uBillboard\.equal\(int\(2\)\)\)/);
   assert.match(spriteSource, /mix\(billboardClip, noBillboardClip, isNone\)/);
-  assert.match(spriteSource, /sampled\.a\.lessThan\(uAlphaTest\)\.discard\(\)/);
+  assert.match(spriteSource, /material\.maskNode = sampled\.a\.greaterThanEqual\(uAlphaTest\)/);
   assert.match(spriteSource, /aFlash\.clamp\(0, 1\)/);
+  assert.match(spriteSource, /aFlip\.clamp\(0, 1\)/);
+  assert.match(spriteSource, /anchoredCorner\.x\.mul\(aPose\.x\)/);
+  assert.match(spriteSource, /\.mul\(uUvScale\)\.add\(uUvInset\)/);
   assert.match(spriteSource, /material\.outputNode = vec4\(flashedRgb, sampled\.a\)/);
 
   for (const source of Object.values(sources)) {

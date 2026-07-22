@@ -159,7 +159,8 @@ async function main() {
           fallback: !!stalker.mesh.userData.fallbackAsset,
           drawables: stalkerDrawables,
           bloomMeshes: stalkerBloomMeshes,
-          flashMats: stalker.mesh.userData.flashMats?.length || 0,
+          flashController: typeof stalker.mesh.userData.damageFlashController?.setAmount === 'function',
+          flashMaterials: stalker.mesh.userData.damageFlashController?.materials?.length || 0,
         } : null,
         mouseAffixes: mouse ? mouse.affixes : null,
         pounceArmed,
@@ -183,7 +184,8 @@ async function main() {
     if (!Object.values(out.spawned).every(Boolean)) failures.push(`spawn failed: ${JSON.stringify(out.spawned)}`);
     if (!out.stalker || out.stalker.authoredAsset !== 'nemesis_stalker'
       || out.stalker.fallback || out.stalker.drawables !== 3
-      || out.stalker.bloomMeshes !== 1 || out.stalker.flashMats < 2) {
+      || out.stalker.bloomMeshes !== 1 || !out.stalker.flashController
+      || out.stalker.flashMaterials < 2) {
       failures.push(`Clockwork Stalker asset contract invalid: ${JSON.stringify(out.stalker)}`);
     }
     if (!out.mouseAffixes || !out.mouseAffixes.includes('leaping')) failures.push(`mouse fixed pounce missing: ${JSON.stringify(out.mouseAffixes)}`);

@@ -21,9 +21,10 @@
  *       the anchor would not move the instance origin, so we also screenshot.
  *   (c) Save tools/_thumb_sprite_visible.png (gitignored, 8KB floor) so a human
  *       eyeballs that mob bodies — not just shadows — are on screen.
- *   (d) 0 page errors.
+ *   (d) 0 console or page errors on forced WebGL2 or WebGPU.
  *
- * NOT a perf gate (headless swiftshader). Run: node tools/smoke-sprite-visible.mjs
+ * NOT a perf gate (headless software GPU). Run with BACKEND=webgl (default)
+ * or BACKEND=webgpu: node tools/smoke-sprite-visible.mjs
  * NO npm install. Playwright expected at /home/nemoclaw/node_modules.
  */
 import path from 'node:path';
@@ -31,6 +32,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { resolveChromiumArgs } from './webgpu/chromiumProfiles.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -39,8 +41,9 @@ const require = createRequire(import.meta.url);
 const ROOT = path.resolve(__dirname, '..');
 const PORT = Number(process.env.PORT || 8780);
 const BOOT_TIMEOUT_MS = 60000;
-const SPRITE_WAIT_MS = 20000;
+const SPRITE_WAIT_MS = 60000;
 const SETTLE_MS = Number(process.env.SETTLE_MS || 2000);
+const BACKEND = process.env.BACKEND === 'webgpu' ? 'webgpu' : 'webgl';
 
 function mime(p) {
   if (p.endsWith('.js') || p.endsWith('.mjs')) return 'application/javascript';
@@ -89,35 +92,59 @@ async function main() {
   const browser = await chromium.launch({
     executablePath: PLAYWRIGHT_EXEC,
     headless: true,
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=swiftshader',
-           '--enable-webgl', '--ignore-gpu-blocklist'],
+    args: resolveChromiumArgs(BACKEND),
   });
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await ctx.newPage();
 
+  const consoleErrors = [];
   const pageErrors = [];
-  page.on('console', (msg) => { if (msg.type() === 'error') console.log('[console.error]', msg.text()); });
+  page.on('console', (msg) => {
+    if (msg.type() !== 'error') return;
+    consoleErrors.push(msg.text());
+    console.log('[console.error]', msg.text());
+  });
   page.on('pageerror', (e) => { pageErrors.push(e.message); console.error('[pageerror]', e.message); });
 
   let exitCode = 0;
   try {
-    const url = 'http://127.0.0.1:' + PORT + '/index.html?smoke=1&touch=1';
+    const url = 'http://127.0.0.1:' + PORT
+      + '/index.html?smoke=1&touch=1&renderer=' + BACKEND;
     await page.goto(url, { waitUntil: 'load', timeout: BOOT_TIMEOUT_MS });
     console.log('[smoke-sprite-visible] page loaded; waiting for kkStartRun');
 
     await page.waitForFunction(() => typeof window.kkStartRun === 'function', null, { timeout: BOOT_TIMEOUT_MS });
 
     await page.evaluate(async () => {
+      localStorage.setItem('kks_introSeen', '1');
+      localStorage.setItem('kks_forestTrialsIntroSeen_v1', '1');
       if (typeof window.kkPerfForceOn === 'function') window.kkPerfForceOn();
       await window.kkStartRun();
     });
     await page.waitForFunction(() => !!window.kkState && window.kkState.mode === 'run', null, { timeout: BOOT_TIMEOUT_MS });
-    console.log('[smoke-sprite-visible] in run; waiting for a sprite enemy to spawn');
+    console.log('[smoke-sprite-visible] in run; waiting for the Forest v2 pool');
+
+    await page.waitForFunction(async () => {
+      const sprites = await import('./src/sprites/index.js');
+      return sprites.hasSpritePool('forest-enemies-v2');
+    }, null, { timeout: SPRITE_WAIT_MS });
+    // Software-rendered full-game time can advance at only a few FPS. Spawn one
+    // ordinary ant through the production API so this remains a renderer gate,
+    // not an incidental opening-wave timing test.
+    await page.evaluate(async () => {
+      const s = window.kkState;
+      if (s.enemies.active.some((enemy) => enemy._spriteV2)) return;
+      const enemies = await import('./src/enemies.js');
+      const config = await import('./src/config.js');
+      const ant = config.ENEMY_TIERS.find((tier) => tier.glb === 'ant');
+      enemies.spawnEnemy(ant, s.hero.pos.x + 3, s.hero.pos.z + 2);
+    });
+    console.log('[smoke-sprite-visible] v2 pool ready; waiting for a sprite enemy');
 
     await page.waitForFunction(
       () => {
         const s = window.kkState;
-        return !!(s && s.enemies && s.enemies.active && s.enemies.active.some((e) => e._isSprite));
+        return !!(s && s.enemies && s.enemies.active && s.enemies.active.some((e) => e._spriteV2));
       },
       null,
       { timeout: SPRITE_WAIT_MS },
@@ -125,26 +152,38 @@ async function main() {
     console.log('[smoke-sprite-visible] sprite enemy alive; settling ' + SETTLE_MS + 'ms');
     await new Promise((r) => setTimeout(r, SETTLE_MS));
 
-    const shot = path.join(__dirname, '_thumb_sprite_visible.png');
+    const shot = path.join(
+      __dirname,
+      BACKEND === 'webgl' ? '_thumb_sprite_visible.png' : '_thumb_sprite_visible_webgpu.png',
+    );
     await page.screenshot({ path: shot, fullPage: false });
     const shotBytes = (() => { try { return fs.statSync(shot).size; } catch (_) { return -1; } })();
 
     const probe = await page.evaluate(() => {
       const s = window.kkState;
+      const actualBackend = window.__kkRendererService?.backend || null;
       const active = (s && s.enemies && s.enemies.active) || [];
       const spriteCount = active.filter((e) => e._isSprite).length;
-      // Locate the enemies-atlas InstancedMesh by its bound texture URL.
+      const spriteV2Count = active.filter((e) => e._spriteV2).length;
+      // Locate the active v2 Forest atlas (or v1 fallback if bootstrap failed).
       let em = null;
+      let fallback = null;
       s.scene.traverse((o) => {
         if (em) return;
+        if (o.isInstancedMesh && o.userData?.atlasId === 'forest-enemies-v2') {
+          em = o;
+          return;
+        }
         if (o.isInstancedMesh && o.material && o.material.uniforms && o.material.uniforms.uMap) {
           const tex = o.material.uniforms.uMap.value;
           const img = tex && tex.image;
           const src = (img && (img.currentSrc || img.src)) || '';
-          if (src.indexOf('enemies_v1') >= 0) em = o;
+          if (src.indexOf('forest_enemies_v2') >= 0) em = o;
+          else if (src.indexOf('enemies_v1') >= 0) fallback = o;
         }
       });
-      if (!em) return { spriteCount, found: false };
+      if (!em) em = fallback;
+      if (!em) return { actualBackend, spriteCount, spriteV2Count, found: false };
       const arr = em.instanceMatrix.array; // 16 floats / instance, y-translate at +13
       const sc = em.geometry.getAttribute('aScale');
       let alive = 0, yMin = Infinity, yMax = -Infinity, sampleScale = 0;
@@ -157,11 +196,13 @@ async function main() {
           if (sampleScale === 0 && sc) sampleScale = sc.array[i];
         }
       }
-      return { spriteCount, found: true, instAlive: alive, yMin, yMax, sampleScale, count: em.count };
+      return { actualBackend, spriteCount, spriteV2Count, found: true, instAlive: alive, yMin, yMax, sampleScale, count: em.count };
     });
 
     let pass = true; const why = [];
+    if (probe.actualBackend !== BACKEND) { pass = false; why.push('backend ' + probe.actualBackend + ' != ' + BACKEND); }
     if (!(probe.spriteCount >= 1)) { pass = false; why.push('no _isSprite enemies active'); }
+    if (!(probe.spriteV2Count >= 1)) { pass = false; why.push('no Forest v2 enemies active'); }
     if (!probe.found) { pass = false; why.push('enemies InstancedMesh not found in scene'); }
     else {
       if (!(probe.instAlive >= 1)) { pass = false; why.push('enemies mesh has 0 live instances (all stashed)'); }
@@ -169,7 +210,9 @@ async function main() {
     }
     if (!(shotBytes > 8000)) { pass = false; why.push('screenshot too small (' + shotBytes + 'B)'); }
 
+    console.log('requested/actual      : ' + BACKEND + ' / ' + probe.actualBackend);
     console.log('sprite enemies active : ' + probe.spriteCount);
+    console.log('Forest v2 active      : ' + probe.spriteV2Count);
     console.log('enemies mesh found    : ' + probe.found);
     if (probe.found) {
       console.log('  live instances      : ' + probe.instAlive + ' / ' + probe.count);
@@ -177,11 +220,16 @@ async function main() {
       console.log('  sample aScale       : ' + (probe.sampleScale || 0).toFixed(3) + '  (sprite rises ~aScale above the plane post-fix)');
     }
     console.log('screenshot            : ' + shot + ' (' + shotBytes + 'B)');
+    console.log('console errors        : ' + consoleErrors.length);
+    for (const e of consoleErrors) console.log('  - ' + e);
     console.log('pageerrors            : ' + pageErrors.length);
     for (const e of pageErrors) console.log('  - ' + e);
 
-    if (!pass || pageErrors.length > 0) {
-      console.error('[smoke-sprite-visible] FAIL — ' + (why.join('; ') || ('pageerrors=' + pageErrors.length)));
+    if (!pass || consoleErrors.length > 0 || pageErrors.length > 0) {
+      console.error('[smoke-sprite-visible] FAIL — ' + (
+        why.join('; ')
+        || `consoleErrors=${consoleErrors.length}, pageErrors=${pageErrors.length}`
+      ));
       exitCode = 1;
     } else {
       console.log('[smoke-sprite-visible] OK — sprite mobs spawn + render on the floor plane (eyeball the PNG)');

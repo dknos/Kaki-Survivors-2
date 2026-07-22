@@ -1,0 +1,472 @@
+{
+  "schemaVersion": 1,
+  "manifest": "assets/sprites/forest_enemies_v2.json",
+  "thresholds": {
+    "alpha": 72,
+    "minimumAdjacentDifference": 0.006,
+    "minimumMeanDifference": 0.018,
+    "normalization": "translation + principal-axis rotation + independent X/Y scale"
+  },
+  "pages": [
+    {
+      "id": 0,
+      "image": "forest_enemies_v2.png",
+      "width": 2560,
+      "height": 2304,
+      "frameCount": 360
+    }
+  ],
+  "species": [
+    {
+      "species": "ant",
+      "authoring": "blender-authored-morph-poses",
+      "directions": [
+        {
+          "id": 0,
+          "adjacentDifferences": [
+            0.469714,
+            0.611169,
+            0.570675,
+            0.500285,
+            0.603045,
+            0.537992
+          ],
+          "minimum": 0.469714,
+          "mean": 0.548813
+        },
+        {
+          "id": 1,
+          "adjacentDifferences": [
+            0.378099,
+            0.332158,
+            0.342981,
+            0.424628,
+            0.393242,
+            0.367332
+          ],
+          "minimum": 0.332158,
+          "mean": 0.373074
+        },
+        {
+          "id": 2,
+          "adjacentDifferences": [
+            0.532874,
+            0.722591,
+            0.509325,
+            0.554462,
+            0.732288,
+            0.551788
+          ],
+          "minimum": 0.509325,
+          "mean": 0.600555
+        }
+      ]
+    },
+    {
+      "species": "beetle",
+      "authoring": "blender-authored-morph-poses",
+      "directions": [
+        {
+          "id": 0,
+          "adjacentDifferences": [
+            0.26395,
+            0.570021,
+            0.199871,
+            0.21889,
+            0.55724,
+            0.23612
+          ],
+          "minimum": 0.199871,
+          "mean": 0.341015
+        },
+        {
+          "id": 1,
+          "adjacentDifferences": [
+            0.156516,
+            0.246338,
+            0.117354,
+            0.135689,
+            0.149823,
+            0.314286
+          ],
+          "minimum": 0.117354,
+          "mean": 0.186668
+        },
+        {
+          "id": 2,
+          "adjacentDifferences": [
+            0.147445,
+            0.534843,
+            0.251393,
+            0.147145,
+            0.541858,
+            0.217697
+          ],
+          "minimum": 0.147145,
+          "mean": 0.30673
+        }
+      ]
+    },
+    {
+      "species": "ladybug",
+      "authoring": "blender-authored-morph-poses",
+      "directions": [
+        {
+          "id": 0,
+          "adjacentDifferences": [
+            0.23908,
+            0.320813,
+            0.27124,
+            0.346386,
+            0.342323,
+            0.34075
+          ],
+          "minimum": 0.23908,
+          "mean": 0.310099
+        },
+        {
+          "id": 1,
+          "adjacentDifferences": [
+            0.089578,
+            0.089849,
+            0.082281,
+            0.088223,
+            0.096622,
+            0.090521
+          ],
+          "minimum": 0.082281,
+          "mean": 0.089512
+        },
+        {
+          "id": 2,
+          "adjacentDifferences": [
+            0.229396,
+            0.290182,
+            0.218391,
+            0.172314,
+            0.261916,
+            0.213426
+          ],
+          "minimum": 0.172314,
+          "mean": 0.230937
+        }
+      ]
+    },
+    {
+      "species": "grasshopper",
+      "authoring": "blender-authored-morph-poses",
+      "directions": [
+        {
+          "id": 0,
+          "adjacentDifferences": [
+            0.229364,
+            0.254271,
+            0.228609,
+            0.635486,
+            0.647423,
+            0.239892
+          ],
+          "minimum": 0.228609,
+          "mean": 0.372507
+        },
+        {
+          "id": 1,
+          "adjacentDifferences": [
+            0.204776,
+            0.294411,
+            0.231441,
+            0.180689,
+            0.304158,
+            0.269056
+          ],
+          "minimum": 0.180689,
+          "mean": 0.247422
+        },
+        {
+          "id": 2,
+          "adjacentDifferences": [
+            0.21133,
+            0.249387,
+            0.191409,
+            0.500267,
+            0.16075,
+            0.510293
+          ],
+          "minimum": 0.16075,
+          "mean": 0.303906
+        }
+      ]
+    },
+    {
+      "species": "cockroach",
+      "authoring": "blender-authored-morph-poses",
+      "directions": [
+        {
+          "id": 0,
+          "adjacentDifferences": [
+            0.635365,
+            0.662096,
+            0.852445,
+            0.640449,
+            0.531798,
+            0.900402
+          ],
+          "minimum": 0.531798,
+          "mean": 0.703759
+        },
+        {
+          "id": 1,
+          "adjacentDifferences": [
+            0.481752,
+            0.56106,
+            0.597417,
+            0.627451,
+            0.439854,
+            0.495808
+          ],
+          "minimum": 0.439854,
+          "mean": 0.53389
+        },
+        {
+          "id": 2,
+          "adjacentDifferences": [
+            0.648879,
+            0.512545,
+            0.782609,
+            0.675231,
+            0.554162,
+            0.806302
+          ],
+          "minimum": 0.512545,
+          "mean": 0.663288
+        }
+      ]
+    },
+    {
+      "species": "mantis",
+      "authoring": "blender-authored-morph-poses",
+      "directions": [
+        {
+          "id": 0,
+          "adjacentDifferences": [
+            0.516411,
+            0.292517,
+            0.455617,
+            0.566274,
+            0.510769,
+            0.554015
+          ],
+          "minimum": 0.292517,
+          "mean": 0.4826
+        },
+        {
+          "id": 1,
+          "adjacentDifferences": [
+            0.49583,
+            0.429383,
+            0.398533,
+            0.5,
+            0.467681,
+            0.429125
+          ],
+          "minimum": 0.398533,
+          "mean": 0.453425
+        },
+        {
+          "id": 2,
+          "adjacentDifferences": [
+            0.70746,
+            0.535524,
+            0.576923,
+            0.706856,
+            0.899634,
+            0.88855
+          ],
+          "minimum": 0.535524,
+          "mean": 0.719158
+        }
+      ]
+    },
+    {
+      "species": "wasp",
+      "authoring": "source-animation-clips",
+      "directions": [
+        {
+          "id": 0,
+          "adjacentDifferences": [
+            0.085559,
+            0.089574,
+            0.035323,
+            0.096867,
+            0.06321,
+            0.045226
+          ],
+          "minimum": 0.035323,
+          "mean": 0.069293
+        },
+        {
+          "id": 1,
+          "adjacentDifferences": [
+            0.063483,
+            0.081644,
+            0.058921,
+            0.050332,
+            0.068031,
+            0.055964
+          ],
+          "minimum": 0.050332,
+          "mean": 0.063062
+        },
+        {
+          "id": 2,
+          "adjacentDifferences": [
+            0.034664,
+            0.045455,
+            0.032104,
+            0.044983,
+            0.043194,
+            0.041667
+          ],
+          "minimum": 0.032104,
+          "mean": 0.040344
+        }
+      ]
+    },
+    {
+      "species": "bee",
+      "authoring": "authored-rigid-components",
+      "directions": [
+        {
+          "id": 0,
+          "adjacentDifferences": [
+            0.354042,
+            0.042553,
+            0.357914,
+            0.342043,
+            0.075571,
+            0.349648
+          ],
+          "minimum": 0.042553,
+          "mean": 0.253628
+        },
+        {
+          "id": 1,
+          "adjacentDifferences": [
+            0.315402,
+            0.0565,
+            0.298335,
+            0.523431,
+            0.082238,
+            0.541815
+          ],
+          "minimum": 0.0565,
+          "mean": 0.302954
+        },
+        {
+          "id": 2,
+          "adjacentDifferences": [
+            0.349008,
+            0.036281,
+            0.376409,
+            0.562205,
+            0.052334,
+            0.560928
+          ],
+          "minimum": 0.036281,
+          "mean": 0.322861
+        }
+      ]
+    },
+    {
+      "species": "butterfly",
+      "authoring": "blender-authored-morph-poses",
+      "directions": [
+        {
+          "id": 0,
+          "adjacentDifferences": [
+            0.634221,
+            0.932645,
+            0.89443,
+            0.705495,
+            0.617722,
+            0.595282
+          ],
+          "minimum": 0.595282,
+          "mean": 0.729966
+        },
+        {
+          "id": 1,
+          "adjacentDifferences": [
+            0.291386,
+            0.222988,
+            0.216752,
+            0.254836,
+            0.231788,
+            0.262445
+          ],
+          "minimum": 0.216752,
+          "mean": 0.246699
+        },
+        {
+          "id": 2,
+          "adjacentDifferences": [
+            0.446558,
+            0.964667,
+            0.923259,
+            0.808422,
+            0.743568,
+            0.369885
+          ],
+          "minimum": 0.369885,
+          "mean": 0.709393
+        }
+      ]
+    },
+    {
+      "species": "caterpillar",
+      "authoring": "blender-authored-morph-poses",
+      "directions": [
+        {
+          "id": 0,
+          "adjacentDifferences": [
+            0.630299,
+            0.260062,
+            0.321997,
+            0.205693,
+            0.061164,
+            0.661745
+          ],
+          "minimum": 0.061164,
+          "mean": 0.356827
+        },
+        {
+          "id": 1,
+          "adjacentDifferences": [
+            0.468131,
+            0.406061,
+            0.442032,
+            0.180515,
+            0.44342,
+            0.458023
+          ],
+          "minimum": 0.180515,
+          "mean": 0.399697
+        },
+        {
+          "id": 2,
+          "adjacentDifferences": [
+            0.405384,
+            0.471097,
+            0.635003,
+            0.63194,
+            0.384242,
+            0.129198
+          ],
+          "minimum": 0.129198,
+          "mean": 0.442811
+        }
+      ]
+    }
+  ],
+  "pass": true
+}

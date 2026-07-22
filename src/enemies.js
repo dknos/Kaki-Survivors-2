@@ -64,7 +64,20 @@ import { tryAchievement, trySecret, showBanner } from './ui.js';
 // import() here. damageEnemy + killEnemy fire 100+ times/frame on borgir
 // salvos; dynamic-import microtasks would crater FPS (see memory
 // feedback_kks_dynamic_import_hotpath).
-import { spawnSprite, moveSprite, killSprite, setSpriteFlash, hasSpritePool } from './sprites/index.js';
+import {
+  ENEMY_SPRITE_STATE,
+  spawnSprite,
+  spawnEnemySprite,
+  moveSprite,
+  setEnemySpriteMotion,
+  setEnemySpriteState,
+  triggerEnemySpriteHit,
+  playEnemySpriteDeath,
+  releaseEnemySprite,
+  releaseAllSprites,
+  setSpriteFlash,
+  hasSpritePool,
+} from './sprites/index.js';
 // PHASE 1 P1E (2026-05-17) — boss intro cinematic trigger. Static import:
 // triggerBossIntro is a cheap no-op when the tier has already fired this run,
 // so calling it on every spawn is safe. Roomboss tier is detected by the
@@ -121,7 +134,22 @@ const _SPRITE_KEYS = new Set([
   'slime', 'wizard', 'ghost', 'spider', 'wolf', 'ant', 'beetle', 'ladybug',
   'grasshopper', 'cockroach', 'mantis', 'wasp', 'bee', 'butterfly', 'caterpillar',
 ]);
+const FOREST_ENEMY_ATLAS_ID = 'forest-enemies-v2';
+const V1_ENEMY_ATLAS_ID = 'enemies';
+const _FOREST_SPRITE_SPECIES = Object.freeze({
+  ant: 0,
+  beetle: 1,
+  ladybug: 2,
+  grasshopper: 3,
+  cockroach: 4,
+  mantis: 5,
+  wasp: 6,
+  bee: 7,
+  butterfly: 8,
+  caterpillar: 9,
+});
 const _anchorPool = [];   // reusable empty Object3D anchors for sprite enemies
+let _spriteSpawnSeed = 0;
 // Hit-flash white-mix strength for billboard (sprite) enemies (CC4). < 1 so the
 // silhouette stays legible mid-swarm; the 3D path flashes emissive white (1.6
 // intensity) — this is the unlit-sprite analog. Sole blind-tune knob for the
@@ -150,7 +178,10 @@ function _releaseEnemyMesh(e) {
   if (e._meshReleased) return;
   e._meshReleased = true;
   if (e._isSprite) {
-    if (e._spriteSlot >= 0) { try { killSprite('enemies', e._spriteSlot); } catch (_) {} e._spriteSlot = -1; }
+    if (e._spriteSlot >= 0) {
+      try { releaseEnemySprite(e._spriteAtlasId || V1_ENEMY_ATLAS_ID, e._spriteSlot); } catch (_) {}
+      e._spriteSlot = -1;
+    }
     if (e.mesh) {
       e.mesh.visible = false;
       if (e.mesh.parent) e.mesh.parent.remove(e.mesh);
@@ -169,6 +200,48 @@ function _releaseEnemyMesh(e) {
   } else if (e.mesh) {
     const _pool = state.enemies.pools[e.glbKey] || (state.enemies.pools[e.glbKey] = []);
     _pool.push(e.mesh);
+  }
+}
+
+// A killed v2 enemy stops owning gameplay state immediately, but its instance
+// remains in the shared atlas pool for the authored 3-frame death (167ms).
+// The anchor is position-only and can be recycled at once; the pool slot
+// releases itself when the one-shot reaches its configured completion.
+function _playSpriteDeathAndRecycleAnchor(e) {
+  if (e._meshReleased) return;
+  e._meshReleased = true;
+  const atlasId = e._spriteAtlasId || V1_ENEMY_ATLAS_ID;
+  if (e._spriteSlot >= 0) {
+    try {
+      moveSprite(atlasId, e._spriteSlot, e.mesh.position.x, 0.06, e.mesh.position.z);
+      if (!playEnemySpriteDeath(atlasId, e._spriteSlot)) {
+        releaseEnemySprite(atlasId, e._spriteSlot);
+      }
+    } catch (_) {
+      try { releaseEnemySprite(atlasId, e._spriteSlot); } catch (_) {}
+    }
+    e._spriteSlot = -1;
+  }
+  if (e.mesh) {
+    e.mesh.visible = false;
+    if (e.mesh.parent) e.mesh.parent.remove(e.mesh);
+    _anchorPool.push(e.mesh);
+  }
+}
+
+function _syncEnemySprite(e, fromX, fromZ, dt) {
+  if (!e._isSprite || e._spriteSlot < 0) return;
+  const atlasId = e._spriteAtlasId || V1_ENEMY_ATLAS_ID;
+  const ep = e.mesh.position;
+  moveSprite(atlasId, e._spriteSlot, ep.x, 0.06, ep.z);
+  if (!e._spriteV2) return;
+  const dx = ep.x - fromX;
+  const dz = ep.z - fromZ;
+  if (dt > 0) {
+    const invDt = 1 / dt;
+    setEnemySpriteMotion(atlasId, e._spriteSlot, dx * invDt, dz * invDt, Math.hypot(dx, dz) * invDt);
+  } else {
+    setEnemySpriteMotion(atlasId, e._spriteSlot, 0, 0, 0);
   }
 }
 
@@ -301,6 +374,7 @@ export function initEnemies(scene) {
   _campMoveT = 0;
   _heroCamping = false;
   _campMul = 1.0;
+  _spriteSpawnSeed = 0;
   _poolEmptyWarned.clear();
 }
 
@@ -443,8 +517,9 @@ export function prewarmPools() {
   // Per-run reset of the once-per-key pool-empty warn (prewarmPools runs on
   // every Embark; initEnemies only runs once at boot).
   _poolEmptyWarned.clear();
-  const spriteHordeReady = hasSpritePool('enemies');
   const activeStageId = state.run && state.run.stage ? state.run.stage.id : '';
+  const spriteHordeReady = hasSpritePool(V1_ENEMY_ATLAS_ID)
+    || (activeStageId === 'forest' && hasSpritePool(FOREST_ENEMY_ATLAS_ID));
   for (const key of Object.keys(POOL_PREWARM)) {
     const tier = _tierByGlb[key];
     if (!tier) { console.warn(`[enemies] prewarm: no tier for "${key}"`); continue; }
@@ -483,14 +558,43 @@ export function spawnEnemy(tierConfig, x, z) {
   // the atlas isn't loaded yet (slot < 0) so the first wave never goes blank.
   let mesh = null;
   let spriteSlot = -1;
+  let spriteAtlasId = V1_ENEMY_ATLAS_ID;
+  let spriteV2 = false;
   const wantSprite = _SPRITE_KEYS.has(key)
     && !tierConfig.elite && !tierConfig.isMiniBoss && !tierConfig.isFinalBoss;
   if (wantSprite) {
-    spriteSlot = spawnSprite('enemies', {
-      x, y: 0.06, z,
-      scale: tierConfig.spriteScale || Math.max(SPRITE_MIN_HEIGHT, (tierConfig.scale || 1) * SPRITE_FIT_HEIGHT),
-      anim: key,
-    });
+    const forestSpeciesId = _FOREST_SPRITE_SPECIES[key];
+    const activeStageId = state.run?.stage?.id || '';
+    spriteV2 = activeStageId === 'forest'
+      && forestSpeciesId !== undefined
+      && hasSpritePool(FOREST_ENEMY_ATLAS_ID);
+    const scale = tierConfig.spriteScale
+      || Math.max(SPRITE_MIN_HEIGHT, (tierConfig.scale || 1) * SPRITE_FIT_HEIGHT);
+    if (spriteV2) {
+      spriteAtlasId = FOREST_ENEMY_ATLAS_ID;
+      let vx = (state.hero?.pos?.x ?? x) - x;
+      let vz = (state.hero?.pos?.z ?? z) - z;
+      const magnitude = Math.hypot(vx, vz);
+      if (magnitude > 0.0001) {
+        const speed = tierConfig.spd || 1;
+        vx = vx / magnitude * speed;
+        vz = vz / magnitude * speed;
+      }
+      spriteSlot = spawnEnemySprite(spriteAtlasId, {
+        x, y: 0.06, z, scale,
+        speciesId: forestSpeciesId,
+        stateId: ENEMY_SPRITE_STATE.MOVE,
+        vx,
+        vz,
+        speed: tierConfig.spd,
+        nominalSpeed: tierConfig.spd,
+        seed: _spriteSpawnSeed++,
+      });
+    } else {
+      spriteSlot = spawnSprite(spriteAtlasId, {
+        x, y: 0.06, z, scale, anim: key,
+      });
+    }
     if (spriteSlot >= 0) {
       mesh = _anchorPool.pop() || new THREE.Object3D();
       // Position-only anchors stay off-scene. The billboard pool owns the
@@ -631,6 +735,8 @@ export function spawnEnemy(tierConfig, x, z) {
     // anim/mixer/facing paths + routes mesh recycling through _releaseEnemyMesh.
     _isSprite: spriteSlot >= 0,
     _spriteSlot: spriteSlot,
+    _spriteAtlasId: spriteSlot >= 0 ? spriteAtlasId : null,
+    _spriteV2: spriteSlot >= 0 && spriteV2,
     procAnim: tierConfig.procAnim || null,
     ranged: tierConfig.ranged || null,
     rangedCD: tierConfig.ranged ? (Math.random() * tierConfig.ranged.cooldown) : 0,
@@ -1362,9 +1468,12 @@ export function killEnemy(enemy) {
     }
   }
 
-  // Death scale-pop, then deferred pool return (drained in updateEnemies).
-  // Sprite / over-cap path returns to pool immediately as before.
-  if (!enemy._isSprite && enemy.mesh && _corpses.length < CORPSE_POP_CAP) {
+  // Death presentation. Forest v2 stays in its existing batch slot for the
+  // authored 167ms one-shot, while collision/spatial ownership is detached
+  // below in this same call. V1 remains the safe immediate-release fallback.
+  if (enemy._isSprite && enemy._spriteV2) {
+    _playSpriteDeathAndRecycleAnchor(enemy);
+  } else if (!enemy._isSprite && enemy.mesh && _corpses.length < CORPSE_POP_CAP) {
     enemy.mesh.visible = true;
     const s = enemy._baseScale || 1;
     enemy.mesh.scale.set(s * 1.25, s * 0.85, s * 1.25);
@@ -1586,6 +1695,9 @@ export function damageEnemy(enemy, dmg, source) {
   // Extend (never shorten) the flash window — multi-source hits stack readably.
   const flashEndCandidate = state.time.game + flashDur;
   if (flashEndCandidate > (enemy._flashUntil || 0)) enemy._flashUntil = flashEndCandidate;
+  if (enemy._spriteV2 && enemy._spriteSlot >= 0) {
+    triggerEnemySpriteHit(enemy._spriteAtlasId, enemy._spriteSlot);
+  }
 
   // Knockback: only for "heavy" non-tick hits. Direction = from hero outward
   // (most weapons fire from the hero). Additive (`+=`) so a dash impulse on
@@ -1711,6 +1823,10 @@ export function flushCorpses() {
     _releaseEnemyMesh(_corpses[ci].e);
   }
   _corpses.length = 0;
+  // Run teardown has already released every active enemy. Catch any detached
+  // v2 death one-shots and any legacy loop whose logical owner disappeared.
+  releaseAllSprites(FOREST_ENEMY_ATLAS_ID);
+  releaseAllSprites(V1_ENEMY_ATLAS_ID);
 }
 
 // Per-frame update
@@ -1852,11 +1968,9 @@ export function updateEnemies(dt) {
     if (!e.alive) continue;
 
     const ep = e.mesh.position;
-    // ── 2D billboard: follow the anchor (1-frame lag, imperceptible). The
-    // sprite system handles camera-facing + frame animation in tickSpriteSystem.
-    if (e._isSprite) {
-      if (e._spriteSlot >= 0) moveSprite('enemies', e._spriteSlot, ep.x, 0.06, ep.z);
-    } else {
+    const spriteFromX = ep.x;
+    const spriteFromZ = ep.z;
+    if (!e._isSprite) {
       // ── Animation mixer ──
       const mixer = e.mesh.userData && e.mesh.userData.mixer;
       if (mixer) mixer.update(dt);
@@ -1885,7 +1999,7 @@ export function updateEnemies(dt) {
       // silhouette legible mid-swarm (the one blind-tune knob; nudge here).
       const isFlashing = e._flashUntil && _now < e._flashUntil;
       if (isFlashing !== e._wasFlashing) {
-        try { setSpriteFlash('enemies', e._spriteSlot, isFlashing ? SPRITE_FLASH_STRENGTH : 0); } catch (_) {}
+        try { setSpriteFlash(e._spriteAtlasId || V1_ENEMY_ATLAS_ID, e._spriteSlot, isFlashing ? SPRITE_FLASH_STRENGTH : 0); } catch (_) {}
         e._wasFlashing = isFlashing;
       }
     }
@@ -1991,6 +2105,9 @@ export function updateEnemies(dt) {
           }
           if (e.rangedCD <= 0) {
             e.rangedCD = r.cooldown;
+            if (e._spriteV2 && e._spriteSlot >= 0) {
+              setEnemySpriteState(e._spriteAtlasId, e._spriteSlot, ENEMY_SPRITE_STATE.ATTACK, true);
+            }
             // Iter 2 threat depth — lead aim + difficulty-gated fan.
             // `r` is the SHARED tier config object: read-only, never mutate.
             // Lead: aim at heroPos + lead × hero velocity (hero.js stamps
@@ -2089,12 +2206,16 @@ export function updateEnemies(dt) {
       // spatial move again later this frame. Keeping the current cell valid
       // here protects projectiles during zero-dt/hit-stop frames.
       spatial.move(e);
+      _syncEnemySprite(e, spriteFromX, spriteFromZ, dt);
       continue;
     }
 
     // Static destructibles (totems, pylons, bells) skip movement + contact;
     // their own tickers handle behavior. DoT/flash above still applies.
-    if (e.isTotem || e.isPylon || e.isBell) continue;
+    if (e.isTotem || e.isPylon || e.isBell) {
+      _syncEnemySprite(e, spriteFromX, spriteFromZ, dt);
+      continue;
+    }
 
     // ── Iter 8 affix per-frame readers (early-out: only touch enemies
     // whose affix slots are actually set; the vast majority of swarm trash
@@ -2213,8 +2334,14 @@ export function updateEnemies(dt) {
     if (contactSq <= CONTACT_DIST_SQ && e.contactCooldown <= 0) {
       const dmgMul = (e._enrageUntil && _now < e._enrageUntil) ? 1.25 : 1.0;
       heroTakeDamage(e.dmg * dmgMul);
+      if (e._spriteV2 && e._spriteSlot >= 0) {
+        setEnemySpriteState(e._spriteAtlasId, e._spriteSlot, ENEMY_SPRITE_STATE.ATTACK, true);
+      }
       e.contactCooldown = CONTACT_CD;
     }
+    // Follow after all seek, leap, knockback and separation writes so the
+    // rendered position no longer trails the logical entity by one frame.
+    _syncEnemySprite(e, spriteFromX, spriteFromZ, dt);
   }
 }
 
@@ -2242,10 +2369,24 @@ export function setControlledEnemyXZ(enemy, x, z) {
   if (!enemy || !enemy.alive || !enemy.mesh) return false;
   if (enemy._spatialKey == null || !state.enemies.spatial) return false;
   if (!Number.isFinite(x) || !Number.isFinite(z)) return false;
+  const oldX = enemy.mesh.position.x;
+  const oldZ = enemy.mesh.position.z;
   enemy.mesh.position.x = x;
   enemy.mesh.position.z = z;
   if (enemy._isSprite && enemy._spriteSlot >= 0) {
-    try { moveSprite('enemies', enemy._spriteSlot, x, 0.06, z); } catch (_) {}
+    try {
+      const atlasId = enemy._spriteAtlasId || V1_ENEMY_ATLAS_ID;
+      moveSprite(atlasId, enemy._spriteSlot, x, 0.06, z);
+      if (enemy._spriteV2) {
+        const dx = x - oldX;
+        const dz = z - oldZ;
+        const moved = Math.abs(dx) + Math.abs(dz) > 0.0001;
+        const magnitude = Math.hypot(dx, dz);
+        const speed = moved ? Math.max(0, enemy.spd || 0) : 0;
+        const factor = magnitude > 0.0001 ? speed / magnitude : 0;
+        setEnemySpriteMotion(atlasId, enemy._spriteSlot, dx * factor, dz * factor, speed);
+      }
+    } catch (_) {}
   }
   state.enemies.spatial.move(enemy);
   return true;

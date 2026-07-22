@@ -1,0 +1,1482 @@
+{
+  "version": 2,
+  "kind": "enemy-atlas",
+  "image": "forest_enemies_v2.png",
+  "pages": [
+    {
+      "id": 0,
+      "image": "forest_enemies_v2.png",
+      "frameWidth": 128,
+      "frameHeight": 128,
+      "cols": 20,
+      "rows": 18,
+      "frameCount": 360
+    }
+  ],
+  "frameCount": 360,
+  "directionCount": 4,
+  "stateCount": 3,
+  "directions": [
+    {
+      "id": 0,
+      "name": "toward_camera"
+    },
+    {
+      "id": 1,
+      "name": "camera_right"
+    },
+    {
+      "id": 2,
+      "name": "away_from_camera"
+    },
+    {
+      "id": 3,
+      "name": "camera_left",
+      "mirroredFrom": 1
+    }
+  ],
+  "states": [
+    {
+      "id": 0,
+      "name": "move"
+    },
+    {
+      "id": 1,
+      "name": "attack"
+    },
+    {
+      "id": 2,
+      "name": "death"
+    }
+  ],
+  "species": [
+    {
+      "id": 0,
+      "name": "ant",
+      "fallbackState": 0,
+      "defaultDirection": 0,
+      "motionKind": 1,
+      "nominalSpeed": 3.8,
+      "playbackRate": {
+        "min": 0.55,
+        "max": 1.7
+      },
+      "authoring": "blender-authored-morph-poses",
+      "states": [
+        {
+          "id": 0,
+          "name": "move",
+          "fps": 15,
+          "loop": true,
+          "completion": "loop",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 0,
+              "to": 5,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 6,
+              "to": 11,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 12,
+              "to": 17,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 6,
+              "to": 11,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "name": "attack",
+          "fps": 18,
+          "loop": false,
+          "completion": "fallback",
+          "fallbackState": 0,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 18,
+              "to": 20,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 21,
+              "to": 23,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 24,
+              "to": 26,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 21,
+              "to": 23,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "death",
+          "fps": 18,
+          "loop": false,
+          "completion": "release",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 27,
+              "to": 29,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 30,
+              "to": 32,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 33,
+              "to": 35,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 30,
+              "to": 32,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        }
+      ],
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "sourceAsset": "assets/breakroom/Ant.glb"
+      }
+    },
+    {
+      "id": 1,
+      "name": "beetle",
+      "fallbackState": 0,
+      "defaultDirection": 0,
+      "motionKind": 2,
+      "nominalSpeed": 1.9,
+      "playbackRate": {
+        "min": 0.45,
+        "max": 1.45
+      },
+      "authoring": "blender-authored-morph-poses",
+      "states": [
+        {
+          "id": 0,
+          "name": "move",
+          "fps": 8,
+          "loop": true,
+          "completion": "loop",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 36,
+              "to": 41,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 42,
+              "to": 47,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 48,
+              "to": 53,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 42,
+              "to": 47,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "name": "attack",
+          "fps": 18,
+          "loop": false,
+          "completion": "fallback",
+          "fallbackState": 0,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 54,
+              "to": 56,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 57,
+              "to": 59,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 60,
+              "to": 62,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 57,
+              "to": 59,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "death",
+          "fps": 18,
+          "loop": false,
+          "completion": "release",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 63,
+              "to": 65,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 66,
+              "to": 68,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 69,
+              "to": 71,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 66,
+              "to": 68,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        }
+      ],
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "sourceAsset": "assets/breakroom/Beetle.glb"
+      }
+    },
+    {
+      "id": 2,
+      "name": "ladybug",
+      "fallbackState": 0,
+      "defaultDirection": 0,
+      "motionKind": 3,
+      "nominalSpeed": 2.4,
+      "playbackRate": {
+        "min": 0.5,
+        "max": 1.55
+      },
+      "authoring": "blender-authored-morph-poses",
+      "states": [
+        {
+          "id": 0,
+          "name": "move",
+          "fps": 10,
+          "loop": true,
+          "completion": "loop",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 72,
+              "to": 77,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 78,
+              "to": 83,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 84,
+              "to": 89,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 78,
+              "to": 83,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "name": "attack",
+          "fps": 18,
+          "loop": false,
+          "completion": "fallback",
+          "fallbackState": 0,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 90,
+              "to": 92,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 93,
+              "to": 95,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 96,
+              "to": 98,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 93,
+              "to": 95,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "death",
+          "fps": 18,
+          "loop": false,
+          "completion": "release",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 99,
+              "to": 101,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 102,
+              "to": 104,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 105,
+              "to": 107,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 102,
+              "to": 104,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        }
+      ],
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "sourceAsset": "assets/breakroom/Ladybug.glb"
+      }
+    },
+    {
+      "id": 3,
+      "name": "grasshopper",
+      "fallbackState": 0,
+      "defaultDirection": 0,
+      "motionKind": 4,
+      "nominalSpeed": 4.4,
+      "playbackRate": {
+        "min": 0.4,
+        "max": 1.6
+      },
+      "authoring": "blender-authored-morph-poses",
+      "states": [
+        {
+          "id": 0,
+          "name": "move",
+          "fps": 8,
+          "loop": true,
+          "completion": "loop",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 108,
+              "to": 113,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 114,
+              "to": 119,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 120,
+              "to": 125,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 114,
+              "to": 119,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "name": "attack",
+          "fps": 18,
+          "loop": false,
+          "completion": "fallback",
+          "fallbackState": 0,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 126,
+              "to": 128,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 129,
+              "to": 131,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 132,
+              "to": 134,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 129,
+              "to": 131,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "death",
+          "fps": 18,
+          "loop": false,
+          "completion": "release",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 135,
+              "to": 137,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 138,
+              "to": 140,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 141,
+              "to": 143,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 138,
+              "to": 140,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        }
+      ],
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "sourceAsset": "assets/breakroom/Grasshopper.glb"
+      }
+    },
+    {
+      "id": 4,
+      "name": "cockroach",
+      "fallbackState": 0,
+      "defaultDirection": 0,
+      "motionKind": 5,
+      "nominalSpeed": 4.8,
+      "playbackRate": {
+        "min": 0.6,
+        "max": 1.8
+      },
+      "authoring": "blender-authored-morph-poses",
+      "states": [
+        {
+          "id": 0,
+          "name": "move",
+          "fps": 16,
+          "loop": true,
+          "completion": "loop",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 144,
+              "to": 149,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 150,
+              "to": 155,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 156,
+              "to": 161,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 150,
+              "to": 155,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "name": "attack",
+          "fps": 18,
+          "loop": false,
+          "completion": "fallback",
+          "fallbackState": 0,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 162,
+              "to": 164,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 165,
+              "to": 167,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 168,
+              "to": 170,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 165,
+              "to": 167,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "death",
+          "fps": 18,
+          "loop": false,
+          "completion": "release",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 171,
+              "to": 173,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 174,
+              "to": 176,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 177,
+              "to": 179,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 174,
+              "to": 176,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        }
+      ],
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "sourceAsset": "assets/breakroom/Cockroach.glb"
+      }
+    },
+    {
+      "id": 5,
+      "name": "mantis",
+      "fallbackState": 0,
+      "defaultDirection": 0,
+      "motionKind": 6,
+      "nominalSpeed": 2,
+      "playbackRate": {
+        "min": 0.4,
+        "max": 1.45
+      },
+      "authoring": "blender-authored-morph-poses",
+      "states": [
+        {
+          "id": 0,
+          "name": "move",
+          "fps": 7,
+          "loop": true,
+          "completion": "loop",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 180,
+              "to": 185,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 186,
+              "to": 191,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 192,
+              "to": 197,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 186,
+              "to": 191,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "name": "attack",
+          "fps": 15,
+          "loop": false,
+          "completion": "fallback",
+          "fallbackState": 0,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 198,
+              "to": 200,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 201,
+              "to": 203,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 204,
+              "to": 206,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 201,
+              "to": 203,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "death",
+          "fps": 18,
+          "loop": false,
+          "completion": "release",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 207,
+              "to": 209,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 210,
+              "to": 212,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 213,
+              "to": 215,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 210,
+              "to": 212,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        }
+      ],
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "sourceAsset": "assets/breakroom/Mantis.glb"
+      }
+    },
+    {
+      "id": 6,
+      "name": "wasp",
+      "fallbackState": 0,
+      "defaultDirection": 0,
+      "motionKind": 7,
+      "nominalSpeed": 2.8,
+      "playbackRate": {
+        "min": 0.7,
+        "max": 1.8
+      },
+      "authoring": "source-animation-clips",
+      "states": [
+        {
+          "id": 0,
+          "name": "move",
+          "fps": 18,
+          "loop": true,
+          "completion": "loop",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 216,
+              "to": 221,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 222,
+              "to": 227,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 228,
+              "to": 233,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 222,
+              "to": 227,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "name": "attack",
+          "fps": 18,
+          "loop": false,
+          "completion": "fallback",
+          "fallbackState": 0,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 234,
+              "to": 236,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 237,
+              "to": 239,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 240,
+              "to": 242,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 237,
+              "to": 239,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "death",
+          "fps": 18,
+          "loop": false,
+          "completion": "release",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 243,
+              "to": 245,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 246,
+              "to": 248,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 249,
+              "to": 251,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 246,
+              "to": 248,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        }
+      ],
+      "attribution": {
+        "author": "Quaternius",
+        "license": "CC0",
+        "source": "Ultimate Monsters bundle",
+        "sourceAsset": "assets/breakroom/Wasp.glb"
+      }
+    },
+    {
+      "id": 7,
+      "name": "bee",
+      "fallbackState": 0,
+      "defaultDirection": 0,
+      "motionKind": 8,
+      "nominalSpeed": 2.8,
+      "playbackRate": {
+        "min": 0.7,
+        "max": 1.75
+      },
+      "authoring": "authored-rigid-components",
+      "states": [
+        {
+          "id": 0,
+          "name": "move",
+          "fps": 18,
+          "loop": true,
+          "completion": "loop",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 252,
+              "to": 257,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 258,
+              "to": 263,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 264,
+              "to": 269,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 258,
+              "to": 263,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "name": "attack",
+          "fps": 18,
+          "loop": false,
+          "completion": "fallback",
+          "fallbackState": 0,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 270,
+              "to": 272,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 273,
+              "to": 275,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 276,
+              "to": 278,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 273,
+              "to": 275,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "death",
+          "fps": 18,
+          "loop": false,
+          "completion": "release",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 279,
+              "to": 281,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 282,
+              "to": 284,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 285,
+              "to": 287,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 282,
+              "to": 284,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        }
+      ],
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "sourceAsset": "assets/breakroom/Bee.glb"
+      }
+    },
+    {
+      "id": 8,
+      "name": "butterfly",
+      "fallbackState": 0,
+      "defaultDirection": 0,
+      "motionKind": 9,
+      "nominalSpeed": 2.6,
+      "playbackRate": {
+        "min": 0.45,
+        "max": 1.4
+      },
+      "authoring": "blender-authored-morph-poses",
+      "states": [
+        {
+          "id": 0,
+          "name": "move",
+          "fps": 8,
+          "loop": true,
+          "completion": "loop",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 288,
+              "to": 293,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 294,
+              "to": 299,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 300,
+              "to": 305,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 294,
+              "to": 299,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "name": "attack",
+          "fps": 18,
+          "loop": false,
+          "completion": "fallback",
+          "fallbackState": 0,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 306,
+              "to": 308,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 309,
+              "to": 311,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 312,
+              "to": 314,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 309,
+              "to": 311,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "death",
+          "fps": 18,
+          "loop": false,
+          "completion": "release",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 315,
+              "to": 317,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 318,
+              "to": 320,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 321,
+              "to": 323,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 318,
+              "to": 320,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        }
+      ],
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "sourceAsset": "assets/breakroom/Butterfly.glb"
+      }
+    },
+    {
+      "id": 9,
+      "name": "caterpillar",
+      "fallbackState": 0,
+      "defaultDirection": 0,
+      "motionKind": 10,
+      "nominalSpeed": 1,
+      "playbackRate": {
+        "min": 0.4,
+        "max": 1.45
+      },
+      "authoring": "blender-authored-morph-poses",
+      "states": [
+        {
+          "id": 0,
+          "name": "move",
+          "fps": 7,
+          "loop": true,
+          "completion": "loop",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 324,
+              "to": 329,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 330,
+              "to": 335,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 336,
+              "to": 341,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 330,
+              "to": 335,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "name": "attack",
+          "fps": 18,
+          "loop": false,
+          "completion": "fallback",
+          "fallbackState": 0,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 342,
+              "to": 344,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 345,
+              "to": 347,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 348,
+              "to": 350,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 345,
+              "to": 347,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "death",
+          "fps": 18,
+          "loop": false,
+          "completion": "release",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 351,
+              "to": 353,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 354,
+              "to": 356,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 357,
+              "to": 359,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 354,
+              "to": 356,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        }
+      ],
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "sourceAsset": "assets/breakroom/Caterpillar.glb"
+      }
+    }
+  ],
+  "pixelsPerWorldUnit": 48,
+  "anchor": [
+    0.5,
+    1
+  ],
+  "blendMode": "alpha",
+  "cutout": true,
+  "depthWrite": true,
+  "alphaTest": 0.5,
+  "alphaToCoverage": false,
+  "bloom": false,
+  "billboard": "screen",
+  "framePadding": {
+    "gutterPixels": 3,
+    "alphaDilationPixels": 2,
+    "contentPixels": 122,
+    "placement": "inside-cell"
+  },
+  "texture": {
+    "colorSpace": "srgb",
+    "magFilter": "linear",
+    "minFilter": "linear-mipmap-linear",
+    "generateMipmaps": true,
+    "anisotropy": 4,
+    "wrapS": "clamp-to-edge",
+    "wrapT": "clamp-to-edge"
+  },
+  "memoryEstimate": {
+    "colorBytesBaseLevel": 23592960,
+    "colorBytesWithMipmaps": 31457280,
+    "compression": "none"
+  },
+  "fallbackState": 0,
+  "fallbackAtlas": "assets/sprites/enemies_v1.json",
+  "generator": {
+    "baker": "tools/enemy-sprite-bake/bake.html",
+    "runner": "tools/enemy-sprite-bake/run.mjs",
+    "authoringScript": "tools/enemy-sprite-bake/author_forest_animation.py",
+    "internalResolution": 488,
+    "supersample": 4,
+    "deterministicSeed": 0,
+    "directionsBaked": 3,
+    "directionsEffective": 4
+  },
+  "attributionSource": [
+    "README.md:113-114",
+    "src/ui.js:8130-8131"
+  ]
+}

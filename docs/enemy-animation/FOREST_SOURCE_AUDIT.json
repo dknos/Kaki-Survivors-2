@@ -1,0 +1,536 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "tools/inspect-forest-enemies.mjs",
+  "sourcePolicy": "Original GLBs are read-only; derived animation assets must live outside assets/breakroom.",
+  "species": [
+    {
+      "species": "ant",
+      "filePath": "assets/breakroom/Ant.glb",
+      "fileBytes": 5772,
+      "sha256": "33f5c9057153576dbef20493b67fa0fb8abfc332841fe93b6d24e44feaa19de3",
+      "triangleCount": 1820,
+      "meshCount": 1,
+      "meshNodeCount": 1,
+      "primitiveCount": 2,
+      "materialCount": 2,
+      "usedMaterialCount": 2,
+      "nodeCount": 1,
+      "nodeHierarchy": [
+        "Node [mesh:0]"
+      ],
+      "skinCount": 0,
+      "boneCount": 0,
+      "morphTargetCount": 0,
+      "morphMeshes": [],
+      "animationClips": [],
+      "namedComponents": {
+        "limbs": [],
+        "wings": [],
+        "antennae": [],
+        "shell": [],
+        "head": [],
+        "bodySections": []
+      },
+      "structure": {
+        "hasUsableClip": false,
+        "hasSeparateRigidComponents": false,
+        "fusedStaticMesh": true,
+        "selectedAuthoringPath": "author-non-destructive-deformation-rig"
+      },
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "recordedIn": [
+          "README.md:114",
+          "src/ui.js:8131"
+        ]
+      }
+    },
+    {
+      "species": "beetle",
+      "filePath": "assets/breakroom/Beetle.glb",
+      "fileBytes": 8496,
+      "sha256": "fa0f3b267f4cd235e76be19b57378522f18520e22d4eca2a3f0eeda4bd04c032",
+      "triangleCount": 896,
+      "meshCount": 1,
+      "meshNodeCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "usedMaterialCount": 1,
+      "nodeCount": 1,
+      "nodeHierarchy": [
+        "Geo_Beetle [mesh:0]"
+      ],
+      "skinCount": 0,
+      "boneCount": 0,
+      "morphTargetCount": 0,
+      "morphMeshes": [],
+      "animationClips": [],
+      "namedComponents": {
+        "limbs": [],
+        "wings": [],
+        "antennae": [],
+        "shell": [],
+        "head": [],
+        "bodySections": []
+      },
+      "structure": {
+        "hasUsableClip": false,
+        "hasSeparateRigidComponents": false,
+        "fusedStaticMesh": true,
+        "selectedAuthoringPath": "author-non-destructive-deformation-rig"
+      },
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "recordedIn": [
+          "README.md:114",
+          "src/ui.js:8131"
+        ]
+      }
+    },
+    {
+      "species": "ladybug",
+      "filePath": "assets/breakroom/Ladybug.glb",
+      "fileBytes": 20272,
+      "sha256": "02bbcf9cc1dbda8c94154de016d155e084c5465d3bba4432696f04386e8f61a7",
+      "triangleCount": 732,
+      "meshCount": 1,
+      "meshNodeCount": 1,
+      "primitiveCount": 2,
+      "materialCount": 2,
+      "usedMaterialCount": 2,
+      "nodeCount": 1,
+      "nodeHierarchy": [
+        "Node [mesh:0]"
+      ],
+      "skinCount": 0,
+      "boneCount": 0,
+      "morphTargetCount": 0,
+      "morphMeshes": [],
+      "animationClips": [],
+      "namedComponents": {
+        "limbs": [],
+        "wings": [],
+        "antennae": [],
+        "shell": [],
+        "head": [],
+        "bodySections": []
+      },
+      "structure": {
+        "hasUsableClip": false,
+        "hasSeparateRigidComponents": false,
+        "fusedStaticMesh": true,
+        "selectedAuthoringPath": "author-non-destructive-deformation-rig"
+      },
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "recordedIn": [
+          "README.md:114",
+          "src/ui.js:8131"
+        ]
+      }
+    },
+    {
+      "species": "grasshopper",
+      "filePath": "assets/breakroom/Grasshopper.glb",
+      "fileBytes": 25684,
+      "sha256": "bd91ed054b741f22b459644e4c2d18b4e2b24df2e6ef96a8583d287dd904bf63",
+      "triangleCount": 6650,
+      "meshCount": 1,
+      "meshNodeCount": 1,
+      "primitiveCount": 4,
+      "materialCount": 4,
+      "usedMaterialCount": 4,
+      "nodeCount": 1,
+      "nodeHierarchy": [
+        "Sphere002 [mesh:0]"
+      ],
+      "skinCount": 0,
+      "boneCount": 0,
+      "morphTargetCount": 0,
+      "morphMeshes": [],
+      "animationClips": [],
+      "namedComponents": {
+        "limbs": [],
+        "wings": [],
+        "antennae": [],
+        "shell": [],
+        "head": [],
+        "bodySections": []
+      },
+      "structure": {
+        "hasUsableClip": false,
+        "hasSeparateRigidComponents": false,
+        "fusedStaticMesh": true,
+        "selectedAuthoringPath": "author-non-destructive-deformation-rig"
+      },
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "recordedIn": [
+          "README.md:114",
+          "src/ui.js:8131"
+        ]
+      }
+    },
+    {
+      "species": "cockroach",
+      "filePath": "assets/breakroom/Cockroach.glb",
+      "fileBytes": 6008,
+      "sha256": "d1b97bc22d64d9aadb1411260c541d3e4b2fd7fff84a212dbe50a3ad1a0c7d00",
+      "triangleCount": 548,
+      "meshCount": 1,
+      "meshNodeCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "usedMaterialCount": 1,
+      "nodeCount": 1,
+      "nodeHierarchy": [
+        "Geo_Cockroach [mesh:0]"
+      ],
+      "skinCount": 0,
+      "boneCount": 0,
+      "morphTargetCount": 0,
+      "morphMeshes": [],
+      "animationClips": [],
+      "namedComponents": {
+        "limbs": [],
+        "wings": [],
+        "antennae": [],
+        "shell": [],
+        "head": [],
+        "bodySections": []
+      },
+      "structure": {
+        "hasUsableClip": false,
+        "hasSeparateRigidComponents": false,
+        "fusedStaticMesh": true,
+        "selectedAuthoringPath": "author-non-destructive-deformation-rig"
+      },
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "recordedIn": [
+          "README.md:114",
+          "src/ui.js:8131"
+        ]
+      }
+    },
+    {
+      "species": "mantis",
+      "filePath": "assets/breakroom/Mantis.glb",
+      "fileBytes": 7600,
+      "sha256": "1ac33dc1d5e4bc72c6c3df645d59e43314a5eb263e06e0ea567bc923191683b1",
+      "triangleCount": 699,
+      "meshCount": 1,
+      "meshNodeCount": 1,
+      "primitiveCount": 3,
+      "materialCount": 3,
+      "usedMaterialCount": 3,
+      "nodeCount": 1,
+      "nodeHierarchy": [
+        "Node [mesh:0]"
+      ],
+      "skinCount": 0,
+      "boneCount": 0,
+      "morphTargetCount": 0,
+      "morphMeshes": [],
+      "animationClips": [],
+      "namedComponents": {
+        "limbs": [],
+        "wings": [],
+        "antennae": [],
+        "shell": [],
+        "head": [],
+        "bodySections": []
+      },
+      "structure": {
+        "hasUsableClip": false,
+        "hasSeparateRigidComponents": false,
+        "fusedStaticMesh": true,
+        "selectedAuthoringPath": "author-non-destructive-deformation-rig"
+      },
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "recordedIn": [
+          "README.md:114",
+          "src/ui.js:8131"
+        ]
+      }
+    },
+    {
+      "species": "wasp",
+      "filePath": "assets/breakroom/Wasp.glb",
+      "fileBytes": 380628,
+      "sha256": "c2b3c49eef75ade37a5412f43ebc8bee547ddb3ff89f236f63a3e39be2332ec1",
+      "triangleCount": 3734,
+      "meshCount": 1,
+      "meshNodeCount": 1,
+      "primitiveCount": 4,
+      "materialCount": 4,
+      "usedMaterialCount": 4,
+      "nodeCount": 30,
+      "nodeHierarchy": [
+        "Root",
+        "  Body",
+        "    Thorax",
+        "      Neck",
+        "        Head",
+        "        Wing.R",
+        "        Wing.L",
+        "        Abdomen",
+        "          Abdomen2",
+        "            Abdomen3",
+        "              Sting",
+        "      BottomLeg1.R",
+        "        BottomLeg2.R",
+        "          BottomLeg3.R",
+        "      MidLeg1.R",
+        "        MidLeg2.R",
+        "          MidLeg3.R",
+        "      TopLeg1.R",
+        "        TopLeg2.R",
+        "          TopLeg3.R",
+        "      BottomLeg1.L",
+        "        BottomLeg2.L",
+        "          BottomLeg3.L",
+        "      MidLeg1.L",
+        "        MidLeg2.L",
+        "          MidLeg3.L",
+        "      TopLeg1.L",
+        "        TopLeg2.L",
+        "          TopLeg3.L",
+        "Wasp [mesh:0, skin:0]"
+      ],
+      "skinCount": 1,
+      "boneCount": 29,
+      "morphTargetCount": 0,
+      "morphMeshes": [],
+      "animationClips": [
+        {
+          "name": "WaspArmature|Wasp_Attack",
+          "durationSeconds": 0.75,
+          "channels": 21,
+          "targetPaths": [
+            "translation",
+            "rotation"
+          ]
+        },
+        {
+          "name": "WaspArmature|Wasp_Death",
+          "durationSeconds": 0.75,
+          "channels": 24,
+          "targetPaths": [
+            "translation",
+            "rotation"
+          ]
+        },
+        {
+          "name": "WaspArmature|Wasp_Flying",
+          "durationSeconds": 1.5,
+          "channels": 17,
+          "targetPaths": [
+            "translation",
+            "rotation"
+          ]
+        }
+      ],
+      "namedComponents": {
+        "limbs": [
+          "BottomLeg1.R",
+          "BottomLeg2.R",
+          "BottomLeg3.R",
+          "MidLeg1.R",
+          "MidLeg2.R",
+          "MidLeg3.R",
+          "TopLeg1.R",
+          "TopLeg2.R",
+          "TopLeg3.R",
+          "BottomLeg1.L",
+          "BottomLeg2.L",
+          "BottomLeg3.L",
+          "MidLeg1.L",
+          "MidLeg2.L",
+          "MidLeg3.L",
+          "TopLeg1.L",
+          "TopLeg2.L",
+          "TopLeg3.L"
+        ],
+        "wings": [
+          "Wing.R",
+          "Wing.L"
+        ],
+        "antennae": [],
+        "shell": [],
+        "head": [
+          "Head"
+        ],
+        "bodySections": [
+          "Body",
+          "Thorax",
+          "Abdomen",
+          "Abdomen2",
+          "Abdomen3"
+        ]
+      },
+      "structure": {
+        "hasUsableClip": true,
+        "hasSeparateRigidComponents": false,
+        "fusedStaticMesh": false,
+        "selectedAuthoringPath": "sample-source-clip"
+      },
+      "attribution": {
+        "author": "Quaternius",
+        "license": "CC0",
+        "source": "Quaternius Ultimate Monsters bundle",
+        "recordedIn": [
+          "README.md:113",
+          "src/ui.js:8130"
+        ]
+      }
+    },
+    {
+      "species": "bee",
+      "filePath": "assets/breakroom/Bee.glb",
+      "fileBytes": 15296,
+      "sha256": "524ce24be0c846e21bb53ad538e6856efed5ac0d1b0772f556b1dbe28d17b4dc",
+      "triangleCount": 2854,
+      "meshCount": 3,
+      "meshNodeCount": 3,
+      "primitiveCount": 3,
+      "materialCount": 3,
+      "usedMaterialCount": 3,
+      "nodeCount": 3,
+      "nodeHierarchy": [
+        "group165695018 [mesh:0]",
+        "group1147170821 [mesh:1]",
+        "group1747397838 [mesh:2]"
+      ],
+      "skinCount": 0,
+      "boneCount": 0,
+      "morphTargetCount": 0,
+      "morphMeshes": [],
+      "animationClips": [],
+      "namedComponents": {
+        "limbs": [],
+        "wings": [],
+        "antennae": [],
+        "shell": [],
+        "head": [],
+        "bodySections": []
+      },
+      "structure": {
+        "hasUsableClip": false,
+        "hasSeparateRigidComponents": true,
+        "fusedStaticMesh": false,
+        "selectedAuthoringPath": "animate-rigid-components"
+      },
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "recordedIn": [
+          "README.md:114",
+          "src/ui.js:8131"
+        ]
+      }
+    },
+    {
+      "species": "butterfly",
+      "filePath": "assets/breakroom/Butterfly.glb",
+      "fileBytes": 59940,
+      "sha256": "ab01ec327e60be463343f50d1eb2a2773b1eb1ba66f7ab95624ace0051bad19b",
+      "triangleCount": 1350,
+      "meshCount": 1,
+      "meshNodeCount": 1,
+      "primitiveCount": 4,
+      "materialCount": 4,
+      "usedMaterialCount": 4,
+      "nodeCount": 1,
+      "nodeHierarchy": [
+        "Node [mesh:0]"
+      ],
+      "skinCount": 0,
+      "boneCount": 0,
+      "morphTargetCount": 0,
+      "morphMeshes": [],
+      "animationClips": [],
+      "namedComponents": {
+        "limbs": [],
+        "wings": [],
+        "antennae": [],
+        "shell": [],
+        "head": [],
+        "bodySections": []
+      },
+      "structure": {
+        "hasUsableClip": false,
+        "hasSeparateRigidComponents": false,
+        "fusedStaticMesh": true,
+        "selectedAuthoringPath": "author-non-destructive-deformation-rig"
+      },
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "recordedIn": [
+          "README.md:114",
+          "src/ui.js:8131"
+        ]
+      }
+    },
+    {
+      "species": "caterpillar",
+      "filePath": "assets/breakroom/Caterpillar.glb",
+      "fileBytes": 55668,
+      "sha256": "3bc12b6ccb4deba07c816f2e41f6f1ae27316a145472bb9910454aee1f6fbf5b",
+      "triangleCount": 716,
+      "meshCount": 1,
+      "meshNodeCount": 1,
+      "primitiveCount": 1,
+      "materialCount": 1,
+      "usedMaterialCount": 1,
+      "nodeCount": 1,
+      "nodeHierarchy": [
+        "Node [mesh:0]"
+      ],
+      "skinCount": 0,
+      "boneCount": 0,
+      "morphTargetCount": 0,
+      "morphMeshes": [],
+      "animationClips": [],
+      "namedComponents": {
+        "limbs": [],
+        "wings": [],
+        "antennae": [],
+        "shell": [],
+        "head": [],
+        "bodySections": []
+      },
+      "structure": {
+        "hasUsableClip": false,
+        "hasSeparateRigidComponents": false,
+        "fusedStaticMesh": true,
+        "selectedAuthoringPath": "author-non-destructive-deformation-rig"
+      },
+      "attribution": {
+        "author": "Poly by Google",
+        "license": "CC-BY",
+        "source": "Poly Pizza",
+        "recordedIn": [
+          "README.md:114",
+          "src/ui.js:8131"
+        ]
+      }
+    }
+  ]
+}

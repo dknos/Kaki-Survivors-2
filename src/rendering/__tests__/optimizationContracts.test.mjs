@@ -63,8 +63,8 @@ test('dissolve and sprite pools submit only while they own live slots', () => {
   assert.match(sprites, /mesh\.visible = false/);
   assert.match(sprites, /visualRole = 'sprite_pool'/);
   assert.match(sprites, /activeCount: 0/);
-  assert.match(sprites, /pool\.mesh\.visible = true/);
-  assert.match(sprites, /if \(pool\.activeCount === 0\) pool\.mesh\.visible = false/);
+  assert.match(sprites, /page\.mesh\.visible = true/);
+  assert.match(sprites, /if \(page\.activeCount === 0\) page\.mesh\.visible = false/);
   assert.match(sprites, /if \(pool\.activeCount === 0\) \{[\s\S]*?continue;/);
 });
 

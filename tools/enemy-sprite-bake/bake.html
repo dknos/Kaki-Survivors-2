@@ -1,141 +1,494 @@
-<!doctype html><html><head><meta charset="utf-8">
-<script type="importmap">{"imports":{
-  "three":"./vendor/three/build/three.module.js",
-  "three/addons/":"./vendor/three/examples/jsm/"
-}}</script></head><body><script type="module">
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Forest enemy atlas v2 baker</title>
+  <link rel="icon" href="data:,">
+  <script type="importmap">{"imports":{
+    "three":"/vendor/three/build/three.module.js",
+    "three/addons/":"/vendor/three/examples/jsm/"
+  }}</script>
+</head>
+<body>
+<script type="module">
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
-const _draco = new DRACOLoader();
+
+const CELL = 128;
+const GUTTER = 3;
+const DILATION = 2;
+const CONTENT = CELL - GUTTER * 2;
+const SUPERSAMPLE = 4;
+const INTERNAL = CONTENT * SUPERSAMPLE;
+const COLS = 20;
+const MOVE_FRAMES = 6;
+const ONESHOT_FRAMES = 3;
+const DIRECTIONS = Object.freeze([
+  { id: 0, name: 'toward_camera', yaw: Math.PI / 4 },
+  { id: 1, name: 'camera_right', yaw: Math.PI * 3 / 4 },
+  { id: 2, name: 'away_from_camera', yaw: -Math.PI * 3 / 4 },
+]);
+const EFFECTIVE_DIRECTIONS = Object.freeze([
+  { id: 0, name: 'toward_camera' },
+  { id: 1, name: 'camera_right' },
+  { id: 2, name: 'away_from_camera' },
+  { id: 3, name: 'camera_left', mirroredFrom: 1 },
+]);
+const STATE_DEFS = Object.freeze([
+  { id: 0, name: 'move', frames: MOVE_FRAMES, loop: true, completion: 'loop' },
+  { id: 1, name: 'attack', frames: ONESHOT_FRAMES, loop: false, completion: 'fallback' },
+  { id: 2, name: 'death', frames: ONESHOT_FRAMES, loop: false, completion: 'release' },
+]);
+
+const D = '/assets/source/enemy-animation/forest-v2/';
+const B = '/assets/breakroom/';
+const ROSTER = Object.freeze([
+  { id: 0, name: 'ant', path: D + 'ant-authored.glb', source: B + 'Ant.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 1, moveFps: 15, nominalSpeed: 3.8, rateMin: 0.55, rateMax: 1.7, faceYaw: 0, authoring: 'morph' },
+  { id: 1, name: 'beetle', path: D + 'beetle-authored.glb', source: B + 'Beetle.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 2, moveFps: 8, nominalSpeed: 1.9, rateMin: 0.45, rateMax: 1.45, faceYaw: 0, authoring: 'morph' },
+  { id: 2, name: 'ladybug', path: D + 'ladybug-authored.glb', source: B + 'Ladybug.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 3, moveFps: 10, nominalSpeed: 2.4, rateMin: 0.5, rateMax: 1.55, faceYaw: 0, authoring: 'morph' },
+  { id: 3, name: 'grasshopper', path: D + 'grasshopper-authored.glb', source: B + 'Grasshopper.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 4, moveFps: 8, nominalSpeed: 4.4, rateMin: 0.4, rateMax: 1.6, faceYaw: -Math.PI / 2, authoring: 'morph' },
+  { id: 4, name: 'cockroach', path: D + 'cockroach-authored.glb', source: B + 'Cockroach.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 5, moveFps: 16, nominalSpeed: 4.8, rateMin: 0.6, rateMax: 1.8, faceYaw: 0, authoring: 'morph' },
+  { id: 5, name: 'mantis', path: D + 'mantis-authored.glb', source: B + 'Mantis.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 6, moveFps: 7, nominalSpeed: 2.0, rateMin: 0.4, rateMax: 1.45, faceYaw: 0, authoring: 'morph' },
+  { id: 6, name: 'wasp', path: B + 'Wasp.glb', source: B + 'Wasp.glb', author: 'Quaternius', license: 'CC0', sourceSite: 'Ultimate Monsters bundle', motionKind: 7, moveFps: 18, nominalSpeed: 2.8, rateMin: 0.7, rateMax: 1.8, faceYaw: -Math.PI / 2, authoring: 'clip', clips: { move: 'Wasp_Flying', attack: 'Wasp_Attack', death: 'Wasp_Death' } },
+  { id: 7, name: 'bee', path: D + 'bee-authored.glb', source: B + 'Bee.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 8, moveFps: 18, nominalSpeed: 2.8, rateMin: 0.7, rateMax: 1.75, faceYaw: -Math.PI / 2, authoring: 'rigid' },
+  { id: 8, name: 'butterfly', path: D + 'butterfly-authored.glb', source: B + 'Butterfly.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 9, moveFps: 8, nominalSpeed: 2.6, rateMin: 0.45, rateMax: 1.4, faceYaw: 0, authoring: 'morph' },
+  { id: 9, name: 'caterpillar', path: D + 'caterpillar-authored.glb', source: B + 'Caterpillar.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 10, moveFps: 7, nominalSpeed: 1.0, rateMin: 0.4, rateMax: 1.45, faceYaw: 0, authoring: 'morph' },
+]);
+
+const draco = new DRACOLoader();
+draco.setDecoderPath('/vendor/three/examples/jsm/libs/draco/gltf/');
 const loader = new GLTFLoader();
-loader.setDRACOLoader(_draco);
-const load = (p) => new Promise((res, rej) => loader.load(p, res, undefined, rej));
+loader.setDRACOLoader(draco);
+const load = (path) => new Promise((resolve, reject) => loader.load(path, resolve, undefined, reject));
 
-// Full trash roster (name -> glb path). Names MUST match ENEMY_TIERS glb keys
-// in src/config.js AND the asset-map keys in src/assets.js (so a 2D-billboard
-// trash mob matches the 3D elite of the same tier). Bake a subset via
-// ?only=a,b,c.
-const B = 'assets/breakroom/';
-const ROSTER = [
-  ['zombie',      B+'Mushnub.glb'],        ['goblin',      B+'Cactoro.glb'],
-  ['skeleton',    B+'Goleling.glb'],       ['orc',         B+'Orc-New.glb'],
-  ['demon',       B+'Demon-New.glb'],      ['robot',       B+'Goleling-Evolved.glb'],
-  ['mech',        B+'Yeti.glb'],           ['xeno',        B+'Blue-Demon.glb'],
-  ['slime',       B+'Pink-Slime.glb'],     ['wizard',      B+'Wizard.glb'],
-  ['ghost',       B+'Ghost.glb'],          ['spider',      B+'Spider.glb'],
-  ['wolf',        B+'Wolf.glb'],           ['ant',         B+'Ant.glb'],
-  ['beetle',      B+'Beetle.glb'],         ['ladybug',     B+'Ladybug.glb'],
-  ['grasshopper', B+'Grasshopper.glb'],    ['cockroach',   B+'Cockroach.glb'],
-  ['mantis',      B+'Mantis.glb'],         ['wasp',        B+'Wasp.glb'],
-  ['bee',         B+'Bee.glb'],            ['butterfly',   B+'Butterfly.glb'],
-  ['caterpillar', B+'Caterpillar.glb'],
-];
-
-const CELL = 128;          // px per frame cell
-const FRAMES = 4;          // bob-cycle frames
-const FPS = 8;
-// Game camera elevation: pos (40,60,40) -> origin ~= 47 deg pitch, 45 deg azimuth.
-const EL = Math.atan2(60, Math.hypot(40, 40));   // ~0.816 rad
-const AZ = Math.PI / 4;
-
-window.__r = { status: 'baking' };
+window.__r = { status: 'baking', done: 0, of: ROSTER.length };
 
 function makeRenderer() {
-  const r = new THREE.WebGLRenderer({ antialias: false, alpha: true, preserveDrawingBuffer: true });
-  r.setPixelRatio(1);
-  r.setSize(CELL, CELL, false);
-  r.setClearColor(0x000000, 0);   // transparent
-  r.outputColorSpace = THREE.SRGBColorSpace;
-  return r;
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    alpha: true,
+    premultipliedAlpha: false,
+    preserveDrawingBuffer: true,
+    powerPreference: 'high-performance',
+  });
+  renderer.setPixelRatio(1);
+  renderer.setSize(INTERNAL, INTERNAL, false);
+  renderer.setClearColor(0x000000, 0);
+  renderer.outputColorSpace = THREE.SRGBColorSpace;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.08;
+  renderer.shadowMap.enabled = false;
+  return renderer;
+}
+
+function prepareMaterials(model, def) {
+  model.traverse((object) => {
+    if (!object.isMesh) return;
+    object.frustumCulled = false;
+    object.castShadow = false;
+    object.receiveShadow = false;
+    const materials = Array.isArray(object.material) ? object.material : [object.material];
+    for (const material of materials) {
+      if (!material) continue;
+      if ('roughness' in material) material.roughness = Math.max(0.76, material.roughness ?? 0.76);
+      if ('metalness' in material) material.metalness = Math.min(0.08, material.metalness ?? 0.08);
+      if ('emissiveIntensity' in material) material.emissiveIntensity = 0;
+      if (material.color && ['ant', 'beetle', 'cockroach'].includes(def.name)) {
+        const hsl = { h: 0, s: 0, l: 0 };
+        material.color.getHSL(hsl);
+        if (hsl.l < 0.24) material.color.setHSL(hsl.h, hsl.s, 0.24);
+      }
+      if (material.transparent) material.side = THREE.DoubleSide;
+      material.toneMapped = true;
+      material.needsUpdate = true;
+    }
+  });
+}
+
+function captureBaseTransforms(model) {
+  model.traverse((object) => {
+    object.userData.__bakeBase = {
+      position: object.position.clone(),
+      quaternion: object.quaternion.clone(),
+      scale: object.scale.clone(),
+    };
+  });
+}
+
+function restoreBaseTransforms(model) {
+  model.traverse((object) => {
+    const base = object.userData.__bakeBase;
+    if (!base) return;
+    object.position.copy(base.position);
+    object.quaternion.copy(base.quaternion);
+    object.scale.copy(base.scale);
+    if (object.morphTargetInfluences) object.morphTargetInfluences.fill(0);
+  });
 }
 
 function frameModel(model) {
-  // Center + measure so we can frame an ortho cam to the bbox.
   model.updateMatrixWorld(true);
-  const box = new THREE.Box3().setFromObject(model);
+  // SkinnedMesh.getBoundingBox() can be undefined/NaN before the first mixer
+  // evaluation. Frame from finite bind-pose geometry bounds instead; authored
+  // morph bounds are already included by BufferGeometry.computeBoundingBox().
+  const box = new THREE.Box3().makeEmpty();
+  model.traverse((object) => {
+    if (!object.isMesh || !object.geometry) return;
+    if (!object.geometry.boundingBox) object.geometry.computeBoundingBox();
+    if (object.geometry.boundingBox) box.union(object.geometry.boundingBox.clone().applyMatrix4(object.matrixWorld));
+  });
+  if (box.isEmpty() || !Number.isFinite(box.min.x + box.min.y + box.min.z + box.max.x + box.max.y + box.max.z)) {
+    throw new Error('Could not derive finite bind-pose bounds for baked model');
+  }
   const size = box.getSize(new THREE.Vector3());
   const center = box.getCenter(new THREE.Vector3());
-  model.position.sub(center);          // recenter to origin
-  model.position.y += size.y / 2;      // feet near y=0, body above
-  return { size, center };
+  model.position.sub(center);
+  model.position.y += size.y * 0.5;
+  model.updateMatrixWorld(true);
+  captureBaseTransforms(model);
+  const maxDim = Math.max(size.x, size.y, size.z) * 1.28;
+  const half = maxDim * 0.5;
+  const camera = new THREE.OrthographicCamera(-half, half, half, -half, 0.01, 200);
+  const elevation = Math.atan2(60, Math.hypot(40, 40));
+  const radius = 50;
+  camera.position.set(
+    Math.cos(elevation) * Math.cos(Math.PI / 4) * radius,
+    Math.sin(elevation) * radius + size.y * 0.45,
+    Math.cos(elevation) * Math.sin(Math.PI / 4) * radius,
+  );
+  camera.lookAt(0, size.y * 0.42, 0);
+  camera.updateMatrixWorld(true);
+  return { camera, size };
 }
 
-async function bakeOne(renderer, packCtx, name, path, col0, row) {
-  const gltf = await load(path);
-  const model = gltf.scene;
+function createScene(model) {
   const scene = new THREE.Scene();
-  // Lit so sprites read 3D, not flat. Top-bright / bottom-dark hemisphere +
-  // a soft key from the camera side. Not matched to in-game exactly (tar pit).
-  const hemi = new THREE.HemisphereLight(0xffffff, 0x404048, 1.15);
+  const hemi = new THREE.HemisphereLight(0xfff5df, 0x5d5448, 1.6);
   scene.add(hemi);
-  const key = new THREE.DirectionalLight(0xffffff, 1.1);
-  key.position.set(0.5, 1, 0.8);
+  const key = new THREE.DirectionalLight(0xffe4bc, 2.15);
+  key.position.set(5, 9, 6);
   scene.add(key);
+  const fill = new THREE.DirectionalLight(0xcbd8cf, 0.72);
+  fill.position.set(-5, 4, -3);
+  scene.add(fill);
   scene.add(model);
-  const { size } = frameModel(model);
+  return scene;
+}
 
-  const maxDim = Math.max(size.x, size.y, size.z) * 1.12; // padding
-  const half = maxDim / 2;
-  const cam = new THREE.OrthographicCamera(-half, half, half, -half, 0.01, 1000);
-  const R = 50;
-  cam.position.set(
-    Math.cos(EL) * Math.cos(AZ) * R,
-    Math.sin(EL) * R + size.y / 2,
-    Math.cos(EL) * Math.sin(AZ) * R,
-  );
-  cam.lookAt(0, size.y / 2, 0);
+function setMorphPose(model, poseName) {
+  let found = false;
+  model.traverse((object) => {
+    if (!object.morphTargetInfluences || !object.morphTargetDictionary) return;
+    object.morphTargetInfluences.fill(0);
+    const index = object.morphTargetDictionary[poseName];
+    if (Number.isInteger(index)) {
+      object.morphTargetInfluences[index] = 1;
+      found = true;
+    }
+  });
+  if (!found) throw new Error(`Missing authored morph pose ${poseName}`);
+}
 
-  const baseY = model.position.y;
-  for (let f = 0; f < FRAMES; f++) {
-    const ph = (f / FRAMES) * Math.PI * 2;
-    // Procedural walk shimmer: vertical bob + squash + slight lean (NOT yaw -
-    // billboards always face the camera, so yaw views would never show).
-    model.position.y = baseY + Math.sin(ph) * size.y * 0.05;
-    model.scale.y = 1 - Math.cos(ph * 2) * 0.04;
-    model.rotation.z = Math.sin(ph) * 0.05;
-    renderer.render(scene, cam);
-    packCtx.drawImage(renderer.domElement, (col0 + f) * CELL, row * CELL);
+function findClip(clips, fragment) {
+  const lower = fragment.toLowerCase();
+  return clips.find((clip) => clip.name.toLowerCase().includes(lower)) ?? null;
+}
+
+function setClipPose(record, state, frameIndex, frameCount) {
+  const clip = findClip(record.gltf.animations, record.def.clips[state.name]);
+  if (!clip) throw new Error(`${record.def.name}: missing source clip ${record.def.clips[state.name]}`);
+  record.mixer.stopAllAction();
+  const action = record.mixer.clipAction(clip);
+  action.reset();
+  action.setLoop(THREE.LoopOnce, 1);
+  action.clampWhenFinished = true;
+  action.play();
+  const divisor = state.loop ? frameCount : Math.max(1, frameCount - 1);
+  const fraction = frameIndex / divisor;
+  record.mixer.setTime(Math.min(clip.duration * 0.98, clip.duration * fraction));
+}
+
+function setRigidBeePose(record, state, frameIndex) {
+  const model = record.model;
+  const wing = record.rigidWing;
+  const bodyA = record.rigidBodies[0];
+  const bodyB = record.rigidBodies[1];
+  if (!wing || !bodyA || !bodyB) throw new Error('bee: rigid component roles incomplete');
+  if (state.name === 'move') {
+    const phase = frameIndex * Math.PI * 2 / MOVE_FRAMES;
+    const flap = Math.sin(phase);
+    wing.rotation.x += flap * 1.05;
+    wing.scale.z *= 0.34 + 0.66 * Math.abs(Math.cos(phase));
+    wing.scale.x *= 0.78 + 0.22 * Math.abs(Math.cos(phase));
+    bodyA.rotation.z += Math.sin(phase * 0.5) * 0.055;
+    bodyB.rotation.z -= Math.sin(phase * 0.5) * 0.035;
+    model.position.y += 0.045 * Math.sin(phase * 0.5);
+  } else if (state.name === 'attack') {
+    const snap = [0, 1, 0.3][frameIndex];
+    wing.rotation.x += (frameIndex - 1) * 0.8;
+    wing.scale.z *= 0.45 + 0.45 * snap;
+    bodyA.rotation.z -= snap * 0.26;
+    bodyB.rotation.z += snap * 0.12;
+    bodyA.position.x += snap * 0.025;
+  } else {
+    const progress = frameIndex / 2;
+    wing.rotation.x += progress * 1.2;
+    wing.scale.x *= 1 + progress * 0.45;
+    bodyA.rotation.z += progress * 0.65;
+    bodyB.rotation.z -= progress * 0.42;
+    bodyA.position.y -= progress * 0.035;
+    bodyB.position.y += progress * 0.02;
+    model.scale.y *= 1 - progress * 0.55;
   }
-  // free
-  model.traverse(o => { if (o.geometry) o.geometry.dispose?.(); });
-  return { name, from: col0, count: FRAMES };
+}
+
+function setPose(record, state, frameIndex, direction) {
+  restoreBaseTransforms(record.model);
+  if (record.def.authoring === 'morph') {
+    setMorphPose(record.model, `${state.name}_${frameIndex}`);
+  } else if (record.def.authoring === 'clip') {
+    setClipPose(record, state, frameIndex, state.frames);
+  } else if (record.def.authoring === 'rigid') {
+    setRigidBeePose(record, state, frameIndex);
+  }
+  record.model.rotation.y += direction.yaw + record.def.faceYaw;
+  record.model.updateMatrixWorld(true);
+}
+
+function dilateStableEdges(context) {
+  const image = context.getImageData(0, 0, CELL, CELL);
+  let source = new Uint8ClampedArray(image.data);
+  const width = CELL;
+  for (let pass = 0; pass < DILATION; pass++) {
+    const target = new Uint8ClampedArray(source);
+    for (let y = 1; y < CELL - 1; y++) {
+      for (let x = 1; x < CELL - 1; x++) {
+        const index = (y * width + x) * 4;
+        if (source[index + 3] >= 96) continue;
+        let best = -1;
+        let bestAlpha = 0;
+        for (let oy = -1; oy <= 1; oy++) {
+          for (let ox = -1; ox <= 1; ox++) {
+            if (ox === 0 && oy === 0) continue;
+            const candidate = ((y + oy) * width + x + ox) * 4;
+            const alpha = source[candidate + 3];
+            if (alpha > bestAlpha) { bestAlpha = alpha; best = candidate; }
+          }
+        }
+        if (best < 0 || bestAlpha === 0) continue;
+        target[index] = source[best];
+        target[index + 1] = source[best + 1];
+        target[index + 2] = source[best + 2];
+        // Low-alpha coverage dilation is discarded by alphaTest at full
+        // resolution but stabilizes the color/coverage of generated mipmaps.
+        target[index + 3] = Math.max(source[index + 3], Math.round(bestAlpha * 0.24));
+      }
+    }
+    source = target;
+  }
+  image.data.set(source);
+  context.putImageData(image, 0, 0);
+}
+
+function drawDownsampled(renderer, atlasContext, frameCanvas, frameContext, frameIndex) {
+  frameContext.clearRect(0, 0, CELL, CELL);
+  frameContext.imageSmoothingEnabled = true;
+  frameContext.imageSmoothingQuality = 'high';
+  frameContext.drawImage(renderer.domElement, 0, 0, INTERNAL, INTERNAL, GUTTER, GUTTER, CONTENT, CONTENT);
+  dilateStableEdges(frameContext);
+  const col = frameIndex % COLS;
+  const row = Math.floor(frameIndex / COLS);
+  atlasContext.drawImage(frameCanvas, col * CELL, row * CELL);
+}
+
+async function loadRecord(def) {
+  const gltf = await load(def.path);
+  const model = gltf.scene;
+  prepareMaterials(model, def);
+  const { camera, size } = frameModel(model);
+  const record = { def, gltf, model, camera, size, scene: createScene(model), mixer: null, rigidWing: null, rigidBodies: [] };
+  if (def.authoring === 'clip') record.mixer = new THREE.AnimationMixer(model);
+  if (def.authoring === 'rigid') {
+    model.traverse((object) => {
+      if (object.userData?.kkRigidRole === 'wings' || object.name === 'Bee_Wings') record.rigidWing = object;
+      else if (object.isMesh) record.rigidBodies.push(object);
+    });
+    record.rigidBodies.sort((a, b) => (b.geometry?.attributes?.position?.count ?? 0) - (a.geometry?.attributes?.position?.count ?? 0));
+  }
+  return record;
+}
+
+function fpsFor(def, state) {
+  if (state.name === 'move') return def.moveFps;
+  if (state.name === 'attack') return def.name === 'mantis' ? 15 : 18;
+  return 18;
+}
+
+function disposeRecord(record) {
+  if (record.mixer) record.mixer.uncacheRoot(record.model);
+  const geometries = new Set();
+  const materials = new Set();
+  record.model.traverse((object) => {
+    if (object.geometry) geometries.add(object.geometry);
+    const list = Array.isArray(object.material) ? object.material : [object.material];
+    for (const material of list) if (material) materials.add(material);
+  });
+  for (const geometry of geometries) geometry.dispose();
+  for (const material of materials) material.dispose();
 }
 
 (async () => {
-  try {
-    const params = new URLSearchParams(location.search);
-    const only = params.get('only');
-    const roster = only ? ROSTER.filter(([n]) => only.split(',').includes(n)) : ROSTER;
-    // Grid pack: one enemy per row, FRAMES columns. Frame index is row-major
-    // (row*cols + col) so per-enemy anim ranges stay contiguous.
-    const cols = FRAMES;
-    const rows = roster.length;
-    const pack = document.createElement('canvas');
-    pack.width = cols * CELL; pack.height = rows * CELL;
-    const ctx = pack.getContext('2d');
-    const renderer = makeRenderer();
-    const anims = {};
-    for (let row = 0; row < roster.length; row++) {
-      const [name, path] = roster[row];
-      console.log('bake', row, name);
-      await bakeOne(renderer, ctx, name, path, 0, row);
-      window.__r = { status: 'baking', done: row + 1, of: roster.length };
-      const base = row * cols;
-      anims[name] = { from: base, to: base + FRAMES - 1, fps: FPS, loop: true };
+  const renderer = makeRenderer();
+  const query = new URLSearchParams(location.search);
+  const only = query.get('only');
+  const selected = only ? new Set(only.split(',').map((name) => name.trim()).filter(Boolean)) : null;
+  const roster = selected ? ROSTER.filter((entry) => selected.has(entry.name)) : [...ROSTER];
+  if (roster.length === 0) throw new Error('No requested species matched the Forest roster');
+  const framesPerSpecies = DIRECTIONS.length * STATE_DEFS.reduce((sum, state) => sum + state.frames, 0);
+  const frameCount = framesPerSpecies * roster.length;
+  const rows = Math.ceil(frameCount / COLS);
+  const atlasCanvas = document.createElement('canvas');
+  atlasCanvas.width = COLS * CELL;
+  atlasCanvas.height = rows * CELL;
+  const atlasContext = atlasCanvas.getContext('2d', { willReadFrequently: false });
+  const frameCanvas = document.createElement('canvas');
+  frameCanvas.width = CELL;
+  frameCanvas.height = CELL;
+  const frameContext = frameCanvas.getContext('2d', { willReadFrequently: true });
+  const species = [];
+  let frameIndex = 0;
+
+  for (let rosterIndex = 0; rosterIndex < roster.length; rosterIndex++) {
+    const def = roster[rosterIndex];
+    const record = await loadRecord(def);
+    const stateRecords = [];
+    for (const state of STATE_DEFS) {
+      const directionRecords = [];
+      for (const direction of DIRECTIONS) {
+        const from = frameIndex;
+        for (let pose = 0; pose < state.frames; pose++) {
+          setPose(record, state, pose, direction);
+          renderer.render(record.scene, record.camera);
+          drawDownsampled(renderer, atlasContext, frameCanvas, frameContext, frameIndex++);
+        }
+        directionRecords.push({ id: direction.id, page: 0, from, to: frameIndex - 1, mirror: false });
+      }
+      const right = directionRecords[1];
+      directionRecords.push({ id: 3, page: 0, from: right.from, to: right.to, mirror: true, sourceDirection: 1 });
+      stateRecords.push({
+        id: state.id,
+        name: state.name,
+        fps: fpsFor(def, state),
+        loop: state.loop,
+        completion: state.completion,
+        fallbackState: state.name === 'attack' ? 0 : null,
+        directions: directionRecords,
+      });
     }
-    renderer.dispose();
-    const json = {
-      version: 1, image: 'enemies_v1.png',
-      frameWidth: CELL, frameHeight: CELL,
-      cols, rows, frameCount: cols * rows,
-      pixelsPerWorldUnit: 48, anchor: [0.5, 1],
-      blendMode: 'alpha', alphaTest: 0.5, bloom: false,
-      billboard: 'cylinder', anims,
-      palette: 'neutral', license: 'baked-from-glb', source: 'tools/enemy-sprite-bake/bake.html',
-    };
-    window.__r = { status: 'ok', png: pack.toDataURL('image/png'), json, cols, names: Object.keys(anims) };
-  } catch (e) {
-    window.__r = { status: 'error', error: String(e && e.stack || e) };
+    species.push({
+      id: def.id,
+      name: def.name,
+      fallbackState: 0,
+      defaultDirection: 0,
+      motionKind: def.motionKind,
+      nominalSpeed: def.nominalSpeed,
+      playbackRate: { min: def.rateMin, max: def.rateMax },
+      authoring: def.authoring === 'clip' ? 'source-animation-clips'
+        : (def.authoring === 'rigid' ? 'authored-rigid-components' : 'blender-authored-morph-poses'),
+      states: stateRecords,
+      attribution: {
+        author: def.author,
+        license: def.license,
+        source: def.sourceSite,
+        sourceAsset: def.source.replace(/^\//, ''),
+      },
+    });
+    disposeRecord(record);
+    window.__r = { status: 'baking', done: rosterIndex + 1, of: roster.length, species: def.name, frames: frameIndex };
   }
-})();
-</script></body></html>
+
+  renderer.dispose();
+  draco.dispose();
+  const imageName = only ? `forest_enemies_v2_${[...selected].join('-')}.png` : 'forest_enemies_v2.png';
+  const baseBytes = atlasCanvas.width * atlasCanvas.height * 4;
+  const manifest = {
+    version: 2,
+    kind: 'enemy-atlas',
+    image: imageName,
+    pages: [{
+      id: 0,
+      image: imageName,
+      frameWidth: CELL,
+      frameHeight: CELL,
+      cols: COLS,
+      rows,
+      frameCount,
+    }],
+    frameCount,
+    directionCount: 4,
+    stateCount: 3,
+    directions: EFFECTIVE_DIRECTIONS,
+    states: STATE_DEFS.map(({ id, name }) => ({ id, name })),
+    species,
+    pixelsPerWorldUnit: 48,
+    anchor: [0.5, 1],
+    blendMode: 'alpha',
+    cutout: true,
+    depthWrite: true,
+    alphaTest: 0.50,
+    alphaToCoverage: false,
+    bloom: false,
+    // Screen-facing quads avoid steep isometric mip selection turning alpha
+    // coverage into dark cell rectangles. Facing still comes from baked
+    // camera-relative direction rows, not the billboard transform.
+    billboard: 'screen',
+    framePadding: {
+      gutterPixels: GUTTER,
+      alphaDilationPixels: DILATION,
+      contentPixels: CONTENT,
+      placement: 'inside-cell',
+    },
+    texture: {
+      colorSpace: 'srgb',
+      magFilter: 'linear',
+      minFilter: 'linear-mipmap-linear',
+      generateMipmaps: true,
+      anisotropy: 4,
+      wrapS: 'clamp-to-edge',
+      wrapT: 'clamp-to-edge',
+    },
+    memoryEstimate: {
+      colorBytesBaseLevel: baseBytes,
+      colorBytesWithMipmaps: Math.ceil(baseBytes * 4 / 3),
+      compression: 'none',
+    },
+    fallbackState: 0,
+    fallbackAtlas: 'assets/sprites/enemies_v1.json',
+    generator: {
+      baker: 'tools/enemy-sprite-bake/bake.html',
+      runner: 'tools/enemy-sprite-bake/run.mjs',
+      authoringScript: 'tools/enemy-sprite-bake/author_forest_animation.py',
+      internalResolution: INTERNAL,
+      supersample: SUPERSAMPLE,
+      deterministicSeed: 0,
+      directionsBaked: 3,
+      directionsEffective: 4,
+    },
+    attributionSource: ['README.md:113-114', 'src/ui.js:8130-8131'],
+  };
+  window.__r = {
+    status: 'ok',
+    png: atlasCanvas.toDataURL('image/png'),
+    json: manifest,
+    names: species.map((entry) => entry.name),
+    width: atlasCanvas.width,
+    height: atlasCanvas.height,
+    frames: frameIndex,
+  };
+})().catch((error) => {
+  window.__r = { status: 'error', error: String(error?.stack || error) };
+});
+</script>
+</body>
+</html>
