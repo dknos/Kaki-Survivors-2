@@ -109,6 +109,25 @@ export function initVFXBurst(scene) {
   initNovaBurst(scene);
 }
 
+/**
+ * Compile the normally idle burst materials during a loading screen. Instanced
+ * meshes with count=0 are skipped by renderer compilation, which deferred the
+ * first additive dash/impact pipeline to a live player input frame.
+ */
+export async function warmVFXBurst(warm) {
+  if (typeof warm !== 'function') return false;
+  const instances = [_smokeInst, _emberInst, _flashInst, _shockInst, _dashInst].filter(Boolean);
+  if (!instances.length) return false;
+  const counts = instances.map((instance) => instance.count);
+  try {
+    for (const instance of instances) instance.count = 1;
+    await warm();
+    return true;
+  } finally {
+    instances.forEach((instance, index) => { instance.count = counts[index]; });
+  }
+}
+
 /** Spawn a single dash streak at (x,z) oriented along the dash direction. */
 export function spawnDashStreak(x, z, dirX, dirZ, color = 0x7fffe4) {
   if (_dashStreaks.length >= DASH_CAP) _dashStreaks.shift();

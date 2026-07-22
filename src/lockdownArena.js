@@ -680,6 +680,24 @@ export function triggerLockdown(arenaId) {
 }
 
 /**
+ * Make the dormant barricades visible only while the caller warms renderer
+ * pipelines. The first real lockdown then changes transforms/material values
+ * instead of forcing WebGPU/WebGL to compile the barricade material mid-run.
+ */
+export async function warmLockdownArena(arenaId, warm) {
+  const arena = _arenas.find((entry) => entry.id === arenaId);
+  if (!arena?.doors?.group || typeof warm !== 'function') return false;
+  const previousVisible = arena.doors.group.visible;
+  arena.doors.group.visible = true;
+  try {
+    await warm();
+    return true;
+  } finally {
+    arena.doors.group.visible = previousVisible;
+  }
+}
+
+/**
  * Per-frame tick. Drives door animation, wave dispatcher, clear detection,
  * and hero containment clamp. Call once per frame from main.js (after
  * spawnDirector so wave spawns happen on the same frame the director would

@@ -56,7 +56,7 @@ import { showMenuV2, hideMenuV2 } from './menuV2.js';
 import { showCodex, hideCodex, isCodexOpen } from './codex.js';
 import { initDamageNumbers, updateDamageNumbers } from './damageNumbers.js';
 import { initFX, updateFX, resetFX } from './fx.js';
-import { initVFXBurst, updateVFXBurst, resetVFXBurst } from './vfxBurst.js';
+import { initVFXBurst, updateVFXBurst, resetVFXBurst, warmVFXBurst } from './vfxBurst.js';
 import { initChests, tickChests, resetChests, spawnAt as spawnChestAt } from './chest.js';
 import { disposeBossTelegraphs, initBossTelegraphs, updateBossTelegraphs, resetBossTelegraphs } from './bossTelegraphs.js';
 import { initDestructibles, resetDestructibles, syncDestructiblesVisibility } from './destructibles.js';
@@ -87,7 +87,7 @@ import { applyStageRule, tickStageRule, clearStageRule } from './stageRules.js';
 import { loadArenaDecor, clearArenaDecor } from './arenaDecor.js';
 import { loadStageLife, tickStageLife, syncStageLifeVisibility } from './stageLife.js';
 import { loadForestAmber, tickForestAmber, clearForestAmber } from './forestAmber.js';
-import { initLockdownArena, tickLockdownArena, armLockdown, triggerLockdown, disposeLockdownArenas } from './lockdownArena.js';
+import { initLockdownArena, tickLockdownArena, armLockdown, triggerLockdown, warmLockdownArena, disposeLockdownArenas } from './lockdownArena.js';
 import { initTrapCorridor, tickTrapCorridor, armCorridor, disposeTrapCorridors } from './trapCorridor.js';
 import { tickPuzzleSystem, startPuzzle as _puzzleStart } from './puzzleSystem.js';
 import { detectRoom, FOREST_ROOMS, constrainForestPosition, constrainForestPortalRoomPosition } from './forestRooms.js';
@@ -709,9 +709,9 @@ async function boot() {
   // Compile the shared MRT scene pass and fullscreen TSL graph while the
   // loading overlay is visible. Stage-only pipelines still warm lazily when
   // their assets load, so the menu does not wait for every game mode.
-  _bootLoader.textContent = 'Warming graphics…';
+  _bootLoader.textContent = 'Warming effects…';
   try {
-    await rendererService.pipeline.compile();
+    await warmVFXBurst(() => rendererService.pipeline.compile());
   } catch (error) {
     _showRendererFailure(error, { canSwitchToWebGL: rendererService.backend !== 'webgl' });
     throw error;
@@ -891,6 +891,22 @@ async function boot() {
         acquireWeapon(state.run.starterWeapon || 'orbitals');
         for (let i = 0; i < (state.run.cellarLv || 0); i++) acquireWeapon(state.run.starterWeapon || 'orbitals');
       }
+      // The selected hero uses TSL rim/damage-flash materials. Build it before
+      // the stage warm-up so its first red damage flash cannot compile a new
+      // node pipeline in the middle of a live combat frame.
+      rebuildHero(scene);
+      // Lockdown barricades are dormant until the player enters their ring.
+      // Warm their first-use material/pipeline while the normal stage loader
+      // is already up, so the encounter does not steal several seconds from
+      // live input on a cold GPU.
+      if (_stageId === 'forest' && state.run?._forestLockdownArenaId) {
+        if (_stageLoader) _stageLoader.textContent = 'Warming lockdown arena…';
+        try {
+          await warmLockdownArena(state.run._forestLockdownArenaId, () => rendererService.pipeline.compile(scene, camera));
+        } catch (error) {
+          console.warn('[start.warmLockdownArena]', error);
+        }
+      }
       // Returning from Town preserves the selected Kaki stage in memory but
       // intentionally hides its scene root. Reclaim the shared sky/ground
       // when the player actually begins the next run.
@@ -906,6 +922,17 @@ async function boot() {
         }
       }
       try { prewarmPools(); } catch (e) { console.warn('[start.prewarmPools]', e); }
+      // Boot only sees the menu scene. At this point the real hero, stage
+      // models and enemy pools all exist, so compile their material variants
+      // while the loader is still covering the game. This specifically avoids
+      // the first dash/hit/level-up after an asset transition becoming a
+      // multi-second pipeline-creation hitch on either backend.
+      if (_stageLoader) _stageLoader.textContent = 'Warming stage graphics…';
+      try {
+        await rendererService.pipeline.compile(scene, camera);
+      } catch (error) {
+        console.warn('[start.warmStageGraphics]', error);
+      }
     } finally {
       try { _stageLoader?.remove(); } catch (_) {}
     }
@@ -933,7 +960,6 @@ async function boot() {
       spawnPortalShards();
       // Iter 10b — Greed tier-4 capstone: idempotent across run-entry paths
       _maybeSpawnTreasureMapChest();
-      rebuildHero(state.scene);
       setHUDVisible(true);
       // Once-per-install objective intro. Forest now has a dedicated key so
       // returning players see the new six-trial route once instead of carrying
