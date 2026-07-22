@@ -234,6 +234,16 @@ try {
   assertCamera(monster, 'driver_fpv', 'perspective');
   assert(monster.camera.available.length === 3, 'Monster Smash should expose all three cameras');
   await page.screenshot({ path: SHOTS.monster });
+  await page.evaluate(() => window.__kkRacing.setCameraMode('isometric'));
+  const monsterIso = await waitMode(page, 'isometric');
+  assertCamera(monsterIso, 'isometric', 'orthographic');
+  assert(await page.evaluate(() => window.kkState?.racing?.cars?.[0]?.visual?.root?.visible === true),
+    'Monster truck stayed hidden after leaving Driver FPV for isometric');
+  await page.evaluate(() => window.__kkRacing.setCameraMode('chase'));
+  const monsterChase = await waitMode(page, 'chase');
+  assertCamera(monsterChase, 'chase', 'perspective');
+  assert(await page.evaluate(() => window.kkState?.racing?.cars?.[0]?.visual?.root?.visible === true),
+    'Monster truck stayed hidden after leaving Driver FPV for chase');
 
   await returnToMenu(page);
   await page.evaluate(() => window.kkStartRacing('forest', {

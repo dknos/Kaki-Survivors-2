@@ -114,7 +114,11 @@ export class RacingCameraManager {
     if (save) savePreference(next);
     const shouldSnap = instant || this.lastReducedMotion || !this.lastFrame;
     if (next === RacingCameraMode.DRIVER_FPV) this._applyInteriorVisibility(true);
-    else if (shouldSnap || previous !== RacingCameraMode.DRIVER_FPV) this._restoreInteriorVisibility();
+    // Monster-truck FPV hides the complete exterior root. Restore it before
+    // calculating or rendering the destination frame: waiting for the blend
+    // to finish can leave the truck invisible if that frame is delayed by a
+    // busy arena, and makes ISO/chase look like a stalled mode switch.
+    else this._restoreInteriorVisibility();
     if (shouldSnap) {
       this.transition = null;
       this.forceSnap = true;
