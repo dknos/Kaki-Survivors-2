@@ -2475,7 +2475,10 @@ function _maybeSpawnTreasureMapChest() {
 }
 
 function applyShake(realDt) {
-  if (state.fx.shake <= 0.001) { state.fx._shakeT = 0; return; }
+  // Small repeated impacts still get their particles, sound, hit flash, and
+  // damage feedback. Reserve actual camera travel for a clearly heavy hit so
+  // horde combat cannot turn into continuous vibration.
+  if (state.fx.shake < 0.45) { state.fx._shakeT = 0; return; }
   // Time accumulator since the current shake spike began. Resets when shake
   // decays to zero (above guard). Used for the rampIn below — without it,
   // a fresh shake spike applies its full sin/cos offset on the first frame

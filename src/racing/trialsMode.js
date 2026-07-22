@@ -729,6 +729,9 @@ function _callout(session, text, duration = 1.25, tone = '') {
 
 function _kickCamera(session, shake = 0.3, punch = 0.3, roll = 0) {
   if (state._optReduceMotion) return;
+  // Preserve readable landing/collision feedback without shaking on every
+  // small wheel contact or trick.
+  if (shake < 0.48) return;
   const fx = session.cameraFx;
   fx.shake = Math.max(fx.shake, clamp(shake, 0, 1.5));
   fx.punch = Math.max(fx.punch, clamp(punch, 0, 1.3));

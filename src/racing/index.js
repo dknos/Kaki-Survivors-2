@@ -160,6 +160,9 @@ function _loadCrashMode() {
 
 function _kickCamera(session, strength = 0.3, roll = 0, punch = 0.25) {
   if (!session?.cameraFx || state._optReduceMotion) return;
+  // Routine drift/brush feedback stays in audio and VFX. Camera motion is
+  // reserved for hard collisions, explosions, and Monster Smash signatures.
+  if (strength < 0.48) return;
   session.cameraFx.shake = Math.max(session.cameraFx.shake, clamp(strength, 0, 1.4));
   session.cameraFx.roll += clamp(roll, -0.055, 0.055);
   session.cameraFx.punch = Math.max(session.cameraFx.punch, clamp(punch, 0, 1.35));
