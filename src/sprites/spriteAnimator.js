@@ -1,18 +1,24 @@
 /**
- * spriteAnimator.js — thin per-entity attach helper for mob sprites.
+ * Thin per-entity adapter over the fixed-capacity sprite pools.
  *
  * spritePool handles fire-and-forget FX (one-shot bursts). Mob sprites
  * need a different lifetime: they're tied to an entity that moves and
  * may switch animations (idle → attack → death). This module owns that
  * mapping.
  *
- * Pattern: each entity that wants a sprite gets a small `spriteHandle`
- * stored on the entity. Caller drives x/y/z, anim transitions, and end
- * (despawn). Handle stores a pool slot — the slot may be evicted under
- * recycle pressure, in which case the handle quietly no-ops on update.
+ * The adapter is intentionally outside the 350-enemy hot path (enemies.js
+ * calls the numeric APIs directly). It exists for small scripted consumers and
+ * preserves the released attachSprite surface without ever respawning a slot
+ * for an animation change.
  */
 import { getAtlas } from './spriteAtlas.js';
-import { spawnSprite } from './spritePool.js';
+import {
+  isSpriteSlotAlive,
+  moveSprite,
+  releaseEnemySprite,
+  setSpriteAnimation,
+  spawnSprite,
+} from './spritePool.js';
 
 const _handles = new Set();
 
@@ -54,16 +60,9 @@ export function attachSprite(ent, atlasId, opts = {}) {
 export function setAnim(handle, animName) {
   if (!handle || handle.currentAnim === animName) return;
   const atlas = getAtlas(handle.atlasId);
-  if (!atlas || !(animName in atlas.anims)) return;
+  if (!atlas || !atlas.anims || !(animName in atlas.anims)) return;
+  if (!setSpriteAnimation(handle.atlasId, handle.slot, animName, true)) return;
   handle.currentAnim = animName;
-  const ent = handle.ent;
-  handle.slot = spawnSprite(handle.atlasId, {
-    x: ent.x ?? ent.position?.x ?? 0,
-    y: ent.y ?? ent.position?.y ?? 0,
-    z: ent.z ?? ent.position?.z ?? 0,
-    scale: handle.scale,
-    anim: animName,
-  });
 }
 
 /**
@@ -74,6 +73,8 @@ export function setAnim(handle, animName) {
 export function detachSprite(handle) {
   if (!handle) return;
   _handles.delete(handle);
+  if (handle.slot >= 0) releaseEnemySprite(handle.atlasId, handle.slot);
+  handle.slot = -1;
   if (handle.ent) handle.ent.spriteHandle = null;
 }
 
@@ -82,15 +83,17 @@ export function detachSprite(handle) {
  * matrix at the handle's slot. Call ONCE per frame from main.js AFTER
  * entity x/y/z have been updated, BEFORE tickSpriteSystem.
  */
-export function tickAttachedSprites(spritePoolMap /* unused — left for future per-atlas dispatch */) {
+export function tickAttachedSprites() {
   for (const h of _handles) {
     const ent = h.ent;
-    if (!ent || ent.dead) continue;
-    // Re-spawn into the existing slot would be wrong (it would reset anim).
-    // Instead, we'd need a direct pool write API. For now, mob sprites
-    // re-spawn-on-anim-change and rely on movement being applied via a
-    // setMatrixAt call in the pool. Phase 1 (FX-only) doesn't exercise
-    // this — phase 2 (Glowmoth) will swap to an explicit pool API.
+    if (!ent || ent.dead || !isSpriteSlotAlive(h.atlasId, h.slot)) continue;
+    moveSprite(
+      h.atlasId,
+      h.slot,
+      ent.x ?? ent.position?.x ?? 0,
+      ent.y ?? ent.position?.y ?? 0,
+      ent.z ?? ent.position?.z ?? 0,
+    );
   }
 }
 
@@ -98,5 +101,9 @@ export function tickAttachedSprites(spritePoolMap /* unused — left for future 
  * Reset the registry (test/teardown helper).
  */
 export function _resetSpriteAnimator() {
+  for (const handle of _handles) {
+    if (handle.slot >= 0) releaseEnemySprite(handle.atlasId, handle.slot);
+    if (handle.ent) handle.ent.spriteHandle = null;
+  }
   _handles.clear();
 }

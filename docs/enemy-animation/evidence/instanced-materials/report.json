@@ -1,0 +1,95 @@
+{
+  "entrypoint": "webgpu-instanced-materials-smoke.html",
+  "cases": [
+    {
+      "backend": "webgl",
+      "family": "atmosphere",
+      "drawCalls": 2,
+      "triangles": 7,
+      "image": {
+        "width": 800,
+        "height": 500,
+        "meanLuminance": 12.766,
+        "luminanceStdDev": 16.279,
+        "brightPixelRatio": 0.010565,
+        "quantizedColorCount": 4
+      },
+      "screenshot": "docs/enemy-animation/evidence/instanced-materials/webgl-atmosphere.png"
+    },
+    {
+      "backend": "webgl",
+      "family": "trials",
+      "drawCalls": 2,
+      "triangles": 61,
+      "image": {
+        "width": 800,
+        "height": 500,
+        "meanLuminance": 11.693,
+        "luminanceStdDev": 8.87,
+        "brightPixelRatio": 0.005457,
+        "quantizedColorCount": 4
+      },
+      "screenshot": "docs/enemy-animation/evidence/instanced-materials/webgl-trials.png"
+    },
+    {
+      "backend": "webgl",
+      "family": "sprite",
+      "drawCalls": 2,
+      "triangles": 5,
+      "image": {
+        "width": 800,
+        "height": 500,
+        "meanLuminance": 16.18,
+        "luminanceStdDev": 31.24,
+        "brightPixelRatio": 0.026517,
+        "quantizedColorCount": 13
+      },
+      "screenshot": "docs/enemy-animation/evidence/instanced-materials/webgl-sprite.png"
+    },
+    {
+      "backend": "webgpu",
+      "family": "atmosphere",
+      "drawCalls": 2,
+      "triangles": 7,
+      "image": {
+        "width": 800,
+        "height": 500,
+        "meanLuminance": 12.766,
+        "luminanceStdDev": 16.279,
+        "brightPixelRatio": 0.010565,
+        "quantizedColorCount": 4
+      },
+      "screenshot": "docs/enemy-animation/evidence/instanced-materials/webgpu-atmosphere.png"
+    },
+    {
+      "backend": "webgpu",
+      "family": "trials",
+      "drawCalls": 2,
+      "triangles": 61,
+      "image": {
+        "width": 800,
+        "height": 500,
+        "meanLuminance": 11.693,
+        "luminanceStdDev": 8.87,
+        "brightPixelRatio": 0.005457,
+        "quantizedColorCount": 4
+      },
+      "screenshot": "docs/enemy-animation/evidence/instanced-materials/webgpu-trials.png"
+    },
+    {
+      "backend": "webgpu",
+      "family": "sprite",
+      "drawCalls": 2,
+      "triangles": 5,
+      "image": {
+        "width": 800,
+        "height": 500,
+        "meanLuminance": 16.179,
+        "luminanceStdDev": 31.24,
+        "brightPixelRatio": 0.026517,
+        "quantizedColorCount": 13
+      },
+      "screenshot": "docs/enemy-animation/evidence/instanced-materials/webgpu-sprite.png"
+    }
+  ]
+}

@@ -104,6 +104,11 @@ function addSprite(scene) {
   geometry.setAttribute('aFrame', new THREE.InstancedBufferAttribute(new Float32Array([0, 0]), 1));
   geometry.setAttribute('aScale', new THREE.InstancedBufferAttribute(new Float32Array([2.2, 2.2]), 1));
   geometry.setAttribute('aFlash', new THREE.InstancedBufferAttribute(new Float32Array([0, 0.8]), 1));
+  geometry.setAttribute('aFlip', new THREE.InstancedBufferAttribute(new Float32Array([0, 1]), 1));
+  geometry.setAttribute('aPose', new THREE.InstancedBufferAttribute(new Float32Array([
+    1, 1, 0,
+    1.08, 0.92, 0.08,
+  ]), 3));
   const material = createSpritePoolMaterial({
     texture: atlasTexture(),
     cols: 1,

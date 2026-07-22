@@ -305,16 +305,24 @@ export function createPostPipeline({
     if (disposed) throw new Error('Cannot compile a disposed post-processing pipeline.');
     if (nextScene) scenePass.scene = nextScene;
     if (nextCamera) scenePass.camera = nextCamera;
-    // r185 PassNode.compileAsync() restores these on success but not when
-    // renderer.compileAsync rejects. Guard the failure path so a friendly boot
-    // error cannot strand the renderer on the offscreen MRT.
-    const previousRenderTarget = renderer.getRenderTarget();
-    const previousMrt = renderer.getMRT();
-    try {
-      await scenePass.compileAsync(renderer);
-    } finally {
-      renderer.setRenderTarget(previousRenderTarget);
-      renderer.setMRT(previousMrt);
+    // Three r185's WebGPU PassNode.compileAsync() can construct a two-target
+    // MRT pipeline for classic InstancedMesh materials while compiling a
+    // fragment stage with only the beauty output. The device then rejects the
+    // pipeline and the returned promise never settles. Rendering the configured
+    // graph performs the same covered warmup through the correct MRT builder,
+    // so reserve compileAsync for the WebGL2 backend where it is reliable.
+    if (renderer.backend?.isWebGPUBackend !== true) {
+      // r185 PassNode.compileAsync() restores these on success but not when
+      // renderer.compileAsync rejects. Guard the failure path so a friendly
+      // boot error cannot strand the renderer on the offscreen MRT.
+      const previousRenderTarget = renderer.getRenderTarget();
+      const previousMrt = renderer.getMRT();
+      try {
+        await scenePass.compileAsync(renderer);
+      } finally {
+        renderer.setRenderTarget(previousRenderTarget);
+        renderer.setMRT(previousMrt);
+      }
     }
     renderPipeline.render();
     compiled = true;

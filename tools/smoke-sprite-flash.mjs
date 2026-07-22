@@ -56,11 +56,12 @@ ok('TSL output mixes the sampled texel toward white by clamped aFlash');
 assert.ok(/export function setSpriteFlash\(/.test(pool), "spritePool: setSpriteFlash export missing");
 ok('setSpriteFlash export present');
 
-// 5: flash reset to 0 in BOTH spawnSprite + killSprite (>=2 occurrences of the
-//    zero-write; setSpriteFlash writes `= amount`, not `= 0`, so it doesn't count)
-const zeroResets = (pool.match(/pool\.flashAttr\.array\[slot\]\s*=\s*0;/g) || []).length;
-assert.ok(zeroResets >= 2, `spritePool: flash must be zeroed in spawnSprite AND killSprite (found ${zeroResets} zero-writes)`);
-ok('flash zeroed on both recycle paths (spawnSprite evict + killSprite stash)');
+// 5: CPU state and the page attribute are both reset. Generation-checked
+// handles prevent an evicted owner from writing flash into its replacement.
+assert.ok(/pool\.sFlash\[slot\]\s*=\s*0;/.test(pool), 'spritePool: CPU flash state is not reset');
+assert.ok(/page\.flashAttr\.array\[slot\]\s*=\s*0;/.test(pool), 'spritePool: page flash attribute is not reset');
+assert.ok(/decodeHandle\(pool, handle\)/.test(pool), 'spritePool: stale handle guard missing');
+ok('flash zeroed in typed state + page attribute and stale handles are rejected');
 
 // 6: index.js re-exports it
 assert.ok(/setSpriteFlash/.test(idx), "sprites/index.js: setSpriteFlash not re-exported");
@@ -69,9 +70,9 @@ ok('sprites/index.js re-exports setSpriteFlash');
 // 7: enemies.js imports + edge-triggered sprite-branch call + strength const
 assert.ok(/import \{[^}]*setSpriteFlash[^}]*\} from '\.\/sprites\/index\.js'/.test(enemies), "enemies.js: setSpriteFlash not imported");
 assert.ok(/const SPRITE_FLASH_STRENGTH\s*=/.test(enemies), "enemies.js: SPRITE_FLASH_STRENGTH const missing");
-assert.ok(/setSpriteFlash\('enemies',\s*e\._spriteSlot,\s*isFlashing \? SPRITE_FLASH_STRENGTH : 0\)/.test(enemies), "enemies.js: sprite branch does not call setSpriteFlash edge-triggered");
+assert.ok(/setSpriteFlash\(e\._spriteAtlasId \|\| V1_ENEMY_ATLAS_ID,\s*e\._spriteSlot,\s*isFlashing \? SPRITE_FLASH_STRENGTH : 0\)/.test(enemies), "enemies.js: sprite branch does not call setSpriteFlash edge-triggered");
 // Edge-trigger proof: the call sits behind an `isFlashing !== e._wasFlashing` guard.
-assert.ok(/isFlashing !== e\._wasFlashing[\s\S]{0,160}setSpriteFlash\('enemies'/.test(enemies), "enemies.js: sprite flash not edge-triggered on _wasFlashing");
+assert.ok(/isFlashing !== e\._wasFlashing[\s\S]{0,200}setSpriteFlash\(/.test(enemies), "enemies.js: sprite flash not edge-triggered on _wasFlashing");
 ok('enemies.js: import + edge-triggered sprite-branch setSpriteFlash + strength const');
 
 console.log(`\npass=${pass} fail=0`);

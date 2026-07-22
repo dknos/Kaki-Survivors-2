@@ -1,0 +1,188 @@
+{
+  "schemaVersion": 1,
+  "generatedBy": "tools/enemy-sprite-bake/author_forest_animation.py",
+  "blenderVersion": "5.1.1",
+  "originalAssetsModified": false,
+  "wasp": {
+    "source": "assets/breakroom/Wasp.glb",
+    "authoringPath": "sample-source-clips",
+    "clips": [
+      "WaspArmature|Wasp_Flying",
+      "WaspArmature|Wasp_Attack",
+      "WaspArmature|Wasp_Death"
+    ]
+  },
+  "assets": [
+    {
+      "species": "ant",
+      "source": "assets/breakroom/Ant.glb",
+      "output": "assets/source/enemy-animation/forest-v2/ant-authored.glb",
+      "authoringPath": "non-destructive-morph-pose-library",
+      "poses": [
+        "move_0",
+        "move_1",
+        "move_2",
+        "move_3",
+        "move_4",
+        "move_5",
+        "attack_0",
+        "attack_1",
+        "attack_2",
+        "death_0",
+        "death_1",
+        "death_2"
+      ]
+    },
+    {
+      "species": "beetle",
+      "source": "assets/breakroom/Beetle.glb",
+      "output": "assets/source/enemy-animation/forest-v2/beetle-authored.glb",
+      "authoringPath": "non-destructive-morph-pose-library",
+      "poses": [
+        "move_0",
+        "move_1",
+        "move_2",
+        "move_3",
+        "move_4",
+        "move_5",
+        "attack_0",
+        "attack_1",
+        "attack_2",
+        "death_0",
+        "death_1",
+        "death_2"
+      ]
+    },
+    {
+      "species": "ladybug",
+      "source": "assets/breakroom/Ladybug.glb",
+      "output": "assets/source/enemy-animation/forest-v2/ladybug-authored.glb",
+      "authoringPath": "non-destructive-morph-pose-library",
+      "poses": [
+        "move_0",
+        "move_1",
+        "move_2",
+        "move_3",
+        "move_4",
+        "move_5",
+        "attack_0",
+        "attack_1",
+        "attack_2",
+        "death_0",
+        "death_1",
+        "death_2"
+      ]
+    },
+    {
+      "species": "grasshopper",
+      "source": "assets/breakroom/Grasshopper.glb",
+      "output": "assets/source/enemy-animation/forest-v2/grasshopper-authored.glb",
+      "authoringPath": "non-destructive-morph-pose-library",
+      "poses": [
+        "move_0",
+        "move_1",
+        "move_2",
+        "move_3",
+        "move_4",
+        "move_5",
+        "attack_0",
+        "attack_1",
+        "attack_2",
+        "death_0",
+        "death_1",
+        "death_2"
+      ]
+    },
+    {
+      "species": "cockroach",
+      "source": "assets/breakroom/Cockroach.glb",
+      "output": "assets/source/enemy-animation/forest-v2/cockroach-authored.glb",
+      "authoringPath": "non-destructive-morph-pose-library",
+      "poses": [
+        "move_0",
+        "move_1",
+        "move_2",
+        "move_3",
+        "move_4",
+        "move_5",
+        "attack_0",
+        "attack_1",
+        "attack_2",
+        "death_0",
+        "death_1",
+        "death_2"
+      ]
+    },
+    {
+      "species": "mantis",
+      "source": "assets/breakroom/Mantis.glb",
+      "output": "assets/source/enemy-animation/forest-v2/mantis-authored.glb",
+      "authoringPath": "non-destructive-morph-pose-library",
+      "poses": [
+        "move_0",
+        "move_1",
+        "move_2",
+        "move_3",
+        "move_4",
+        "move_5",
+        "attack_0",
+        "attack_1",
+        "attack_2",
+        "death_0",
+        "death_1",
+        "death_2"
+      ]
+    },
+    {
+      "species": "butterfly",
+      "source": "assets/breakroom/Butterfly.glb",
+      "output": "assets/source/enemy-animation/forest-v2/butterfly-authored.glb",
+      "authoringPath": "non-destructive-morph-pose-library",
+      "poses": [
+        "move_0",
+        "move_1",
+        "move_2",
+        "move_3",
+        "move_4",
+        "move_5",
+        "attack_0",
+        "attack_1",
+        "attack_2",
+        "death_0",
+        "death_1",
+        "death_2"
+      ]
+    },
+    {
+      "species": "caterpillar",
+      "source": "assets/breakroom/Caterpillar.glb",
+      "output": "assets/source/enemy-animation/forest-v2/caterpillar-authored.glb",
+      "authoringPath": "non-destructive-morph-pose-library",
+      "poses": [
+        "move_0",
+        "move_1",
+        "move_2",
+        "move_3",
+        "move_4",
+        "move_5",
+        "attack_0",
+        "attack_1",
+        "attack_2",
+        "death_0",
+        "death_1",
+        "death_2"
+      ]
+    },
+    {
+      "species": "bee",
+      "source": "assets/breakroom/Bee.glb",
+      "output": "assets/source/enemy-animation/forest-v2/bee-authored.glb",
+      "authoringPath": "rigid-component-animation-in-baker",
+      "components": [
+        "Bee_Body_0",
+        "Bee_Body_1",
+        "Bee_Wings"
+      ]
+    }
+  ]
+}

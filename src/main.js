@@ -666,30 +666,31 @@ async function boot() {
   // are loaded yet at this point; pools are created lazily by FX wiring.
   setSpriteLowFxProbe(() => !!(state.run && state.run.lowFx));
 
-  // Sprite FX bootstrap — load 4 starter sheets + create pools. Async; if any
-  // sheet fails to load (404 in dev, broken json), log warning and continue —
-  // missing atlas just means its later spawn calls no-op; no game crash.
+  // Sprite bootstrap. Every atlas is isolated so one optional v2 page can fail
+  // without suppressing v1 enemies or unrelated FX. Forest v2 keeps a full v1
+  // fallback both for bootstrap failure and every non-Forest stage.
   (async () => {
-    try {
-      await Promise.all([
-        loadAtlas('fx/hit_flash_v1',       'assets/sprites/fx/hit_flash_v1.json'),
-        loadAtlas('fx/dust_puff_v1',       'assets/sprites/fx/dust_puff_v1.json'),
-        loadAtlas('fx/aura_rings_v1',      'assets/sprites/fx/aura_rings_v1.json'),
-        loadAtlas('fx/borgir_explosion_v1','assets/sprites/fx/borgir_explosion_v1.json'),
-        // Enemy horde billboards (baked from the trash-mob GLBs). One atlas →
-        // one InstancedMesh → the whole horde renders in a single draw call,
-        // collapsing the ~1700-draw-call 3D-horde cost (see enemies.js).
-        loadAtlas('enemies',               'assets/sprites/enemies_v1.json'),
-      ]);
-      ensurePool(scene, 'fx/hit_flash_v1',        256, { bypassWhenLowFx: true });
-      ensurePool(scene, 'fx/dust_puff_v1',         96, { bypassWhenLowFx: true });
-      ensurePool(scene, 'fx/aura_rings_v1',        16, { bypassWhenLowFx: false });
-      ensurePool(scene, 'fx/borgir_explosion_v1',  32, { bypassWhenLowFx: false });
-      ensurePool(scene, 'enemies',                512, { bypassWhenLowFx: false });
-      console.log('[sprites] bootstrap ok — 5 atlases loaded, 5 pools live (hit_flash, dust_puff, aura_rings, borgir_explosion, enemies)');
-    } catch (e) {
-      console.warn('[sprites] bootstrap failed:', e);
-    }
+    const atlasSpecs = [
+      ['fx/hit_flash_v1',        'assets/sprites/fx/hit_flash_v1.json',        256, true],
+      ['fx/dust_puff_v1',        'assets/sprites/fx/dust_puff_v1.json',         96, true],
+      ['fx/aura_rings_v1',       'assets/sprites/fx/aura_rings_v1.json',        16, false],
+      ['fx/borgir_explosion_v1', 'assets/sprites/fx/borgir_explosion_v1.json',  32, false],
+      ['enemies',                'assets/sprites/enemies_v1.json',             512, false],
+      ['forest-enemies-v2',      'assets/sprites/forest_enemies_v2.json',      512, false],
+    ];
+    const results = await Promise.all(atlasSpecs.map(async (spec) => {
+      try {
+        await loadAtlas(spec[0], spec[1]);
+        ensurePool(scene, spec[0], spec[2], { bypassWhenLowFx: spec[3] });
+        return true;
+      } catch (error) {
+        console.warn(`[sprites] optional atlas failed (${spec[0]}):`, error);
+        return false;
+      }
+    }));
+    let ready = 0;
+    for (let index = 0; index < results.length; index++) if (results[index]) ready++;
+    console.log(`[sprites] bootstrap complete — ${ready}/${atlasSpecs.length} isolated pools live`);
   })();
 
   // Hotfix #151: prewarmPools at boot is a no-op now that enemy GLBs defer
@@ -2893,7 +2894,7 @@ function frame(now) {
     tickChainArcs(logicDt);
     tickEvolveBursts(logicDt);
     tickDissolveBursts(logicDt);
-    tickSpriteSystem(logicDt);
+    tickSpriteSystem(logicDt, camera);
     updateBlobShadows();
     updateDamageNumbers(realDt);
     tickCatacomb(logicDt);
@@ -3267,7 +3268,7 @@ function frame(now) {
   // agnostic. Only does work if ensurePool() has been called for ≥1 atlas;
   // until then the loop is empty. Pools are created by FX wiring (#98) and
   // mob spawn (#99) — foundation file doesn't bootstrap any sheets.
-  _p=perfStart(); tickSpriteSystem(logicDt);      perfMark('spriteSystem', _p);
+  _p=perfStart(); tickSpriteSystem(logicDt, camera); perfMark('spriteSystem', _p);
   _p=perfStart(); tickStageRule(state, logicDt);  perfMark('stageRule', _p);
   _p=perfStart(); tickMiniEvents(logicDt);        perfMark('miniEvents', _p);
   // PHASE 1 P1B — Achievement chain tick (stage-agnostic). Most checks bail

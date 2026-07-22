@@ -95,7 +95,15 @@ export function createSpritePoolMaterial(atlas, options = {}) {
     { min: 0 },
   );
   const cutout = alphaTest >= 0.5;
+  const resolvedCutout = options.cutout ?? atlas.cutout ?? cutout;
   const initialBillboardMode = billboardMode(options.billboard ?? atlas.billboard ?? 'screen');
+  const gutterPixels = finiteNumber(
+    options.gutterPixels ?? atlas.framePadding?.gutterPixels ?? 0,
+    'sprite frame gutter',
+    { min: 0 },
+  );
+  const frameWidth = positiveNumber(options.frameWidth ?? atlas.frameWidth, 'sprite frame width');
+  const frameHeight = positiveNumber(options.frameHeight ?? atlas.frameHeight, 'sprite frame height');
 
   const uCols = uniform(cols);
   const uRows = uniform(rows);
@@ -103,16 +111,26 @@ export function createSpritePoolMaterial(atlas, options = {}) {
   const uBillboard = uniform(initialBillboardMode, 'int');
   const uAnchor = uniform(anchor);
   const uAlphaTest = uniform(alphaTest);
+  const uUvInset = uniform(new Vector2(gutterPixels / frameWidth, gutterPixels / frameHeight));
+  const uUvScale = uniform(new Vector2(
+    Math.max(0.000001, 1 - gutterPixels * 2 / frameWidth),
+    Math.max(0.000001, 1 - gutterPixels * 2 / frameHeight),
+  ));
 
   const aFrame = attribute('aFrame', 'float');
   const aScale = attribute('aScale', 'float');
   const aFlash = attribute('aFlash', 'float');
+  const aFlip = attribute('aFlip', 'float');
+  const aPose = attribute('aPose', 'vec3');
 
   // Row-major atlas indexing with frame zero at the image's top-left.
   const col = mod(aFrame, uCols);
   const row = floor(aFrame.div(uCols));
   const vRow = uRows.sub(1).sub(row);
-  const frameUv = uv().add(vec2(col, vRow)).div(vec2(uCols, uRows));
+  const sourceUv = uv();
+  const flippedU = mix(sourceUv.x, float(1).sub(sourceUv.x), aFlip.clamp(0, 1));
+  const paddedUv = vec2(flippedU, sourceUv.y).mul(uUvScale).add(uUvInset);
+  const frameUv = paddedUv.add(vec2(col, vRow)).div(vec2(uCols, uRows));
   const uMap = texture(atlas.texture, frameUv);
 
   // PlaneGeometry is [-0.5, 0.5]. The Y pivot sign intentionally differs from
@@ -121,8 +139,12 @@ export function createSpritePoolMaterial(atlas, options = {}) {
     uAnchor.x.sub(0.5),
     float(0.5).sub(uAnchor.y),
   );
-  const cornerOffset = positionGeometry.xy
-    .sub(anchorOffset)
+  const anchoredCorner = positionGeometry.xy.sub(anchorOffset);
+  const posedCorner = vec2(
+    anchoredCorner.x.mul(aPose.x).add(anchoredCorner.y.mul(aPose.z)),
+    anchoredCorner.y.mul(aPose.y),
+  );
+  const cornerOffset = posedCorner
     .mul(vec2(uAspect, 1))
     .mul(aScale);
 
@@ -131,7 +153,7 @@ export function createSpritePoolMaterial(atlas, options = {}) {
   const instancePosition = positionLocal.sub(positionGeometry);
 
   const noBillboardPosition = instancePosition.add(vec3(
-    positionGeometry.xy.mul(vec2(uAspect, 1)).mul(aScale),
+    posedCorner.mul(vec2(uAspect, 1)).mul(aScale),
     0,
   ));
   const noBillboardClip = cameraProjectionMatrix
@@ -170,17 +192,22 @@ export function createSpritePoolMaterial(atlas, options = {}) {
   const vertexNode = mix(billboardClip, noBillboardClip, isNone);
 
   const sampled = uMap;
-  sampled.a.lessThan(uAlphaTest).discard();
   const flashedRgb = mix(sampled.rgb, vec3(1), aFlash.clamp(0, 1));
 
   const material = new MeshBasicNodeMaterial();
   material.name = 'KakiSpritePoolNodeMaterial';
   material.vertexNode = vertexNode;
   material.outputNode = vec4(flashedRgb, sampled.a);
+  // `outputNode` is wrapped by the production selective-bloom MRT. A detached
+  // TSL `.discard()` expression is not guaranteed to remain on that generated
+  // fragment stack, which lets transparent texels write opaque black quads.
+  // `maskNode` is evaluated by NodeMaterial before the custom output/MRT path
+  // on both WebGPU and WebGL2, so cutout and depth writes stay in agreement.
+  material.maskNode = sampled.a.greaterThanEqual(uAlphaTest);
   material.lights = false;
   material.fog = false;
-  material.transparent = !cutout;
-  material.depthWrite = cutout;
+  material.transparent = !resolvedCutout;
+  material.depthWrite = options.depthWrite ?? atlas.depthWrite ?? resolvedCutout;
   material.depthTest = true;
   material.alphaToCoverage = false;
   material.blending = (options.blendMode ?? atlas.blendMode) === 'additive'
@@ -191,9 +218,11 @@ export function createSpritePoolMaterial(atlas, options = {}) {
     'aFrame',
     'aScale',
     'aFlash',
+    'aFlip',
+    'aPose',
   ]);
   material.userData.translationOnlyInstanceMatrices = true;
-  material.userData.cutout = cutout;
+  material.userData.cutout = resolvedCutout;
 
   const uniforms = Object.freeze({
     uMap,
@@ -203,6 +232,8 @@ export function createSpritePoolMaterial(atlas, options = {}) {
     uBillboard,
     uAnchor,
     uAlphaTest,
+    uUvInset,
+    uUvScale,
   });
   Object.defineProperty(material, 'uniforms', {
     configurable: true,
@@ -259,11 +290,6 @@ export function createSpritePoolMaterial(atlas, options = {}) {
       enumerable: false,
       value(value) {
         const threshold = finiteNumber(value, 'sprite alpha test', { min: 0 });
-        if ((threshold >= 0.5) !== cutout) {
-          throw new Error(
-            'Changing between blended and cutout sprite topology requires a new material.',
-          );
-        }
         uAlphaTest.value = threshold;
         return material;
       },

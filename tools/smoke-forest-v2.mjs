@@ -76,6 +76,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { SOFTWARE_WEBGL_ARGS } from './webgpu/chromiumProfiles.mjs';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -200,14 +201,7 @@ async function main() {
   const browser = await chromium.launch({
     executablePath: PLAYWRIGHT_EXEC,
     headless: true,
-    args: [
-      '--no-sandbox',
-      '--disable-dev-shm-usage',
-      '--use-gl=swiftshader',
-      '--enable-webgl',
-      '--ignore-gpu-blocklist',
-      '--enable-unsafe-webgpu',
-    ],
+    args: [...SOFTWARE_WEBGL_ARGS],
   });
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await ctx.newPage();
@@ -241,7 +235,10 @@ async function main() {
 
   try {
     // ── Boot ──────────────────────────────────────────────────────────────
-    const url = 'http://127.0.0.1:' + PORT + '/index.html?smoke=1';
+    // This gameplay/lifecycle smoke is backend-agnostic, so pin the stable
+    // software WebGL2 profile. Dedicated backend, material, and showcase
+    // suites exercise the required Vulkan SwiftShader WebGPU path.
+    const url = 'http://127.0.0.1:' + PORT + '/index.html?smoke=1&renderer=webgl';
     await page.goto(url, { waitUntil: 'load', timeout: BOOT_TIMEOUT_MS });
     console.log('[smoke-v2] page loaded; waiting for kkStartRun');
 
