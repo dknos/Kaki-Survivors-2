@@ -6789,7 +6789,7 @@ export function showOptions() {
   const savedRendererPreference = normalizeBackendPreference(meta.optRenderer);
   let pendingRendererPreference = savedRendererPreference;
   const rendererSelect = mkSelect([
-    { value: 'auto',   label: 'Auto · WebGPU + fallback' },
+    { value: 'auto',   label: 'Auto · Stable WebGL 2' },
     { value: 'webgpu', label: 'Require WebGPU' },
     { value: 'webgl',  label: 'Force WebGL 2' },
   ], savedRendererPreference, v => {

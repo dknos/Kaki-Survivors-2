@@ -45,7 +45,7 @@ async function scenario1Fresh() {
   assert.ok(d.avatarUnlocks.cowboy,              'fresh: cowboy seeded');
   assert.equal(d.avatarUnlocks.bomdia, undefined,'fresh: bomdia locked');
   assert.equal(d.unlockedKakiLand, false,          'fresh: Kaki Land starts locked');
-  assert.equal(d.optRenderer, 'auto',              'fresh: renderer defaults to auto');
+  assert.equal(d.optRenderer, 'webgl',             'fresh: renderer defaults to stable WebGL');
   assert.equal(m.getMastery('kitty'), 0,         'fresh: no mastery');
   console.log('✓ scenario 1: fresh profile');
 }
@@ -73,7 +73,7 @@ async function scenario2V1Migration() {
   assert.equal(d.optMusicVolume, 0.24,             'v1: music = 0.4 * 0.6');
   assert.equal(d.optSfxVolume, 0.4,                'v1: sfx = 0.4');
   assert.equal(d.unlockedKakiLand, false,          'v1: new chapter flag backfills safely');
-  assert.equal(d.optRenderer, 'auto',              'v1: renderer preference backfills safely');
+  assert.equal(d.optRenderer, 'webgl',             'v1: renderer preference backfills to stable WebGL');
   // v1 still intact, v2 now exists
   assert.ok(ls.getItem('kk-survivors-meta-v1'),    'v1 untouched');
   assert.ok(ls.getItem('kk-survivors-meta-v2'),    'v2 written');

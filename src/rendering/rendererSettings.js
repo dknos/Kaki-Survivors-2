@@ -110,7 +110,13 @@ export function readBackendPreference(search = '', savedPreference = RENDERER_BA
     const params = search instanceof URLSearchParams
       ? search
       : new URLSearchParams(String(search || '').replace(/^\?/, ''));
-    if (!params.has('renderer')) return saved;
+    // The released WebGL path is the stable automatic choice. WebGPU remains
+    // available through an explicit saved choice or `?renderer=webgpu`, but an
+    // untouched/legacy `auto` profile must not opt players into known runtime
+    // stalls in exterior Monster Smash views.
+    if (!params.has('renderer')) return saved === RENDERER_BACKENDS.AUTO
+      ? RENDERER_BACKENDS.WEBGL
+      : saved;
     return normalizeBackendPreference(params.get('renderer'));
   } catch (_) {
     return saved;

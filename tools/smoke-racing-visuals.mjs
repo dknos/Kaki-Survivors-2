@@ -105,10 +105,8 @@ check('racing countdown follows wall time through expensive opening frames', () 
     'racing countdown still stretches with the capped physics step');
   expect(MAIN_SOURCE.includes('tickRacing(logicDt, elapsedDt)'),
     'main loop still hides raw elapsed time from the racing countdown');
-  expect(RACING_INDEX_SOURCE.includes("phase: raceMode === 'monster' ? 'loading' : 'countdown'"),
-    'Monster Smash does not hold countdown until exterior cameras are warm');
-  expect(RACING_INDEX_SOURCE.includes("for (const mode of ['isometric', 'chase'])"),
-    'Monster Smash does not warm both exterior camera projections');
+  expect(!RACING_INDEX_SOURCE.includes("phase === 'loading'"),
+    'Monster Smash still blocks its countdown behind an exterior prewarm gate');
 });
 
 check('three Trials courses and two vehicle classes form six complete configurations', () => {

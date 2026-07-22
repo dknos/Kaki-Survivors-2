@@ -134,9 +134,9 @@ const DEFAULT = {
   unlockedNgPlus: false,
   optFontScale: 1.0,             // 0.85..1.30, surfaced via --kk-font-scale CSS var
   optFrameCap: 0,                // 0=unlocked; 30/60/144 valid
-  // Renderer selection is additive save metadata. `auto` prefers WebGPU and
-  // keeps the WebGL 2 fallback; forced choices are applied on the next reload.
-  optRenderer: 'auto',           // 'auto' | 'webgpu' | 'webgl'
+  // WebGL 2 is the stable release backend. WebGPU remains an explicit advanced
+  // opt-in while its exterior racing path is still being hardened.
+  optRenderer: 'webgl',          // 'auto' | 'webgpu' | 'webgl'
   optControllerDeadzone: 0.15,   // 0..0.30 — gamepad.js reads this
   optLanguage: 'en',             // i18n stub for v1.1+
   // Developer convenience only. This bypasses chapter-card gates without

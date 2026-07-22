@@ -1790,10 +1790,7 @@ function _updateHud(session) {
   session.crashFlash = Math.max(0, session.crashFlash - state.time.dt);
   session.smashFlash = Math.max(0, (session.smashFlash || 0) - state.time.dt);
   session.roundFlash = Math.max(0, (session.roundFlash || 0) - state.time.dt);
-  if (session.phase === 'loading') {
-    hud.callout.textContent = 'LOADING…';
-    hud.callout.className = 'kkr-callout is-visible is-small';
-  } else if (session.phase === 'countdown') {
+  if (session.phase === 'countdown') {
     const count = Math.ceil(session.countdown);
     hud.callout.textContent = count > 3 ? 'READY?' : String(Math.max(1, count));
     hud.callout.className = 'kkr-callout is-visible';
@@ -2019,33 +2016,6 @@ function _snapshot(session) {
   };
 }
 
-async function _warmMonsterExteriorCameras(session, scene) {
-  const manager = session?.cameraManager;
-  const pipeline = state.rendererService?.pipeline;
-  if (!manager || typeof pipeline?.compile !== 'function') return;
-  const originalMode = manager.getCurrentMode();
-  try {
-    for (const mode of ['isometric', 'chase']) {
-      manager.setCameraMode(mode, { instant: true, save: false });
-      const frame = manager.update(0, {
-        aspect: session.cameraHost?.getAspect?.() || 16 / 9,
-        reducedMotion: !!state._optReduceMotion,
-        paused: false,
-        snap: true,
-      });
-      if (frame?.camera) await pipeline.compile(scene, frame.camera);
-    }
-  } finally {
-    manager.setCameraMode(originalMode, { instant: true, save: false });
-    manager.update(0, {
-      aspect: session.cameraHost?.getAspect?.() || 16 / 9,
-      reducedMotion: !!state._optReduceMotion,
-      paused: false,
-      snap: true,
-    });
-  }
-}
-
 export function enterRacing(scene, courseId = 'forest', options = {}) {
   if (options.mode === 'crash') {
     if (state.racing && state.racing.raceMode !== 'crash') exitRacing(scene);
@@ -2132,7 +2102,7 @@ export function enterRacing(scene, courseId = 'forest', options = {}) {
     cars: [],
     particles: [],
     particleCursor: 0,
-    phase: raceMode === 'monster' ? 'loading' : 'countdown',
+    phase: 'countdown',
     countdown: COUNTDOWN_SECONDS,
     raceTime: 0,
     goFlash: 0,
@@ -2182,23 +2152,13 @@ export function enterRacing(scene, courseId = 'forest', options = {}) {
       monsterVehicleId,
       rendererService: state.rendererService,
     });
-    session.assetLease.ready.then(async () => {
+    session.assetLease.ready.then(() => {
       if (session.disposed) return;
       // Atlas-frame textures clone the lease's shared image source before its
       // asynchronous decode completes. Refresh those owned clones only after
       // the lease is ready; dirtying them earlier is invalid in WebGPU.
       for (const texture of session.owned.textures) {
         requestTextureUploadIfReady(texture);
-      }
-      if (session.raceMode === 'monster') {
-        // Individual model attachment promises resolve from the same lease.
-        // Give them a microtask to mount before compiling both exterior views.
-        await Promise.resolve();
-        if (session.disposed || state.racing !== session) return;
-        try { await _warmMonsterExteriorCameras(session, scene); } catch (_) {}
-        if (session.disposed || state.racing !== session) return;
-        session.countdown = COUNTDOWN_SECONDS;
-        session.phase = 'countdown';
       }
     }).catch((error) => {
       session.assetError = error?.message || String(error);

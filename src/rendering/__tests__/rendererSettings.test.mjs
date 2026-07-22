@@ -16,7 +16,8 @@ const read = (file) => fs.readFileSync(path.join(ROOT, file), 'utf8');
 test('saved renderer preference is strictly normalized when no URL override exists', () => {
   assert.equal(readBackendPreference('', 'webgpu'), 'webgpu');
   assert.equal(readBackendPreference('?qa=stage-forest', 'webgl'), 'webgl');
-  assert.equal(readBackendPreference('', 'not-a-backend'), 'auto');
+  assert.equal(readBackendPreference('', 'auto'), 'webgl');
+  assert.equal(readBackendPreference('', 'not-a-backend'), 'webgl');
   assert.equal(normalizeBackendPreference(' WEBGPU '), 'webgpu');
   assert.equal(normalizeBackendPreference('webgl2'), 'auto');
 });
@@ -49,7 +50,7 @@ test('production boot and Display settings are wired to persisted renderer metad
   const ui = read('src/ui.js');
 
   assert.match(main, /readBackendPreference\([\s\S]{0,160}window\.location\.search,[\s\S]{0,160}getMeta\(\)\.optRenderer/);
-  assert.match(meta, /optRenderer:\s*'auto'/);
+  assert.match(meta, /optRenderer:\s*'webgl'/);
   assert.match(meta, /key === 'optRenderer'\s*\?\s*normalizeBackendPreference\(val\)/);
   assert.match(ui, /Renderer · Advanced/);
   assert.match(ui, /Apply & Reload/);
