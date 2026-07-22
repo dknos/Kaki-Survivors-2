@@ -530,7 +530,12 @@ function _createRacers(session, hero) {
   const decalAtlas = session.assetLease?.textures?.decalAtlas || null;
   const rivals = session.roster.filter((avatar) => avatar.id !== session.playerAvatarId);
   if (!rivals.length) rivals.push(AVATARS[0]);
-  const drivers = [hero];
+  // A selected hero GLB can exceed 400k rendered triangles. At Monster camera
+  // distance that detail is only a few pixels tall, yet it dominated the
+  // exterior view. Keep the real hero detached for exact lifecycle restore and
+  // seat the existing lightweight helmeted Kaki proxy in the truck instead.
+  const playerAvatar = AVATARS.find((avatar) => avatar.id === session.playerAvatarId) || AVATARS[0];
+  const drivers = [monsterMode ? _makeHeroRacerProxy(playerAvatar, owned) : hero];
   for (let i = 1; i < session.carCount; i++) {
     drivers.push(_makeRivalDriver(rivals[(i - 1) % rivals.length], hero, owned, i <= 1));
   }
@@ -2086,6 +2091,13 @@ export function enterRacing(scene, courseId = 'forest', options = {}) {
     monsterVehicleId,
     monsterVehicleProfile,
     monsterEvent,
+    monsterProductionAssets: raceMode === 'monster' && (
+      options.monsterProductionAssets === true
+      || (typeof location !== 'undefined'
+        && new URLSearchParams(location.search).get('monsterAssets') === 'full')
+    ),
+    savedDynamicResolutionScale: null,
+    monsterRenderScaleApplied: false,
     savedHero,
     savedBackground: scene.background,
     savedFog: scene.fog,
@@ -2146,10 +2158,22 @@ export function enterRacing(scene, courseId = 'forest', options = {}) {
     hud: null,
   };
   try {
+    if (raceMode === 'monster' && state.rendererService?.setDynamicResolutionScale) {
+      const currentScale = Number(
+        state.rendererService.getDiagnostics?.().dynamicResolutionScale,
+      ) || 1;
+      session.savedDynamicResolutionScale = currentScale;
+      const monsterScale = Math.min(currentScale, 0.8);
+      if (monsterScale < currentScale) {
+        state.rendererService.setDynamicResolutionScale(monsterScale);
+        session.monsterRenderScaleApplied = true;
+      }
+    }
     session.assetLease = createRallyAssetLease({
       courseId: course.id,
       mode: raceMode,
       monsterVehicleId,
+      monsterProductionAssets: session.monsterProductionAssets,
       rendererService: state.rendererService,
     });
     session.assetLease.ready.then(() => {
@@ -2185,8 +2209,10 @@ export function enterRacing(scene, courseId = 'forest', options = {}) {
     const sun = new THREE.DirectionalLight(lighting.key.color, lighting.key.intensity);
     sun.position.fromArray(lighting.key.position);
     sun.castShadow = true;
-    const largeMonsterArena = raceMode === 'monster' && monsterArenaDefinition.targets.length > 70;
-    sun.shadow.mapSize.set(largeMonsterArena ? 1024 : 2048, largeMonsterArena ? 1024 : 2048);
+    // A 2048² map is disproportionately expensive for the arena-wide shadow
+    // camera. Monster's stylized presentation is stable at 1024² and leaves
+    // considerably more GPU time for the exterior cameras.
+    sun.shadow.mapSize.set(raceMode === 'monster' ? 1024 : 2048, raceMode === 'monster' ? 1024 : 2048);
     const drawnExtent = raceMode === 'draw'
       ? Math.max(0, ...course.points.flatMap((point) => [Math.abs(point[0]), Math.abs(point[1])])) + 22
       : 0;
@@ -2202,16 +2228,6 @@ export function enterRacing(scene, courseId = 'forest', options = {}) {
     sun.shadow.bias = -0.0004;
     root.add(sun);
     root.add(sun.target);
-    if (raceMode === 'monster') {
-      const lightX = Math.min(92, Math.abs(monsterArenaDefinition.bounds.softX) * 0.72);
-      const lightZ = Math.min(68, Math.abs(monsterArenaDefinition.bounds.softZ) * 0.72);
-      for (const [x, z, color] of [[-lightX, -lightZ, 0xff65b5], [lightX, -lightZ, 0x71e9ff], [-lightX, lightZ, 0xffd36f], [lightX, lightZ, 0xa985ff]]) {
-        const flood = new THREE.PointLight(color, 32, raceMode === 'monster' ? 132 : 92, 1.65);
-        flood.position.set(x, 16, z);
-        root.add(flood);
-      }
-    }
-
     const built = _buildCourse(course, root, owned, session.assetLease, monsterArenaDefinition);
     session.environment = built.environment;
     session.monsterArenaView = built.monsterArenaView || null;
@@ -2259,35 +2275,39 @@ export function enterRacing(scene, courseId = 'forest', options = {}) {
         : monsterVehicleId === 'tipsy'
           ? 'tipsyTumblerBody'
           : 'mightyMeowsterBody';
-      session.assetLease.whenReady(bodyAssetId).then((model) => {
-        if (state.racing !== session || session.disposed) return;
-        const attached = monsterVehicleId === 'cyber'
-          ? attachCyberTruckModel(session.cars[0]?.visual, model, owned)
-          : monsterVehicleId === 'tipsy'
-            ? attachTipsyTumblerModel(session.cars[0]?.visual, model)
-            : attachMightyMeowsterModel(session.cars[0]?.visual, model, owned);
-        if (!attached) {
-          session.assetError ||= `${session.monsterVehicleProfile.name} body could not be attached; procedural fallback remains active.`;
-        }
-      }).catch(() => {});
-      session.assetLease.whenReady('arenaTrafficKit').then((model) => {
-        if (state.racing !== session || session.disposed) return;
-        if (!attachMonsterTrafficModels(session.monsterArena, model)) {
-          session.assetError ||= 'Arena traffic kit could not be attached; procedural crushable fallback remains active.';
-        }
-      }).catch(() => {});
-      session.assetLease.whenReady('monsterEnvironmentKit').then((model) => {
-        if (state.racing !== session || session.disposed) return;
-        if (!attachMonsterEnvironmentKit(session.monsterArenaView, model)) {
-          session.assetError ||= 'Monster Arena environment kit could not be attached; authored loading fallback remains active.';
-        }
-      }).catch(() => {});
-      session.assetLease.whenReady('monsterAudienceBank').then((model) => {
-        if (state.racing !== session || session.disposed) return;
-        if (!attachMonsterAudience(session.monsterArenaView, model)) {
-          session.assetError ||= 'The optimized 3D arena audience could not be attached; crowd cards remain active.';
-        }
-      }).catch(() => {});
+      if (session.assetLease.ids.includes(bodyAssetId)) {
+        session.assetLease.whenReady(bodyAssetId).then((model) => {
+          if (state.racing !== session || session.disposed) return;
+          const attached = monsterVehicleId === 'cyber'
+            ? attachCyberTruckModel(session.cars[0]?.visual, model, owned)
+            : monsterVehicleId === 'tipsy'
+              ? attachTipsyTumblerModel(session.cars[0]?.visual, model)
+              : attachMightyMeowsterModel(session.cars[0]?.visual, model, owned);
+          if (!attached) {
+            session.assetError ||= `${session.monsterVehicleProfile.name} body could not be attached; procedural fallback remains active.`;
+          }
+        }).catch(() => {});
+      }
+      if (session.monsterProductionAssets) {
+        session.assetLease.whenReady('arenaTrafficKit').then((model) => {
+          if (state.racing !== session || session.disposed) return;
+          if (!attachMonsterTrafficModels(session.monsterArena, model)) {
+            session.assetError ||= 'Arena traffic kit could not be attached; procedural crushable fallback remains active.';
+          }
+        }).catch(() => {});
+        session.assetLease.whenReady('monsterEnvironmentKit').then((model) => {
+          if (state.racing !== session || session.disposed) return;
+          if (!attachMonsterEnvironmentKit(session.monsterArenaView, model)) {
+            session.assetError ||= 'Monster Arena environment kit could not be attached; authored loading fallback remains active.';
+          }
+        }).catch(() => {});
+        session.assetLease.whenReady('monsterAudienceBank').then((model) => {
+          if (state.racing !== session || session.disposed) return;
+          if (!attachMonsterAudience(session.monsterArenaView, model)) {
+            session.assetError ||= 'The optimized 3D arena audience could not be attached; crowd cards remain active.';
+          }
+        }).catch(() => {});
+      }
     }
     window.__kkRacing = {
       snapshot: () => _snapshot(state.racing),
@@ -2636,7 +2656,10 @@ export function tickRacing(dt, elapsedDt = dt) {
       }
     }
   }
-  if (monsterMode) {
+  // _startMonsterRound already installed the static countdown presentation.
+  // Rebuilding every destructible instance while the controls are locked only
+  // burns the exact opening frames that need to compile and upload textures.
+  if (monsterMode && session.phase !== 'countdown') {
     const collapseEvents = updateMonsterTargets(session.monsterArena, dt, session.cars[0]?.physics, {
       run: session.monsterScore,
       time: session.raceTime,
@@ -3154,6 +3177,9 @@ export function exitRacing(scene, explicitSession = null) {
   for (const material of session.owned?.materials || []) { try { material.dispose(); } catch (_) {} }
   for (const geometry of session.owned?.geometries || []) { try { geometry.dispose(); } catch (_) {} }
   try { session.assetLease?.release(); } catch (_) {}
+  if (session.monsterRenderScaleApplied && state.rendererService?.setDynamicResolutionScale) {
+    try { state.rendererService.setDynamicResolutionScale(session.savedDynamicResolutionScale || 1); } catch (_) {}
+  }
   if (typeof document !== 'undefined' && typeof location !== 'undefined' && new URLSearchParams(location.search).has('qa')) {
     document.body.dataset.racingCacheAfterExit = String(getRallyAssetCacheSnapshot().length);
   }

@@ -98,26 +98,35 @@ export const TRIALS_COURSE_ASSETS = Object.freeze({
   crown: Object.freeze(['environmentKitV2', 'trialsCrownBackdropV2', 'skyKakiLand', 'groundKakiLandV2Color', 'groundKakiLandV2Normal', 'groundKakiLandV2Roughness', 'kakiTurfNormal', 'kakiTurfRoughness', 'flagstone']),
 });
 
-export function rallyAssetIds(courseId, mode = 'circuit', monsterVehicleId = 'meowster') {
+export function rallyAssetIds(
+  courseId,
+  mode = 'circuit',
+  monsterVehicleId = 'meowster',
+  { monsterProductionAssets = false } = {},
+) {
   if (mode === 'crash') {
     return ['decalAtlas', 'crashVehicleKitV2', 'crashEnvironmentV2', 'skyTwilight'];
   }
-  // Monster Smash builds its own arena and never constructs the chapter rally
-  // environment. Loading that chapter's terrain, sky, and environment kit here
-  // wastes several megabytes and forces their texture uploads into the opening
-  // countdown. Keep this list limited to assets the arena actually consumes.
+  // Monster Smash's procedural/instanced arena is the release presentation:
+  // unlike the optional Blender replacements it stays below the exterior-view
+  // draw-call budget and is ready before the countdown starts. The full models
+  // remain available for explicit visual QA, but must not add 5.5 MB of GLBs,
+  // hundreds of draw calls, and background parsing to normal gameplay.
   if (mode === 'monster') {
+    const bodyAsset = monsterVehicleId === 'cyber'
+      ? 'cyberKakiBody'
+      : monsterVehicleId === 'tipsy'
+        ? (monsterProductionAssets ? 'tipsyTumblerBody' : null)
+        : 'mightyMeowsterBody';
     return [
       'monsterDecal',
       'monsterKeyArt',
-      monsterVehicleId === 'cyber'
-        ? 'cyberKakiBody'
-        : monsterVehicleId === 'tipsy'
-          ? 'tipsyTumblerBody'
-          : 'mightyMeowsterBody',
-      'arenaTrafficKit',
-      'monsterEnvironmentKit',
-      'monsterAudienceBank',
+      ...(bodyAsset ? [bodyAsset] : []),
+      ...(monsterProductionAssets ? [
+        'arenaTrafficKit',
+        'monsterEnvironmentKit',
+        'monsterAudienceBank',
+      ] : []),
       'monsterArenaBackdrop',
       'monsterArenaDirtColor',
       'monsterArenaDirtNormal',

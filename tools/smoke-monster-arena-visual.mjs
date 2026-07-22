@@ -86,7 +86,7 @@ async function prime(page) {
     localStorage.setItem('kks_introSeen', '1');
     localStorage.setItem('kks_forestTrialsIntroSeen_v1', '1');
   });
-  await page.goto(`http://127.0.0.1:${PORT}/index.html?qa=1&smoke=1`, {
+  await page.goto(`http://127.0.0.1:${PORT}/index.html?qa=1&smoke=1&monsterAssets=full`, {
     waitUntil: 'load', timeout: TIMEOUT,
   });
   await page.waitForFunction(

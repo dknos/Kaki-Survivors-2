@@ -377,20 +377,14 @@ export function createMonsterDestruction({ definition = CROWN_CHAOS_ARENA, root,
   explosions.renderOrder = 8;
 
   const renderMeshes = [bodies, roofs, canopies, panels, bumpers, wheels, debris, smoke, flameOuter, flameInner, explosions];
-  if (count > 70) {
-    // The grand yard's production shells still receive the truck/stadium
-    // shadow, but 109 independently moving casters would dominate the mobile
-    // and software-renderer shadow pass.
-    for (const mesh of renderMeshes) mesh.castShadow = false;
-  }
+  // The truck and stadium retain the grounding shadow. Re-rendering every
+  // destructible instance into the arena-wide shadow map roughly doubles the
+  // exterior triangle load, including invisible pooled debris and VFX.
+  for (const mesh of renderMeshes) mesh.castShadow = false;
   root.add(...renderMeshes);
-  const fireLights = Array.from({ length: count > 70 ? 3 : 4 }, (_, index) => {
-    const light = new THREE.PointLight(index % 2 ? 0xff4b16 : 0xffa126, 0, 13, 1.9);
-    light.name = `arena-pooled-fire-light-${index}`;
-    light.castShadow = false;
-    root.add(light);
-    return light;
-  });
+  // Fire is carried by the pooled emissive atlas. Point lights participate in
+  // every StandardMaterial shader even while their intensity is zero.
+  const fireLights = [];
   for (const target of targets) {
     const base = _targetColor(target);
     bodies.setColorAt(target.index, base);
@@ -1292,6 +1286,7 @@ export function updateMonsterDestruction(arena, dt, kart, options = {}) {
   _resolveDominoBodyContacts(arena);
   for (const target of arena.targets) {
     if (target.active === false) {
+      if (target.visualHidden) continue;
       const hidden = 0.0001;
       arena.bodies.setMatrixAt(target.index, _compose(target.spawnX, -30, target.spawnZ, target.spawnYaw, hidden, hidden, hidden));
       arena.roofs.setMatrixAt(target.index, _compose(target.spawnX, -30, target.spawnZ, target.spawnYaw, hidden, hidden, hidden));
@@ -1309,8 +1304,10 @@ export function updateMonsterDestruction(arena, dt, kart, options = {}) {
         arena.explosions.setMatrixAt(target.index * 4 + i, _compose(0, -30, 0, 0, hidden, hidden, hidden));
       }
       for (let i = 0; i < 3; i += 1) arena.debris.setMatrixAt(target.index * 3 + i, _compose(0, -30, 0, 0, hidden, hidden, hidden));
+      target.visualHidden = true;
       continue;
     }
+    target.visualHidden = false;
     if (target.dominoGroup) {
       _syncDominoPose(target);
     } else if (target.stackState === 'falling') {

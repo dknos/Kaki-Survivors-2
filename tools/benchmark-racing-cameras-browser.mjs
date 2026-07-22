@@ -14,7 +14,11 @@ const PORT = Number(process.env.PORT || 8896);
 const ORIGIN = `http://127.0.0.1:${PORT}`;
 const BACKEND = /^(?:webgpu|webgl)$/.test(process.env.BACKEND || '') ? process.env.BACKEND : 'webgl';
 const QA_SCENE = /^[a-z0-9-]+$/.test(process.env.SCENE || '') ? process.env.SCENE : 'monster-smash';
-const FRAMES = Math.max(60, Number(process.env.FRAMES || 180));
+const FRAMES = Math.max(1, Number(process.env.FRAMES || 180));
+const CAMERA_MODES = String(process.env.MODES || 'isometric,chase,driver_fpv')
+  .split(',')
+  .filter((mode) => ['isometric', 'chase', 'driver_fpv'].includes(mode));
+const MONSTER_ASSETS = process.env.MONSTER_ASSETS === 'full' ? 'full' : '';
 const PLAYWRIGHT = '/home/nemoclaw/node_modules/playwright';
 const CHROMIUM = '/home/nemoclaw/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome';
 const require = createRequire(import.meta.url);
@@ -84,7 +88,8 @@ try {
     localStorage.setItem('kks_introSeen', '1');
     localStorage.setItem('kks_racing_camera_mode_v1', 'chase');
   });
-  await page.goto(`${ORIGIN}/index.html?qa=${QA_SCENE}&renderer=${BACKEND}`, {
+  const monsterAssetsQuery = MONSTER_ASSETS ? `&monsterAssets=${MONSTER_ASSETS}` : '';
+  await page.goto(`${ORIGIN}/index.html?qa=${QA_SCENE}&renderer=${BACKEND}${monsterAssetsQuery}`, {
     waitUntil: 'load',
     timeout: 120000,
   });
@@ -93,6 +98,11 @@ try {
   if (actualBackend !== BACKEND) {
     throw new Error(`Requested ${BACKEND}, but renderer initialized ${actualBackend || 'an unknown backend'}`);
   }
+  const startup = await page.evaluate(() => ({
+    qaSetupDurationMs: window.__kkQa?.snapshot?.()?.setupDurationMs ?? null,
+    assets: window.__kkRacing?.snapshot?.()?.assets?.ids || [],
+    performance: window.__kkRacing?.snapshot?.()?.performance || null,
+  }));
   await page.evaluate(() => {
     const manager = window.kkState.racing.cameraManager;
     const originalUpdate = manager.update;
@@ -111,7 +121,7 @@ try {
   });
 
   const rows = [];
-  for (const mode of ['isometric', 'chase', 'driver_fpv']) {
+  for (const mode of CAMERA_MODES) {
     await page.evaluate((nextMode) => window.__kkRacing.setCameraMode(nextMode), mode);
     await page.waitForFunction((nextMode) => window.__kkRacing.snapshot().camera.mode === nextMode, mode);
     await page.evaluate(() => new Promise((resolve) => {
@@ -151,7 +161,14 @@ try {
       triangles: measured.render?.triangles ?? null,
     });
   }
-  console.log(JSON.stringify({ backend: actualBackend, scene: QA_SCENE, frames: FRAMES, rows }, null, 2));
+  console.log(JSON.stringify({
+    backend: actualBackend,
+    scene: QA_SCENE,
+    assetTier: MONSTER_ASSETS || 'performance',
+    frames: FRAMES,
+    startup,
+    rows,
+  }, null, 2));
 } finally {
   await browser?.close().catch(() => {});
   await new Promise((resolve) => server.close(resolve));

@@ -873,6 +873,7 @@ export function buildMonsterTruckVisual(options = {}) {
     frontZ: 1.62,
     palette: { tire: tireMaterial, rim: rimMaterial, accent: springMaterial },
     style: 'monster',
+    detail: 'pack',
   });
 
   const suspension = [];
@@ -983,6 +984,13 @@ export function buildMonsterTruckVisual(options = {}) {
     scale: 0.62,
   });
   const driverShadowProxy = _detailedDriverShadowProxy(registry, seatedDriver, bodyPivot, true);
+  // Monster already owns a cheap contact-shadow oval. Keeping every wheel,
+  // spring, tooth, driver part, and exhaust as an additional directional-light
+  // caster nearly doubles exterior draw calls; authored body meshes opt back
+  // into casting when their small GLB attaches.
+  bodyPivot.traverse((object) => {
+    if (object.isMesh) object.castShadow = false;
+  });
   const shadow = _makeShadow(registry, 2.65, 0.32);
   shadow.scale.set(1.06, 1.42, 1);
   root.add(shadow);

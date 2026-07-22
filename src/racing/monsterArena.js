@@ -392,7 +392,7 @@ function _buildRampReadability(definition, group, owned, assetLease) {
     const builtSides = new THREE.Mesh(sideGeometry, sideMaterial);
     builtSides.name = `arena-ramp-retaining-sides-${ramp.id}`;
     builtSides.scale.set(ramp.width, ramp.height, ramp.length);
-    builtSides.castShadow = true;
+    builtSides.castShadow = false;
     builtSides.receiveShadow = true;
     groupRamp.add(builtSides);
     const tireScars = new THREE.Mesh(scarGeometry, scarMaterial);
@@ -410,7 +410,7 @@ function _buildRampReadability(definition, group, owned, assetLease) {
     const lip = new THREE.Mesh(lipGeometry, lipMaterial);
     lip.position.set(0, ramp.height + 0.13, ramp.length * 0.5 - 0.12);
     lip.scale.x = Math.max(0.5, ramp.width - 0.65);
-    lip.castShadow = true;
+    lip.castShadow = false;
     groupRamp.add(lip);
     for (let stripe = 0; stripe < 3; stripe += 1) {
       const t = 0.64 + stripe * 0.1;
@@ -456,7 +456,7 @@ function _buildRampReadability(definition, group, owned, assetLease) {
   }
   for (const mesh of [edgeBeams, supportPosts]) {
     mesh.instanceMatrix.needsUpdate = true;
-    mesh.castShadow = true;
+    mesh.castShadow = false;
     mesh.receiveShadow = true;
     group.add(mesh);
   }
@@ -575,9 +575,9 @@ function _buildExteriorWorld(definition, group, owned, assetLease) {
   }
   trees.instanceMatrix.needsUpdate = true;
   trunks.instanceMatrix.needsUpdate = true;
-  trees.castShadow = true;
+  trees.castShadow = false;
   trees.receiveShadow = true;
-  trunks.castShadow = true;
+  trunks.castShadow = false;
   trunks.receiveShadow = true;
   group.add(trunks, trees);
 
@@ -607,8 +607,8 @@ function _buildExteriorWorld(definition, group, owned, assetLease) {
   });
   tentRoofs.instanceMatrix.needsUpdate = true;
   tentSides.instanceMatrix.needsUpdate = true;
-  tentRoofs.castShadow = true;
-  tentSides.castShadow = true;
+  tentRoofs.castShadow = false;
+  tentSides.castShadow = false;
   group.add(tentSides, tentRoofs);
 
   const backdropSource = assetLease?.textures?.monsterArenaBackdrop || null;
@@ -740,7 +740,7 @@ function _buildStadium(definition, group, owned, assetLease) {
 
   const stands = new THREE.InstancedMesh(standGeometry, concrete, standTransforms.length);
   stands.name = 'crown-chaos-grandstand-tiers';
-  stands.castShadow = true;
+  stands.castShadow = false;
   stands.receiveShadow = true;
   standTransforms.forEach((matrix, index) => stands.setMatrixAt(index, matrix));
   stands.instanceMatrix.needsUpdate = true;
@@ -758,7 +758,7 @@ function _buildStadium(definition, group, owned, assetLease) {
   });
   barriers.instanceMatrix.needsUpdate = true;
   barriers.instanceColor.needsUpdate = true;
-  barriers.castShadow = true;
+  barriers.castShadow = false;
   fallbackGroup.add(stands, barriers);
   group.add(crowds);
 
@@ -766,11 +766,11 @@ function _buildStadium(definition, group, owned, assetLease) {
   const lampMaterial = new THREE.MeshStandardMaterial({ color: 0xfff1c2, emissive: 0xffb75b, emissiveIntensity: 2.4, roughness: 0.18 });
   owned.materials.add(lampMaterial);
   const towers = [];
-  for (const [x, z, color] of [
-    [-(stadiumX - 7), -(stadiumZ - 8), 0xff63ad],
-    [stadiumX - 7, -(stadiumZ - 8), 0x67e9ff],
-    [-(stadiumX - 7), stadiumZ - 9, 0xffd36f],
-    [stadiumX - 7, stadiumZ - 9, 0xb18cff],
+  for (const [x, z] of [
+    [-(stadiumX - 7), -(stadiumZ - 8)],
+    [stadiumX - 7, -(stadiumZ - 8)],
+    [-(stadiumX - 7), stadiumZ - 9],
+    [stadiumX - 7, stadiumZ - 9],
   ]) {
     const tower = new THREE.Group();
     const pole = _ownedMesh(new THREE.CylinderGeometry(0.22, 0.34, 22, 8), towerMaterial, owned, { cast: true });
@@ -779,12 +779,9 @@ function _buildStadium(definition, group, owned, assetLease) {
     const lamp = _ownedMesh(new THREE.BoxGeometry(5.8, 1.3, 0.9), lampMaterial, owned, { cast: true });
     lamp.position.y = 22;
     tower.add(lamp);
-    const light = new THREE.PointLight(color, 18, 82, 1.8);
-    light.position.set(0, 21.5, 0);
-    tower.add(light);
     tower.position.set(x, 0, z);
     fallbackGroup.add(tower);
-    towers.push({ group: tower, light, lamp });
+    towers.push({ group: tower, light: null, lamp });
   }
 
   const jumbotron = new THREE.Group();
@@ -1328,7 +1325,7 @@ export function updateMonsterArena(arena, time, dt = 0, crowdPulse = 0) {
   arena.stadium.screenMaterial.emissiveIntensity = 0.48 + pulse * 1.4 + Math.sin(arena.time * 2.2) * 0.08;
   for (let i = 0; i < arena.stadium.towers.length; i += 1) {
     const tower = arena.stadium.towers[i];
-    tower.light.intensity = 16 + pulse * 14 + Math.sin(arena.time * 1.7 + i) * 1.5;
+    if (tower.light) tower.light.intensity = 16 + pulse * 14 + Math.sin(arena.time * 1.7 + i) * 1.5;
   }
   for (const bank of arena.audienceBanks || []) {
     const cheer = Math.sin(arena.time * (1.45 + pulse * 0.9) + bank.phase);

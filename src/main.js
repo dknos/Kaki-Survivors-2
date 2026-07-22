@@ -1277,7 +1277,12 @@ async function boot() {
       ].filter(Boolean);
       // The player and first three rivals use showcase meshes. Larger packs use
       // lightweight helmeted hero proxies so 12/16-car grids stay renderable.
-      const needed = roster.slice(0, Math.min(carCount, 4));
+      // Monster Smash seats lightweight helmeted driver proxies. Loading a
+      // showcase hero GLB here would delay entry for geometry that never enters
+      // the arena scene.
+      const needed = modeDef.vehicle === 'monster'
+        ? []
+        : roster.slice(0, Math.min(carCount, 4));
       await Promise.all(needed.map((avatar) => avatar.glb
         ? lazyLoadGLTF(`hero_${avatar.id}`, BASE + avatar.glb)
         : Promise.resolve(true)));

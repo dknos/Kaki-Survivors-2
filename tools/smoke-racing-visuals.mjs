@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { statSync } from 'node:fs';
 import { readFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -86,8 +87,11 @@ check('six rally courses and four isometric modes form 24 complete configuration
         expect(ids.includes('monsterKeyArt'), `${courseId}/monster is missing its arena key art`);
         expect(ids.includes('mightyMeowsterBody'), `${courseId}/monster is missing the default Mighty Meowster body`);
         expect(rallyAssetIds(courseId, modeId, 'cyber').includes('cyberKakiBody'), `${courseId}/monster cannot select Cyber Kaki`);
-        expect(rallyAssetIds(courseId, modeId, 'tipsy').includes('tipsyTumblerBody'), `${courseId}/monster cannot select Tipsy Tumbler`);
-        expect(ids.includes('arenaTrafficKit'), `${courseId}/monster is missing its destructible traffic kit`);
+        expect(!rallyAssetIds(courseId, modeId, 'tipsy').includes('tipsyTumblerBody'), `${courseId}/monster release still downloads the 3.2 MB Tipsy donor`);
+        const productionIds = rallyAssetIds(courseId, modeId, 'tipsy', { monsterProductionAssets: true });
+        expect(productionIds.includes('tipsyTumblerBody'), `${courseId}/monster full QA cannot select the authored Tipsy donor`);
+        expect(['arenaTrafficKit', 'monsterEnvironmentKit', 'monsterAudienceBank'].every((id) => productionIds.includes(id)), `${courseId}/monster full QA is missing production arena assets`);
+        expect(!ids.some((id) => ['arenaTrafficKit', 'monsterEnvironmentKit', 'monsterAudienceBank'].includes(id)), `${courseId}/monster release still downloads optional arena GLBs`);
         expect(ids.includes('monsterArenaBackdrop'), `${courseId}/monster is missing its exterior world plate`);
         expect(!ids.includes('environmentKitV2'), `${courseId}/monster still downloads the unused rally environment kit`);
         expect(!ids.some((id) => id.startsWith('ground')), `${courseId}/monster still downloads unused chapter terrain textures`);
@@ -96,6 +100,16 @@ check('six rally courses and four isometric modes form 24 complete configuration
     }
   }
   equal(configurations.length, 24, 'expected exactly 24 isometric rally configurations');
+});
+
+check('Monster release working sets stay below two megabytes', () => {
+  for (const vehicle of ['meowster', 'cyber', 'tipsy']) {
+    const ids = rallyAssetIds('forest', 'monster', vehicle);
+    const bytes = ids.reduce((total, id) => (
+      total + statSync(path.join(REPO_ROOT, RALLY_ASSET_MANIFEST[id].url)).size
+    ), 0);
+    expect(bytes < 2 * 1024 * 1024, `${vehicle} release payload grew to ${(bytes / 1024 / 1024).toFixed(2)} MiB`);
+  }
 });
 
 check('racing countdown follows wall time through expensive opening frames', () => {

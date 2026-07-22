@@ -86,8 +86,11 @@ export function createRallyAssetLease({
   renderer = null,
   rendererService = null,
   trials = false,
+  monsterProductionAssets = false,
 } = {}) {
-  const ids = trials ? trialsAssetIds(courseId) : rallyAssetIds(courseId, mode, monsterVehicleId);
+  const ids = trials
+    ? trialsAssetIds(courseId)
+    : rallyAssetIds(courseId, mode, monsterVehicleId, { monsterProductionAssets });
   const entries = ids.map((id) => _acquire(id, rendererService || renderer));
   const textureEntries = entries.filter((entry) => entry.kind === 'texture');
   const entriesById = Object.fromEntries(ids.map((id, index) => [id, entries[index]]));
