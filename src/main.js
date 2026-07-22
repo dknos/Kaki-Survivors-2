@@ -332,6 +332,20 @@ const _preferredBackend = readBackendPreference(
   window.location.search,
   getMeta().optRenderer,
 );
+let _frameRendererFailure = false;
+function _handleRendererFrameError(error) {
+  // Initialization failures already have a recovery screen. Runtime WebGPU
+  // validation/allocation failures used to only land in the console, leaving
+  // the menu or Draw Track handoff looking frozen. Promote the first one to
+  // the same actionable recovery UI and stop gameplay while it is visible.
+  if (_frameRendererFailure) return;
+  _frameRendererFailure = true;
+  if (state?.time) state.time.paused = true;
+  console.error('[renderer] Animation frame failed.', error);
+  _showRendererFailure(error, {
+    canSwitchToWebGL: rendererService.backend !== 'webgl',
+  });
+}
 const rendererService = createRendererService({
   canvas,
   preferredBackend: _preferredBackend,
@@ -371,6 +385,7 @@ const rendererService = createRendererService({
     activeScene: state.run?.stage?.id || state.mode || 'menu',
     activeMode: state.mode || 'menu',
   }),
+  onFrameError: _handleRendererFrameError,
   onBackendReady({ backend }) {
     _rendererBootLoader.textContent = `Preparing ${backend === 'webgpu' ? 'WebGPU' : 'WebGL 2'}…`;
   },
@@ -794,14 +809,35 @@ async function boot() {
   const _nextHubTransition = () => ++_hubTransitionId;
   const _isCurrentTransition = (id) => id === _hubTransitionId;
   const _canContinueRunStart = (id) => {
-    if (!_isCurrentTransition(id) || (state.time && state.time.paused)) return false;
+    if (!_isCurrentTransition(id)) return false;
     if (state.mode !== 'menu' && state.mode !== 'town') return false;
-    try { return !document.querySelector('[role="dialog"][aria-modal="true"]'); }
+    // Some older UI surfaces leave a hidden dialog node behind while they are
+    // closing. A hidden node must not silently veto Embark; only a dialog the
+    // player can actually see is an active modal.
+    try {
+      const dialog = document.querySelector('[role="dialog"][aria-modal="true"]');
+      if (!dialog) return true;
+      const style = window.getComputedStyle(dialog);
+      return style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) === 0;
+    }
     catch (_) { return true; }
   };
   const _startRun = async () => {
     if (state.started && state.mode === 'run') return;
     const transitionId = _nextHubTransition();
+    // Menu entry can follow a just-closed options panel. It is safe to clear
+    // that stale pause here because an actually visible modal is rejected by
+    // _canContinueRunStart above.
+    if (state.time) state.time.paused = false;
+    if (!_canContinueRunStart(transitionId)) return;
+    let _stageLoader = null;
+    try {
+      _stageLoader = document.createElement('div');
+      _stageLoader.id = 'kk-stage-loader';
+      _stageLoader.style.cssText = 'position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;z-index:9999;font-family:"Cinzel",serif;font-size:14px;letter-spacing:0.3em;color:rgba(236,230,213,0.55);text-transform:uppercase;pointer-events:auto;';
+      _stageLoader.textContent = 'Loading hero…';
+      document.body.appendChild(_stageLoader);
+    } catch (_) {}
     // iter 33y — ensure the selected avatar GLB is loaded BEFORE rebuildHero
     // runs (which clones from GLTF_CACHE). If the user picked a non-default
     // avatar in the carousel and clicked Play before its lazy fetch landed,
@@ -818,7 +854,10 @@ async function boot() {
         await _ensureSelectedAvatarLoaded(loadedAvatarId);
       }
     } catch (_) {}
-    if (!_canContinueRunStart(transitionId)) return;
+    if (!_canContinueRunStart(transitionId)) {
+      try { _stageLoader?.remove(); } catch (_) {}
+      return;
+    }
     try { _disposeUnselectedAvatars(); } catch (_) {}
     // Hotfix #151: load stage-specific enemy roster + decor kits before the
     // world spawns. preloadStage is idempotent (skips already-cached entries)
@@ -834,14 +873,7 @@ async function boot() {
     const _forcedForest = !!(_metaNow && (_metaNow.optDaily || _metaNow.optWeekly));
     const _selStage = _forcedForest ? STAGES[0] : selectedStage(STAGES);
     const _stageId = (_selStage && _selStage.id) || 'forest';
-    let _stageLoader = null;
-    try {
-      _stageLoader = document.createElement('div');
-      _stageLoader.id = 'kk-stage-loader';
-      _stageLoader.style.cssText = 'position:fixed;inset:0;background:#000;display:flex;align-items:center;justify-content:center;z-index:9999;font-family:"Cinzel",serif;font-size:14px;letter-spacing:0.3em;color:rgba(236,230,213,0.55);text-transform:uppercase;pointer-events:auto;';
-      _stageLoader.textContent = 'Loading stage…';
-      document.body.appendChild(_stageLoader);
-    } catch (_) {}
+    if (_stageLoader) _stageLoader.textContent = 'Loading stage…';
     try {
       try { await preloadStage(_stageId); } catch (e) { console.warn('[start.preloadStage]', e); }
       if (!_canContinueRunStart(transitionId)) return;
