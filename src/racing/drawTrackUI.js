@@ -27,7 +27,7 @@ import {
 } from './drawTrackStorage.js';
 
 const STYLE_ID = 'kdt-editor-style';
-const STYLE_URL = new URL('./drawTrack.css?v=20260721draw2', import.meta.url).href;
+const STYLE_URL = new URL('./drawTrack.css?v=20260722worldmap1', import.meta.url).href;
 const WIDTH_ORDER = Object.keys(TRACK_WIDTH_PRESETS);
 
 function clamp(value, min, max) {
@@ -372,6 +372,7 @@ export class DrawTrackUI {
       <aside class="kdt-inspector">
         <label class="kdt-name"><span>TRACK NAME</span><input type="text" maxlength="42" placeholder="Generated after your first loop"></label>
         <section class="kdt-theme-section"><div class="kdt-section-title"><b>01 · WORLD</b><span>Same line, a different adventure</span></div><div class="kdt-themes">${themeOptions}</div></section>
+        <section class="kdt-world-preview" data-role="world-preview" aria-label="Selected world map preview"><div class="kdt-world-preview-art" aria-hidden="true"><i></i><b></b><em></em></div><div><b data-role="world-venue">MEADOW RALLY PARK</b><span data-role="world-sky">HARVEST SKY</span><small>LIVE MAP &amp; SKY PREVIEW</small></div></section>
         <section class="kdt-size-section"><div class="kdt-section-title"><b>02 · TRACK SIZE</b><span>World footprint, not road width</span></div><div class="kdt-size-options">${sizeOptions}</div></section>
         <section class="kdt-width-section"><div class="kdt-section-title"><b>03 · ROAD WIDTH</b><span>Wheel changes this too</span></div><div class="kdt-width-options">${widthOptions}</div></section>
         <section class="kdt-tuning">
@@ -1160,6 +1161,17 @@ export class DrawTrackUI {
     this.root.querySelector('[data-setting="reverse"]').checked = this.draft.reverse;
     this.root.querySelectorAll('[data-modifier]').forEach((input) => { input.checked = !!this.draft.modifiers[input.dataset.modifier]; });
     const size = TRACK_SIZE_PRESETS[this.draft.sizeId];
+    const theme = DRAW_TRACK_THEMES[this.draft.themeId] || DRAW_TRACK_THEMES.countryside;
+    const worldPreview = this.root.querySelector('[data-role="world-preview"]');
+    if (worldPreview) {
+      worldPreview.dataset.mapKind = theme.mapKind || 'hills';
+      worldPreview.style.setProperty('--kdt-map-sky-top', theme.skyTop || '#78b9d0');
+      worldPreview.style.setProperty('--kdt-map-sky-horizon', theme.skyHorizon || '#f4c27b');
+      worldPreview.style.setProperty('--kdt-map-ground', theme.mapGround || '#667c4c');
+      worldPreview.style.setProperty('--kdt-map-accent', theme.mapAccent || '#ffe0a3');
+      worldPreview.querySelector('[data-role="world-venue"]').textContent = theme.venue || theme.name;
+      worldPreview.querySelector('[data-role="world-sky"]').textContent = theme.skyName || 'RALLY SKY';
+    }
     this.root.querySelector('[data-role="scale-name"]').textContent = size.label.toUpperCase();
     const layout = this.draft.layoutTransform;
     this.root.querySelector('[data-role="scale-size"]').textContent = this.closed
@@ -1641,21 +1653,57 @@ export class DrawTrackUI {
   }
 
   _drawGrid(ctx, width, height) {
-    ctx.fillStyle = '#182933';
+    const theme = DRAW_TRACK_THEMES[this.draft.themeId] || DRAW_TRACK_THEMES.countryside;
+    const horizon = height * 0.43;
+    const sky = ctx.createLinearGradient(0, 0, 0, horizon);
+    sky.addColorStop(0, theme.skyTop || '#78b9d0');
+    sky.addColorStop(1, theme.skyHorizon || '#f4c27b');
+    ctx.fillStyle = sky;
     ctx.fillRect(0, 0, width, height);
+    ctx.fillStyle = theme.mapGround || '#667c4c';
+    ctx.fillRect(0, horizon, width, height - horizon);
+    this._drawWorldMap(ctx, width, height, horizon, theme);
     ctx.lineWidth = 1;
     for (let x = 0; x <= width; x += 32) {
       ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height);
-      ctx.strokeStyle = x % 128 === 0 ? 'rgba(159,199,196,.14)' : 'rgba(159,199,196,.055)'; ctx.stroke();
+      ctx.strokeStyle = x % 128 === 0 ? 'rgba(255,248,218,.16)' : 'rgba(255,248,218,.065)'; ctx.stroke();
     }
     for (let y = 0; y <= height; y += 32) {
       ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y);
-      ctx.strokeStyle = y % 128 === 0 ? 'rgba(159,199,196,.14)' : 'rgba(159,199,196,.055)'; ctx.stroke();
+      ctx.strokeStyle = y % 128 === 0 ? 'rgba(255,248,218,.16)' : 'rgba(255,248,218,.065)'; ctx.stroke();
     }
     const gradient = ctx.createRadialGradient(width * 0.5, height * 0.48, 20, width * 0.5, height * 0.48, Math.max(width, height) * 0.7);
-    gradient.addColorStop(0, 'rgba(75,111,114,.08)');
-    gradient.addColorStop(1, 'rgba(3,10,14,.36)');
+    gradient.addColorStop(0, 'rgba(255,245,202,.08)');
+    gradient.addColorStop(1, 'rgba(3,10,14,.32)');
     ctx.fillStyle = gradient; ctx.fillRect(0, 0, width, height);
+  }
+
+  _drawWorldMap(ctx, width, height, horizon, theme) {
+    const accent = theme.mapAccent || '#ffe0a3';
+    const kind = theme.mapKind || 'hills';
+    ctx.save();
+    if (kind === 'coast') {
+      ctx.fillStyle = 'rgba(228,255,255,.58)'; ctx.fillRect(0, horizon + 10, width, height * .16);
+      ctx.strokeStyle = 'rgba(255,255,255,.6)'; ctx.lineWidth = 2;
+      for (let x = -20; x < width + 20; x += 36) { ctx.beginPath(); ctx.arc(x, horizon + 26, 19, Math.PI, Math.PI * 2); ctx.stroke(); }
+    } else if (kind === 'stadium') {
+      ctx.fillStyle = 'rgba(9,14,31,.34)'; ctx.beginPath(); ctx.ellipse(width * .5, horizon + 22, width * .52, height * .18, 0, Math.PI, 0); ctx.fill();
+      ctx.strokeStyle = accent; ctx.globalAlpha = .58; ctx.lineWidth = 2;
+      for (let x = width * .12; x < width * .92; x += width * .16) { ctx.beginPath(); ctx.moveTo(x, horizon + 14); ctx.lineTo(x + 12, horizon - 36); ctx.lineTo(x + 24, horizon + 14); ctx.stroke(); }
+    } else if (kind === 'forest') {
+      ctx.fillStyle = 'rgba(9,38,35,.55)';
+      for (let x = -15; x < width + 20; x += 27) { const tall = 28 + ((x * 13) % 31); ctx.beginPath(); ctx.moveTo(x, horizon + 13); ctx.lineTo(x + 13, horizon - tall); ctx.lineTo(x + 27, horizon + 13); ctx.fill(); }
+    } else if (kind === 'skyline') {
+      ctx.fillStyle = 'rgba(20,27,37,.5)';
+      for (let x = 0; x < width; x += 30) { const tower = 18 + ((x * 7) % 43); ctx.fillRect(x, horizon - tower, 24, tower + 16); }
+    } else {
+      ctx.fillStyle = kind === 'mesa' ? 'rgba(117,61,37,.54)' : 'rgba(35,67,80,.36)';
+      ctx.beginPath(); ctx.moveTo(0, horizon + 18);
+      for (let x = 0; x <= width; x += width / 7) { const peak = kind === 'mountains' ? 42 + (x % 3) * 12 : 20 + (x % 4) * 8; ctx.lineTo(x + width / 14, horizon - peak); }
+      ctx.lineTo(width, horizon + 22); ctx.closePath(); ctx.fill();
+    }
+    ctx.globalAlpha = .66; ctx.fillStyle = accent; ctx.beginPath(); ctx.arc(width * .82, height * .17, Math.max(12, width * .035), 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
   }
 
   _trace(ctx, points, close) {

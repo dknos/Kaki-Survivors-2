@@ -33,12 +33,15 @@ export class IsometricCameraRig {
     let roll;
 
     if (vehicle.trials) {
-      const depth = vehicle.profileId === 'pocket_pouncer' ? 33 : 36;
-      const height = 7.6 + speedRatio * 1.2 + clamp(air * 0.06, 0, 2.4);
+      // Trials is deliberately a 2.5D side-scroller: keep the lens close to the
+      // rider's height so jumps read against the painted horizon rather than a
+      // top-down track. Chase remains available as an optional camera mode.
+      const depth = vehicle.profileId === 'pocket_pouncer' ? 38 : 41;
+      const height = 2.85 + speedRatio * 0.42 + clamp(air * 0.12, 0, 0.42);
       const lookAhead = clamp((vehicle.velocity.x || 0) * 0.27, -3, 9.5);
       this.focus.set(
         vehicle.position.x + lookAhead + shakeX * 0.35,
-        vehicle.position.y - vehicle.rideHeight * 0.38 + 0.55 + shakeY * 0.28,
+        vehicle.position.y - vehicle.rideHeight * 0.38 + 1.35 + shakeY * 0.28,
         vehicle.position.z,
       );
       this.desiredPosition.set(
@@ -46,7 +49,7 @@ export class IsometricCameraRig {
         vehicle.position.y - vehicle.rideHeight * 0.38 + height + shakeY,
         vehicle.position.z + depth + shakeZ,
       );
-      frustum = 12.4 + speedRatio * 2 + clamp(air * 0.12, 0, 4.2) - fx.punch * 0.7;
+      frustum = 10.8 + speedRatio * 1.25 + clamp(air * 0.18, 0, 1.2) - fx.punch * 0.55;
       damping = vehicle.grounded ? 10.8 : 6.6;
       roll = reducedMotion ? 0 : fx.roll + clamp((vehicle.pitchVelocity || 0) * 0.0022, -0.018, 0.018);
     } else {

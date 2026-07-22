@@ -325,7 +325,9 @@ export class RacingCameraManager {
   _updateHud() {
     if (!this.hudRoot) return;
     this.hudRoot.dataset.cameraMode = this.mode;
-    const label = RACING_CAMERA_LABELS[this.mode] || this.mode;
+    const label = this.trackBinding?.mode === 'trials' && this.mode === RacingCameraMode.ISOMETRIC
+      ? 'SIDE VIEW'
+      : RACING_CAMERA_LABELS[this.mode] || this.mode;
     const strong = this.hudRoot.querySelector('.kkr-camera-cycle strong');
     if (strong) strong.textContent = label;
     const button = this.hudRoot.querySelector('.kkr-camera-cycle');

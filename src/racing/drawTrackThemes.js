@@ -6,41 +6,49 @@ export const DRAW_TRACK_THEMES = Object.freeze({
   countryside: Object.freeze({
     id: 'countryside', name: 'Kaki Countryside', short: 'COUNTRYSIDE', courseId: 'forest',
     icon: '🌾', road: 0x67513e, shoulder: 0x4b5f36, ground: 0x6f8a4d, curb: 0xffe2a4, accent: 0xffa85e,
+    venue: 'MEADOW RALLY PARK', skyName: 'HARVEST SKY', mapKind: 'hills', skyTop: '#78b9d0', skyHorizon: '#f4c27b', mapGround: '#667c4c', mapAccent: '#ffe0a3',
     detail: 'Fern banks, hay bales, timber signs and golden rally light.',
   }),
   forest: Object.freeze({
     id: 'forest', name: 'Forest Rally', short: 'FOREST', courseId: 'twilight',
     icon: '🌲', road: 0x3e4645, shoulder: 0x294438, ground: 0x355b45, curb: 0xd8f2bd, accent: 0x79e8b2,
+    venue: 'MOSSBELL STADIUM', skyName: 'LANTERN TWILIGHT', mapKind: 'forest', skyTop: '#1f3445', skyHorizon: '#83986e', mapGround: '#23493d', mapAccent: '#b7edaf',
     detail: 'Deep trees, wet stone, lantern gates and mossy barriers.',
   }),
   desert: Object.freeze({
     id: 'desert', name: 'Desert Dust', short: 'DESERT', courseId: 'cinder',
     icon: '☀', road: 0x594537, shoulder: 0x9a5f38, ground: 0xb67643, curb: 0xffd07a, accent: 0xff7a3d,
+    venue: 'SUNPAW DUST BOWL', skyName: 'COPPER SUNSET', mapKind: 'mesa', skyTop: '#d79e61', skyHorizon: '#efc47d', mapGround: '#b77443', mapAccent: '#ffe09a',
     detail: 'Sun-baked dirt, sandstone markers and enormous dust plumes.',
   }),
   snow: Object.freeze({
     id: 'snow', name: 'Snowy Mountain', short: 'SNOW', courseId: 'cave',
     icon: '❄', road: 0x4c5561, shoulder: 0x9cabb7, ground: 0xcbd8df, curb: 0xf7fbff, accent: 0x77dfff,
+    venue: 'FROSTBITE BOWL', skyName: 'POLAR DAWN', mapKind: 'mountains', skyTop: '#6ea7c9', skyHorizon: '#ddecf2', mapGround: '#b9ced5', mapAccent: '#ffffff',
     detail: 'Icy shoulders, quarry cliffs, snow flags and cold blue light.',
   }),
   neon: Object.freeze({
     id: 'neon', name: 'Neon Night', short: 'NEON', courseId: 'void',
     icon: '✦', road: 0x242234, shoulder: 0x30244c, ground: 0x18132b, curb: 0x7aeaff, accent: 0xff66c7,
+    venue: 'NEON PAW SPEEDWAY', skyName: 'VIOLET NIGHT', mapKind: 'stadium', skyTop: '#1e1647', skyHorizon: '#864b9d', mapGround: '#18132b', mapAccent: '#7aeaff',
     detail: 'Glowing rails, synth-night haze and ultraviolet grandstands.',
   }),
   coastal: Object.freeze({
     id: 'coastal', name: 'Coastal Run', short: 'COAST', courseId: 'kakiland',
     icon: '≈', road: 0xd1b889, shoulder: 0x79a868, ground: 0x7dc2a3, curb: 0xffffff, accent: 0x35cfe0,
+    venue: 'SEAGLASS BOARDWALK', skyName: 'OCEAN BREEZE', mapKind: 'coast', skyTop: '#79c8df', skyHorizon: '#c9efd7', mapGround: '#68ad95', mapAccent: '#e8ffff',
     detail: 'Bright boardwalk colors, sea-glass signs and breezy overlooks.',
   }),
   industrial: Object.freeze({
     id: 'industrial', name: 'Industrial Wreckyard', short: 'WRECKYARD', courseId: 'cave',
     icon: '⚙', road: 0x35383d, shoulder: 0x544b43, ground: 0x62594e, curb: 0xffc857, accent: 0xff6d45,
+    venue: 'MOONPAW WRECKYARD', skyName: 'FLOODLIGHT SHIFT', mapKind: 'skyline', skyTop: '#273548', skyHorizon: '#9c7359', mapGround: '#55514b', mapAccent: '#ffc857',
     detail: 'Containers, work lights, concrete walls and scrapyard clutter.',
   }),
   dirt: Object.freeze({
     id: 'dirt', name: 'Monster Smash Dirt Arena', short: 'DIRT ARENA', courseId: 'cinder',
     icon: '✹', road: 0x6a4931, shoulder: 0x8c5a32, ground: 0x754428, curb: 0xffe066, accent: 0xff4f8b,
+    venue: 'CROWN CHAOS COLISEUM', skyName: 'SHOWTIME FLOODLIGHTS', mapKind: 'stadium', skyTop: '#26334a', skyHorizon: '#e27a54', mapGround: '#704228', mapAccent: '#ffe066',
     detail: 'Chunky dirt, tire stacks, launch paint and demolition-show energy.',
   }),
 });

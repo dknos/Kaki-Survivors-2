@@ -73,7 +73,7 @@ async function boot(page) {
     localStorage.setItem('kks_introSeen', '1');
     localStorage.setItem('kks_forestTrialsIntroSeen_v1', '1');
   });
-  await page.goto(`${ORIGIN}/index.html?qa=1&drawSmoke=1`, { waitUntil: 'load', timeout: 90000 });
+  await page.goto(`${ORIGIN}/index.html?qa=1&drawSmoke=1&renderer=webgl`, { waitUntil: 'load', timeout: 90000 });
   await page.waitForFunction(() => typeof window.kkStartRacing === 'function' && !!document.querySelector('.kkv2-navitem[data-nav="racing"]'), null, { timeout: 90000 });
 }
 

@@ -172,7 +172,7 @@ export function attachRacingCameraManager(session, host = {}) {
     : circuitVehicleBinding(session, profile);
   manager.bindTrack(trackBinding(session));
   manager.bindVehicle(vehicle);
-  manager.initialize(session.raceMode === 'crash' ? 'chase' : undefined);
+  manager.initialize(session.raceMode === 'crash' ? 'chase' : session.raceMode === 'trials' ? 'isometric' : undefined);
   session.cameraHost = host;
   session.cameraManager = manager;
   return manager;

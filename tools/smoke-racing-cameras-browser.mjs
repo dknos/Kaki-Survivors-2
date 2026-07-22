@@ -16,6 +16,7 @@ const SHOTS = Object.freeze({
   chase: '/tmp/kks-camera-chase.png',
   fpv: '/tmp/kks-camera-fpv.png',
   monster: '/tmp/kks-camera-monster-fpv.png',
+  trialsSideView: '/tmp/kks-camera-trials-side-view.png',
   trialsTouch: '/tmp/kks-camera-trials-touch.png',
   drawFpv: '/tmp/kks-camera-draw-fpv.png',
 });
@@ -157,7 +158,7 @@ try {
     localStorage.setItem('kks_forestTrialsIntroSeen_v1', '1');
     localStorage.setItem('kks_racing_camera_mode_v1', 'isometric');
   });
-  await page.goto(ORIGIN + '/index.html?qa=1&cameraSmoke=1', { waitUntil: 'load', timeout: 90000 });
+  await page.goto(ORIGIN + '/index.html?qa=1&cameraSmoke=1&renderer=webgl', { waitUntil: 'load', timeout: 90000 });
   await page.waitForFunction(() => typeof window.kkStartRacing === 'function', null, { timeout: 90000 });
 
   await page.evaluate(() => window.kkStartRacing('forest', { mode: 'circuit', carCount: 4 }));
@@ -242,6 +243,9 @@ try {
   await page.evaluate(() => window.__kkRacing.skipCountdown());
   let trials = await cameraState(page);
   assert(trials.camera.available.join(',') === 'isometric,chase', 'Trials camera availability is wrong');
+  assertCamera(trials, 'isometric', 'orthographic');
+  assert(trials.buttonText === 'SIDE VIEW', 'Trials did not expose the dedicated side-view camera label');
+  await page.screenshot({ path: SHOTS.trialsSideView });
   const refusedFpv = await page.evaluate(() => window.__kkRacing.setCameraMode('driver_fpv'));
   assert(refusedFpv === false, 'Trials incorrectly accepted Driver FPV');
   await page.setViewportSize({ width: 844, height: 390 });
