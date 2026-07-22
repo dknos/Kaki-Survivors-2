@@ -57,7 +57,7 @@ import { showCodex, hideCodex, isCodexOpen } from './codex.js';
 import { initDamageNumbers, updateDamageNumbers } from './damageNumbers.js';
 import { initFX, updateFX, resetFX } from './fx.js';
 import { initVFXBurst, updateVFXBurst, resetVFXBurst, warmVFXBurst } from './vfxBurst.js';
-import { initChests, tickChests, resetChests, spawnAt as spawnChestAt } from './chest.js';
+import { initChests, tickChests, resetChests, spawnAt as spawnChestAt, warmChestVisuals } from './chest.js';
 import { disposeBossTelegraphs, initBossTelegraphs, updateBossTelegraphs, resetBossTelegraphs } from './bossTelegraphs.js';
 import { initDestructibles, resetDestructibles, syncDestructiblesVisibility } from './destructibles.js';
 import { initPerfHUD, updatePerfHUD, perfStart, perfMark, _perfHUDSetProfilerOn } from './perfHUD.js';
@@ -78,7 +78,7 @@ import { playCutscene } from './cutscene.js';
 import { showSketchbook } from './sketchbook.js';
 import { showYarnDart } from './yarndart.js';
 import { showTeaSteep } from './teasteep.js';
-import { initTotems, tickTotems, resetTotems } from './totems.js';
+import { initTotems, tickTotems, resetTotems, warmTotemVisuals } from './totems.js';
 import { initPylons, tickPylons, resetPylons } from './pylons.js';
 import { initBells, tickBells, resetBells } from './bells.js';
 import { initEnemyTells, updateEnemyTells, resetEnemyTells } from './enemyTells.js';
@@ -929,7 +929,9 @@ async function boot() {
       // multi-second pipeline-creation hitch on either backend.
       if (_stageLoader) _stageLoader.textContent = 'Warming stage graphics…';
       try {
-        await warmSpritePools(() => rendererService.pipeline.compile(scene, camera));
+        await warmSpritePools(() => warmChestVisuals(() => warmTotemVisuals(
+          () => rendererService.pipeline.compile(scene, camera),
+        )));
       } catch (error) {
         console.warn('[start.warmStageGraphics]', error);
       }

@@ -25,6 +25,7 @@ const DIST_FROM_HERO_MIN = 22;   // never spawn too close to start
 const DIST_FROM_HERO_MAX = 42;
 
 let _scene = null;
+let _warmTotem = null;
 
 function _pickTotemPos() {
   // Pick a position 22-42u from hero. Try a few times to avoid stacking.
@@ -99,6 +100,24 @@ function _makeTotemMesh() {
   pl.position.y = 2.4;
   g.add(pl);
   return g;
+}
+
+/** Prepare the lazily-created Totem material family while the stage loader is up. */
+export async function warmTotemVisuals(warm) {
+  if (!_scene || typeof warm !== 'function') return false;
+  if (!_warmTotem) {
+    _warmTotem = _makeTotemMesh();
+    _warmTotem.name = 'totem:pipeline-warmup';
+    _warmTotem.traverse((object) => { if (object?.isMesh) object.frustumCulled = false; });
+  }
+  _warmTotem.position.set(0, -10000, 0);
+  _scene.add(_warmTotem);
+  try {
+    await warm();
+    return true;
+  } finally {
+    _warmTotem.removeFromParent();
+  }
 }
 
 function _spawnOne() {

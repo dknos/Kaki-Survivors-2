@@ -22,6 +22,7 @@ const CHEST_Y = 0.5;
 // has its own group; small count so no need to over-engineer).
 const _chests = [];     // {group, x, z, alive, t}
 let _scene = null;
+let _warmChest = null;
 
 function _makeChestMesh(assetKey = 'chest') {
   const g = new THREE.Group();
@@ -92,6 +93,28 @@ function _makeChestMesh(assetKey = 'chest') {
   g.userData.marker = marker;
   g.userData.twinkle = twinkle;
   return g;
+}
+
+/**
+ * Warm the reward chest and marker before the first live drop. Lockdown and
+ * elite rewards otherwise create their first TSL pickup-marker pipeline during
+ * a combat frame. The sample stays off-world and is removed immediately.
+ */
+export async function warmChestVisuals(warm) {
+  if (!_scene || typeof warm !== 'function') return false;
+  if (!_warmChest) {
+    _warmChest = _makeChestMesh();
+    _warmChest.name = 'chest:pipeline-warmup';
+    _warmChest.traverse((object) => { if (object?.isMesh) object.frustumCulled = false; });
+  }
+  _warmChest.position.set(0, -10000, 0);
+  _scene.add(_warmChest);
+  try {
+    await warm();
+    return true;
+  } finally {
+    _warmChest.removeFromParent();
+  }
 }
 
 export function initChests(scene) {
