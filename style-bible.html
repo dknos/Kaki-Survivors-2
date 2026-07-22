@@ -1,0 +1,253 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Kitty Kaki Survivors — Style Bible (Live)</title>
+<style>
+  :root {
+    --paper:      #f3e8cf;
+    --ink:        #231a14;
+    --warm-tan:   #d99b54;
+    --tea-amber:  #c98a3a;
+    --sakura:     #e8a3c7;
+    --sage:       #8aaa6a;
+    --indigo:     #384a78;
+    --ember:      #ff7a3a;
+    --highlight:  #fff9e6;
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: ui-serif, Georgia, "Iowan Old Style", "Palatino Linotype", serif;
+    line-height: 1.55;
+  }
+  body { max-width: 1024px; margin: 0 auto; padding: 48px 32px 96px; }
+  h1, h2, h3 { font-family: "Cinzel Decorative", ui-serif, serif; letter-spacing: 0.06em; margin-top: 2.2em; }
+  h1 { font-size: 44px; margin-top: 0; }
+  h2 { font-size: 26px; border-bottom: 2px solid var(--ink); padding-bottom: 6px; }
+  h3 { font-size: 18px; }
+  p, li { font-size: 16px; }
+  code { font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 14px; padding: 1px 5px; background: #00000010; border-radius: 4px; }
+
+  /* Palette swatch grid */
+  .palette { display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px; margin: 22px 0; }
+  .swatch {
+    border: 2px solid var(--ink);
+    border-radius: 6px;
+    padding: 14px;
+    min-height: 110px;
+    display: flex; flex-direction: column; justify-content: space-between;
+    font-family: ui-monospace, monospace;
+    font-size: 13px;
+  }
+  .swatch .label { font-family: inherit; font-weight: 700; font-size: 13px; }
+  .swatch .hex { opacity: 0.65; }
+
+  /* Line-weight reference */
+  .lines { display: grid; grid-template-columns: 200px 1fr; gap: 10px 22px; align-items: center; margin: 18px 0; }
+  .lines .swl { background: var(--ink); border-radius: 2px; }
+
+  /* Shadow demo */
+  .demo-row { display: flex; gap: 24px; flex-wrap: wrap; margin: 18px 0; }
+  .demo-card {
+    width: 220px; padding: 18px;
+    border: 2px solid var(--ink); border-radius: 8px;
+    background: var(--paper);
+  }
+  .demo-card svg { display: block; margin: 8px auto; }
+  .caption { font-size: 13px; opacity: 0.75; text-align: center; }
+
+  /* Perspective diagram */
+  .iso-grid {
+    width: 280px; height: 200px; margin: 8px auto;
+    background:
+      linear-gradient(135deg, transparent 49.5%, var(--ink) 49.5% 50.5%, transparent 50.5%) 0 0/40px 40px,
+      linear-gradient(45deg, transparent 49.5%, var(--ink) 49.5% 50.5%, transparent 50.5%) 0 0/40px 40px;
+    opacity: 0.55;
+    border: 2px solid var(--ink);
+  }
+
+  /* Big do/don't checklist */
+  .checklist { columns: 2; column-gap: 24px; }
+  .checklist li { break-inside: avoid; margin-bottom: 6px; }
+
+  .commission-table { width: 100%; border-collapse: collapse; margin: 14px 0; }
+  .commission-table th, .commission-table td { border: 1px solid var(--ink); padding: 8px 12px; text-align: left; font-size: 14px; }
+  .commission-table th { background: var(--tea-amber); color: var(--paper); font-family: "Cinzel Decorative", serif; letter-spacing: 0.04em; }
+  .commission-table tr:nth-child(even) td { background: #00000008; }
+
+  /* Subtle paper grain overlay using a CSS noise (procedural) */
+  body::after {
+    content: "";
+    position: fixed; inset: 0; pointer-events: none;
+    background-image: radial-gradient(rgba(35,26,20,0.08) 1px, transparent 1px);
+    background-size: 3px 3px;
+    mix-blend-mode: multiply;
+    opacity: 0.35;
+  }
+</style>
+</head>
+<body>
+
+<h1>Kitty Kaki — Style Bible (Live)</h1>
+<p><strong>For Oekaki Connect contributors.</strong> Read this before drawing.
+Text version: <code>STYLE_BIBLE.md</code>. This page renders the actual
+palette values so you can color-pick directly. Squint at the swatches before
+committing time on a commission.</p>
+
+<h2>1. Palette</h2>
+<p>Eight ramps + one highlight + one shadow. No off-palette colors.</p>
+<div class="palette">
+  <div class="swatch" style="background:var(--paper);color:var(--ink);">
+    <div class="label">Paper</div><div class="hex">#f3e8cf</div>
+  </div>
+  <div class="swatch" style="background:var(--ink);color:var(--paper);">
+    <div class="label">Ink</div><div class="hex">#231a14</div>
+  </div>
+  <div class="swatch" style="background:var(--warm-tan);color:var(--ink);">
+    <div class="label">Warm Tan</div><div class="hex">#d99b54</div>
+  </div>
+  <div class="swatch" style="background:var(--tea-amber);color:var(--paper);">
+    <div class="label">Tea Amber</div><div class="hex">#c98a3a</div>
+  </div>
+  <div class="swatch" style="background:var(--sakura);color:var(--ink);">
+    <div class="label">Sakura</div><div class="hex">#e8a3c7</div>
+  </div>
+  <div class="swatch" style="background:var(--sage);color:var(--ink);">
+    <div class="label">Sage</div><div class="hex">#8aaa6a</div>
+  </div>
+  <div class="swatch" style="background:var(--indigo);color:var(--paper);">
+    <div class="label">Indigo Wash</div><div class="hex">#384a78</div>
+  </div>
+  <div class="swatch" style="background:var(--ember);color:var(--paper);">
+    <div class="label">Ember</div><div class="hex">#ff7a3a</div>
+  </div>
+  <div class="swatch" style="background:var(--highlight);color:var(--ink);">
+    <div class="label">Highlight (warm bone)</div><div class="hex">#fff9e6</div>
+  </div>
+</div>
+
+<h2>2. Line weight</h2>
+<p>One pen. One weight per role. Stop using brush size as a stylistic variable.</p>
+<div class="lines">
+  <div>Primary outline · 4 px</div>
+  <div class="swl" style="height:4px; width:240px;"></div>
+  <div>Secondary detail · 2 px</div>
+  <div class="swl" style="height:2px; width:240px;"></div>
+  <div>Whisker / hint · 1 px</div>
+  <div class="swl" style="height:1px; width:240px;"></div>
+</div>
+<p style="opacity:0.75;font-size:14px;">Reference is at 1024-tall canvas. Scale linearly for other resolutions.</p>
+
+<h2>3. Shadow + highlight (single angle, flat)</h2>
+<p>Light from upper-left. Shadow falls lower-right. Flat — no gradients.</p>
+<div class="demo-row">
+  <div class="demo-card">
+    <svg width="160" height="160" viewBox="-80 -80 160 160">
+      <!-- shadow under -->
+      <ellipse cx="14" cy="48" rx="50" ry="10" fill="#231a14" opacity="0.35"/>
+      <!-- main body -->
+      <circle r="50" fill="#d99b54" stroke="#231a14" stroke-width="4"/>
+      <!-- shadow facet (single flat shape) -->
+      <path d="M 50 0 A 50 50 0 0 1 -14 48 L 50 48 Z" fill="#231a14" opacity="0.25"/>
+      <!-- highlight -->
+      <ellipse cx="-22" cy="-22" rx="14" ry="8" fill="#fff9e6"/>
+    </svg>
+    <div class="caption">Round form — single oval highlight + lower-right shadow facet.</div>
+  </div>
+  <div class="demo-card">
+    <svg width="160" height="160" viewBox="-80 -80 160 160">
+      <ellipse cx="14" cy="48" rx="50" ry="8" fill="#231a14" opacity="0.30"/>
+      <rect x="-50" y="-40" width="100" height="80" fill="#8aaa6a" stroke="#231a14" stroke-width="4"/>
+      <rect x="-50" y="-40" width="36" height="80" fill="#231a14" opacity="0.18"/>
+      <rect x="-48" y="-38" width="22" height="6" fill="#fff9e6"/>
+    </svg>
+    <div class="caption">Flat form — single facet shadow on facing side + thin highlight band.</div>
+  </div>
+  <div class="demo-card">
+    <svg width="160" height="160" viewBox="-80 -80 160 160">
+      <ellipse cx="14" cy="50" rx="44" ry="8" fill="#231a14" opacity="0.30"/>
+      <path d="M -40 40 L 0 -40 L 40 40 Z" fill="#e8a3c7" stroke="#231a14" stroke-width="4"/>
+      <path d="M 0 -40 L 40 40 L 6 40 Z" fill="#231a14" opacity="0.22"/>
+      <circle cx="-10" cy="-15" r="6" fill="#fff9e6"/>
+    </svg>
+    <div class="caption">Pointed form — same upper-left highlight, same lower-right shadow side.</div>
+  </div>
+</div>
+
+<h2>4. Perspective &amp; framing</h2>
+<p>Game uses two cameras. Brief each asset against the right one.</p>
+<div class="demo-row">
+  <div class="demo-card">
+    <div class="caption" style="font-family:'Cinzel Decorative',serif;letter-spacing:0.08em;">A. Horde view</div>
+    <div class="iso-grid" style="background:
+      linear-gradient(transparent 49%, var(--ink) 49% 51%, transparent 51%) 0 0/40px 40px,
+      linear-gradient(90deg, transparent 49%, var(--ink) 49% 51%, transparent 51%) 0 0/40px 40px;"></div>
+    <div class="caption">Orthographic top-down, ~60° tilt. Read by silhouette + palette. Faces secondary.</div>
+  </div>
+  <div class="demo-card">
+    <div class="caption" style="font-family:'Cinzel Decorative',serif;letter-spacing:0.08em;">B. House interior</div>
+    <div class="iso-grid"></div>
+    <div class="caption">Orthographic iso, ~30° tilt. 3/4 face matters. Slight foreshortening, never extreme.</div>
+  </div>
+</div>
+
+<h2>5. Material rule</h2>
+<p>Flat-shaded 3D meshes with hand-drawn 2D decals layered on top. You will
+mostly be drawing the 2D decals; the dev handles the 3D base.</p>
+<table class="commission-table">
+  <thead><tr><th>Element</th><th>Asset type</th><th>Who makes it</th></tr></thead>
+  <tbody>
+    <tr><td>Room walls / floor</td><td>3D mesh (Quaternius)</td><td>Dev</td></tr>
+    <tr><td>Furniture geometry</td><td>3D mesh (Quaternius first)</td><td>Dev; commission overrides later</td></tr>
+    <tr><td>Wall sketches</td><td>PNG decal</td><td>Collective</td></tr>
+    <tr><td>Rugs &amp; paper stacks</td><td>PNG decal on flat 3D</td><td>Collective</td></tr>
+    <tr><td>Kitty's face</td><td>PNG decal on mesh head</td><td>Collective</td></tr>
+    <tr><td>Particle FX</td><td>Canvas-painted atlas</td><td>Engine</td></tr>
+  </tbody>
+</table>
+
+<h2>6. Commission ladder</h2>
+<table class="commission-table">
+  <thead><tr><th>Tier</th><th>Scope</th><th>Pay (USD)</th><th>Turnaround</th></tr></thead>
+  <tbody>
+    <tr><td>Micro</td><td>1 prop sheet or 1 icon set (6 icons)</td><td>$25–50</td><td>1-2 days</td></tr>
+    <tr><td>Small</td><td>1 prop cluster or 1 vignette decal</td><td>$75–150</td><td>3-5 days</td></tr>
+    <tr><td>Room</td><td>1 full room kit + variants</td><td>$200–400</td><td>1 week</td></tr>
+    <tr><td>Hero</td><td>Anchor key-art + style co-direction</td><td>$500+</td><td>2 weeks</td></tr>
+  </tbody>
+</table>
+
+<h2>7. First-wave commission queue</h2>
+<ol>
+  <li><strong>Paper-grain texture</strong> (Micro) — shared overlay; everyone draws against this.</li>
+  <li><strong>Kitty Kaki idle/interaction sheet</strong> (Small) — front + 3/4 + back stances.</li>
+  <li><strong>House key art</strong> (Room) — anchor visual all subsequent rooms reference.</li>
+  <li><strong>12 reusable prop decals</strong> (Micro × 3) — yarn ball, teacup, sketchbook, stamp, paper plane, inkblot, framed sketch, postal stamp, blossom branch, tea kettle, ribbon spool, paw print.</li>
+  <li><strong>6 minigame icons</strong> (Micro) — one per shipped minigame.</li>
+</ol>
+
+<h2>8. What NOT to do</h2>
+<ul class="checklist">
+  <li>❌ Photoreal rendering, soft brushes, painted-volumetric lighting.</li>
+  <li>❌ Off-palette pastel washes "just to add variety."</li>
+  <li>❌ AI-generated assets without heavy redraw on top.</li>
+  <li>❌ Five different line weights on one character.</li>
+  <li>❌ Tilted/dutch-angle props that won't sit on the iso floor grid.</li>
+  <li>❌ Pure black (#000) or pure white (#fff). Always Ink and Highlight.</li>
+  <li>❌ Adding ambient occlusion bake — the engine handles AO.</li>
+  <li>❌ Vibe briefs. Always cite spec + asset name + dimensions.</li>
+</ul>
+
+<h2>9. Filenames &amp; delivery</h2>
+<p>One zip per commission. Filename pattern:</p>
+<p><code>kk_&lt;category&gt;_&lt;asset&gt;_&lt;variant&gt;.png</code> &mdash;
+e.g. <code>kk_prop_teacup_steaming.png</code>, <code>kk_room_kitchen_anchor.png</code>.</p>
+<p>Include both 1024 master and 512 game-ready resize. Source PSD/Procreate/Krita
+optional but appreciated. Drop a <code>.txt</code> noting which palette slots
+were used; that lets us cross-reference style drift later.</p>
+
+</body>
+</html>

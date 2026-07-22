@@ -1,0 +1,913 @@
+/* Kitty Kaki Survivors — Main Menu v2 styles
+ * Lifted from Claude Design handoff (menu-v2.css). All .v2-* classes renamed
+ * to .kkv2-* to avoid collision with ui.js's injected .kk-* selectors. Single
+ * `dawn` tone — CSS custom properties (--tone-hi/mid/glow/rim) are set on the
+ * .kkv2-stage container by menuV2.js. */
+
+.kkv2-root { position: absolute; inset: 0; pointer-events: auto; overflow: hidden; background: #000; font-family: "Geist", system-ui, sans-serif; color: #ece6d5; display: grid; place-items: center; }
+
+.kkv2-stage {
+  position: absolute; left: 50%; top: 50%;
+  width: 1920px; height: 1080px;
+  transform-origin: center;
+  overflow: hidden;
+  background: #050302;
+  box-shadow: 0 30px 120px rgba(0,0,0,.8);
+  box-sizing: border-box;
+  /* dawn tone — locked single palette */
+  --tone-hi:   #ffd58a;
+  --tone-mid:  #e0954a;
+  --tone-lo:   #6b2a14;
+  --tone-glow: rgba(255,180,100,.55);
+  --tone-rim:  #ffe2a8;
+  --tone-sky1: #3a1f1c;
+  --tone-sky2: #0e0807;
+}
+.kkv2-stage, .kkv2-stage * { box-sizing: border-box; }
+
+/* sentinel so ui.js injection skips re-injecting on hot-reload */
+.kkv2-stage button { appearance: none; border: 0; background: transparent; cursor: pointer; font-family: inherit; color: inherit; }
+
+/* ─── Scene ─────────────────────────────────────────────── */
+.kkv2-scene { position: absolute; inset: 0; }
+.kkv2-photobg { position: absolute; inset: 0; background: url("../assets/sprites/menu-bg.png") center center / cover no-repeat; }
+/* Ambient video loop layered over the day-room still (menuV2.js attaches it
+   only once playable — the still underneath doubles as poster + fallback). */
+.kkv2-photobg-video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.kkv2-sky { position: absolute; inset: 0; }
+.kkv2-halo {
+  position: absolute; left: 56%; top: 8%;
+  width: 1100px; height: 1100px;
+  transform: translate(-50%, -40%);
+  filter: blur(8px);
+  opacity: 0.6;
+}
+.kkv2-orb {
+  position: absolute; left: 62%; top: 12%;
+  width: 200px; height: 200px;
+  transform: translate(-50%, -50%);
+  border-radius: 50%;
+  opacity: 0.85;
+}
+
+.kkv2-layer { position: absolute; inset: 0; width: 100%; height: 100%; }
+.kkv2-far { opacity: 0.85; filter: blur(0.5px); }
+.kkv2-mid { opacity: 0.96; }
+.kkv2-branches { opacity: 1; }
+.kkv2-fg { opacity: 1; }
+
+.kkv2-haze {
+  position: absolute; left: 0; right: 0; top: 50%;
+  height: 200px;
+  filter: blur(40px);
+  opacity: 0.35;
+  pointer-events: none;
+}
+.kkv2-mist {
+  position: absolute; left: 0; right: 0; bottom: 0;
+  height: 400px;
+  background: linear-gradient(180deg, transparent 0%, rgba(120,140,130,.08) 40%, rgba(80,100,90,.15) 100%);
+  filter: blur(24px);
+  pointer-events: none;
+}
+
+/* Hero character */
+.kkv2-hero {
+  position: absolute; left: 50%; bottom: 64px;
+  width: 900px; height: 1060px;
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+.kkv2-hero-rim {
+  position: absolute; inset: -40px;
+  filter: blur(20px);
+  opacity: 0.75;
+}
+.kkv2-hero-svg {
+  position: absolute; inset: 0;
+  width: 100%; height: 100%;
+  filter: drop-shadow(0 30px 50px rgba(0,0,0,.75));
+}
+
+/* Particles */
+.kkv2-particles { position: absolute; inset: 0; pointer-events: none; overflow: hidden; animation: kkv2-hue 14s linear infinite; }
+@keyframes kkv2-hue { to { filter: hue-rotate(360deg); } }
+.kkv2-pcl {
+  position: absolute;
+  border-radius: 50%;
+  animation: kkv2-drift 10s ease-in-out infinite;
+  opacity: 0;
+}
+@keyframes kkv2-drift {
+  0%   { transform: translate(0,0) scale(0.7); opacity: 0; }
+  10%  { opacity: 0.9; }
+  50%  { transform: translate(calc(var(--sway) * -1), -40px) scale(1); opacity: 1; }
+  90%  { opacity: 0.7; }
+  100% { transform: translate(var(--sway), -120px) scale(0.5); opacity: 0; }
+}
+
+/* Vignette + grain */
+.kkv2-vignette {
+  position: absolute; inset: 0; pointer-events: none;
+  background:
+    radial-gradient(120% 80% at 50% 35%, transparent 38%, rgba(0,0,0,.5) 95%),
+    linear-gradient(180deg, rgba(0,0,0,.45) 0%, transparent 16%, transparent 60%, rgba(0,0,0,.7) 100%);
+}
+.kkv2-grain {
+  position: absolute; inset: 0; pointer-events: none;
+  opacity: 0.05;
+  mix-blend-mode: overlay;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='200' height='200'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='1.4' numOctaves='2' stitchTiles='stitch'/><feColorMatrix values='0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0.7 0'/></filter><rect width='100%' height='100%' filter='url(%23n)'/></svg>");
+  background-size: 200px 200px;
+}
+
+/* ─── Top bar ───────────────────────────────────────────── */
+.kkv2-top {
+  position: absolute; top: 40px; left: 56px; right: 56px;
+  display: flex; justify-content: space-between; align-items: center;
+  z-index: 10;
+}
+.kkv2-lockup { display: flex; align-items: center; gap: 18px; }
+.kkv2-mark {
+  width: 56px; height: 50px;
+  filter: drop-shadow(0 4px 14px rgba(0,0,0,.6));
+  color: var(--tone-hi);
+}
+.kkv2-wordmark { display: flex; flex-direction: column; line-height: 1; }
+.kkv2-word-main {
+  font-family: "Cinzel", serif;
+  font-size: 26px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+  text-shadow: 0 2px 10px rgba(0,0,0,.7);
+  color: var(--tone-hi);
+}
+.kkv2-word-sub {
+  font-family: "Cinzel", serif;
+  font-size: 13px;
+  font-weight: 500;
+  letter-spacing: 0.48em;
+  color: rgba(236,230,213,.55);
+  margin-top: 4px;
+}
+
+.kkv2-top-right { display: flex; align-items: center; gap: 28px; }
+.kkv2-acct {
+  display: flex; align-items: center; gap: 12px;
+  padding: 8px 18px 8px 8px;
+  background: rgba(20,14,10,.55);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,.07);
+  border-top: 1px solid rgba(255,255,255,.16);
+  border-radius: 999px;
+}
+.kkv2-acct-avatar {
+  width: 36px; height: 36px;
+  border-radius: 50%;
+  border: 1.5px solid var(--tone-mid);
+  overflow: hidden;
+  background: #0a0606;
+  box-shadow: 0 0 0 1px rgba(0,0,0,.5), inset 0 0 12px rgba(0,0,0,.5);
+}
+.kkv2-acct-avatar svg { width: 100%; height: 100%; display: block; }
+.kkv2-acct-info { display: flex; flex-direction: column; line-height: 1.2; }
+.kkv2-acct-name {
+  font-family: "Cinzel", serif; font-size: 13px; font-weight: 600;
+  letter-spacing: 0.12em; color: #f1ead6;
+}
+.kkv2-acct-tag {
+  font-family: "Geist Mono", monospace; font-size: 10px;
+  color: rgba(236,230,213,.5); letter-spacing: 0.04em;
+}
+.kkv2-icons { display: flex; gap: 6px; }
+.kkv2-iconbtn {
+  position: relative;
+  width: 40px; height: 40px;
+  border: 1px solid rgba(255,255,255,.07);
+  border-radius: 50%;
+  background: rgba(20,14,10,.55);
+  -webkit-backdrop-filter: blur(20px); backdrop-filter: blur(20px);
+  color: rgba(236,230,213,.7);
+  font-size: 16px;
+  display: grid; place-items: center;
+  transition: background 140ms ease, color 140ms ease, transform 140ms ease;
+}
+.kkv2-iconbtn:hover { background: rgba(40,28,20,.85); color: #f1ead6; transform: translateY(-1px); }
+.kkv2-dot {
+  position: absolute; top: 8px; right: 8px;
+  width: 8px; height: 8px; border-radius: 50%;
+  background: #ff7a52;
+  box-shadow: 0 0 8px rgba(255,122,82,.6);
+}
+
+/* ─── Side nav ──────────────────────────────────────────── */
+.kkv2-nav {
+  position: absolute; left: 0; top: 50%;
+  transform: translateY(-50%);
+  display: flex; flex-direction: column;
+  gap: 4px;
+  z-index: 10;
+  /* Persistent left-edge scrim so the nav stays legible over the bright
+     pixel-art room background (the old forest bg was dark, so bare text read
+     fine; the room washes it out). Anchored to the screen edge, content
+     padded back to the original 56px inset. */
+  padding: 22px 72px 22px 56px;
+  background: linear-gradient(90deg, rgba(6,5,8,.62) 0%, rgba(6,5,8,.3) 55%, transparent 100%);
+  border-radius: 0 20px 20px 0;
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+.kkv2-navitem {
+  position: relative;
+  display: grid;
+  grid-template-columns: 4px 36px 1fr auto;
+  align-items: center;
+  gap: 16px;
+  padding: 14px 22px 14px 0;
+  min-width: 280px;
+  color: rgba(244,239,226,.9);
+  font-family: "Cinzel", serif;
+  font-size: 18px;
+  font-weight: 500;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  text-align: left;
+  transition: color 140ms ease, transform 140ms cubic-bezier(.2,.7,.2,1), background 140ms ease;
+}
+.kkv2-nav-rail {
+  width: 4px; height: 22px;
+  background: var(--tone-mid);
+  border-radius: 1px;
+  opacity: 0;
+  transform: scaleY(0.4);
+  transition: opacity 160ms ease, transform 160ms ease;
+  box-shadow: 0 0 10px var(--tone-glow);
+}
+.kkv2-nav-glyph {
+  font-size: 18px;
+  color: var(--tone-mid);
+  opacity: 0.9;
+  text-align: center;
+  text-shadow: 0 1px 4px rgba(0,0,0,.8);
+  transition: color 140ms ease, opacity 140ms ease, transform 140ms ease;
+}
+.kkv2-nav-label { text-shadow: 0 1px 2px rgba(0,0,0,.95), 0 2px 10px rgba(0,0,0,.8); }
+.kkv2-nav-kbd {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  padding: 3px 7px;
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 3px;
+  color: rgba(236,230,213,.45);
+  opacity: 0;
+  transform: translateX(-6px);
+  transition: opacity 160ms ease, transform 160ms ease;
+}
+.kkv2-navitem:hover, .kkv2-navitem.is-active {
+  color: var(--tone-rim);
+  transform: translateX(8px);
+  background: linear-gradient(90deg, rgba(0,0,0,.45), transparent 80%);
+}
+.kkv2-navitem:hover .kkv2-nav-rail, .kkv2-navitem.is-active .kkv2-nav-rail { opacity: 1; transform: scaleY(1); }
+.kkv2-navitem:hover .kkv2-nav-glyph, .kkv2-navitem.is-active .kkv2-nav-glyph {
+  color: var(--tone-hi); opacity: 1; transform: scale(1.15);
+  filter: drop-shadow(0 0 8px var(--tone-glow));
+}
+.kkv2-navitem:hover .kkv2-nav-label, .kkv2-navitem.is-active .kkv2-nav-label {
+  text-shadow: 0 0 20px var(--tone-glow), 0 2px 8px rgba(0,0,0,.7);
+}
+.kkv2-navitem:hover .kkv2-nav-kbd, .kkv2-navitem.is-active .kkv2-nav-kbd {
+  opacity: 1; transform: translateX(0); color: var(--tone-rim); border-color: var(--tone-mid);
+}
+
+/* ─── Continue card (right column) ──────────────────────── */
+.kkv2-continue {
+  position: absolute; right: 56px; bottom: 64px; top: auto;
+  transform: none;
+  width: 380px;
+  padding: 28px 28px 24px;
+  background: linear-gradient(135deg, rgba(18,12,8,.78), rgba(6,4,3,.8));
+  -webkit-backdrop-filter: blur(24px) saturate(140%);
+  backdrop-filter: blur(24px) saturate(140%);
+  border: 1px solid rgba(255,255,255,.08);
+  border-top: 1px solid rgba(255,255,255,.18);
+  border-radius: 4px;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.06) inset,
+    0 30px 80px rgba(0,0,0,.55);
+  z-index: 10;
+}
+.kkv2-continue::before {
+  content: ""; position: absolute; left: 0; top: 0; bottom: 0; width: 3px;
+  background: linear-gradient(180deg, transparent, var(--tone-hi), var(--tone-mid), transparent);
+  box-shadow: 0 0 12px var(--tone-glow);
+}
+.kkv2-cont-eyebrow {
+  display: flex; align-items: center; gap: 10px;
+  font-family: "Cinzel", serif;
+  font-size: 11px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(236,230,213,.55);
+  margin-bottom: 18px;
+}
+.kkv2-cont-rule {
+  width: 24px; height: 1px;
+  background: linear-gradient(90deg, var(--tone-mid), transparent);
+}
+.kkv2-cont-bio { margin-bottom: 20px; }
+.kkv2-cont-sub {
+  font-family: "Cormorant Garamond", serif;
+  font-style: italic;
+  font-size: 14px;
+  color: rgba(236,230,213,.55);
+  letter-spacing: 0.04em;
+  margin-bottom: 4px;
+}
+.kkv2-cont-name {
+  font-family: "Cinzel", serif;
+  font-size: 26px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--tone-hi);
+  line-height: 1.15;
+  text-shadow: 0 2px 16px rgba(0,0,0,.7);
+}
+.kkv2-cont-row {
+  display: grid; grid-template-columns: 1fr 1fr 1fr;
+  gap: 10px;
+  padding: 14px 0;
+  border-top: 1px solid rgba(255,255,255,.08);
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  margin-bottom: 18px;
+}
+.kkv2-cont-stat { display: flex; flex-direction: column; gap: 2px; }
+.kkv2-cont-label {
+  font-family: "Geist Mono", monospace;
+  font-size: 9px;
+  letter-spacing: 0.16em;
+  color: rgba(236,230,213,.4);
+  text-transform: uppercase;
+}
+.kkv2-cont-val {
+  font-family: "Cinzel", serif;
+  font-size: 24px;
+  font-weight: 600;
+  color: #f1ead6;
+  letter-spacing: 0.02em;
+}
+.kkv2-cont-of { color: rgba(236,230,213,.4); font-size: 14px; }
+
+.kkv2-cont-btn {
+  display: grid;
+  grid-template-columns: 24px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 14px 18px;
+  background: linear-gradient(180deg, var(--tone-hi) 0%, var(--tone-mid) 100%);
+  color: #1a0f08;
+  font-family: "Cinzel", serif;
+  font-size: 16px;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+  border-radius: 2px;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.4) inset,
+    0 -2px 0 rgba(0,0,0,.25) inset,
+    0 6px 0 rgba(0,0,0,.3),
+    0 0 30px var(--tone-glow);
+  transition: transform 120ms ease, box-shadow 120ms ease, filter 120ms ease;
+}
+.kkv2-cont-btn:hover {
+  transform: translateY(-1px);
+  filter: brightness(1.06);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.5) inset,
+    0 -2px 0 rgba(0,0,0,.25) inset,
+    0 8px 0 rgba(0,0,0,.3),
+    0 0 40px var(--tone-glow);
+}
+.kkv2-cont-btn-glyph { font-size: 14px; }
+.kkv2-cont-btn-kbd {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.12em;
+  padding: 3px 7px;
+  background: rgba(26,15,8,.25);
+  border: 1px solid rgba(26,15,8,.4);
+  border-radius: 2px;
+  color: rgba(26,15,8,.7);
+}
+
+/* ─── Chapter rail (bottom) ─────────────────────────────── */
+.kkv2-rail {
+  position: absolute; left: 56px; bottom: 88px;
+  /* Reserve the bottom-right corner for the run card (right:56 + width:380 +
+     gap) so chapter cards + tabs never sit under it. */
+  right: 452px;
+  z-index: 9;
+}
+.kkv2-rail-head {
+  display: flex; justify-content: space-between; align-items: flex-end;
+  margin-bottom: 18px;
+}
+.kkv2-rail-title { display: flex; flex-direction: column; gap: 4px; }
+.kkv2-rail-eye {
+  font-family: "Cinzel", serif;
+  font-size: 16px;
+  letter-spacing: 0.28em;
+  text-transform: uppercase;
+  color: rgba(236,230,213,.85);
+  text-shadow: 0 2px 10px rgba(0,0,0,.7);
+}
+.kkv2-rail-count {
+  font-family: "Geist Mono", monospace;
+  font-size: 11px;
+  color: rgba(236,230,213,.45);
+  letter-spacing: 0.04em;
+}
+.kkv2-rail-tabs { display: flex; gap: 4px; }
+.kkv2-tab {
+  position: relative;
+  color: rgba(236,230,213,.5);
+  font-family: "Cinzel", serif;
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  padding: 10px 18px;
+  border-bottom: 1px solid rgba(255,255,255,.08);
+  transition: color 140ms ease, border-color 140ms ease;
+}
+.kkv2-tab:hover { color: rgba(236,230,213,.85); }
+.kkv2-tab.is-active {
+  color: #f1ead6;
+  border-bottom: 1px solid #f1ead6;
+}
+.kkv2-tab-dot {
+  display: inline-block;
+  width: 6px; height: 6px;
+  background: #ff7a52;
+  border-radius: 50%;
+  margin-left: 4px;
+  vertical-align: 1px;
+  box-shadow: 0 0 6px rgba(255,122,82,.6);
+}
+
+.kkv2-rail-list {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: 282px;
+  gap: 16px;
+  overflow-x: auto;
+  padding-bottom: 8px;
+  scrollbar-width: thin;
+}
+.kkv2-rail-list::-webkit-scrollbar { height: 4px; }
+.kkv2-rail-list::-webkit-scrollbar-thumb { background: rgba(255,255,255,.15); }
+
+.kkv2-chap {
+  position: relative;
+  display: flex; flex-direction: column;
+  background: rgba(14,10,7,.65);
+  -webkit-backdrop-filter: blur(16px); backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,.06);
+  border-top: 1px solid rgba(255,255,255,.12);
+  border-radius: 3px;
+  overflow: hidden;
+  text-align: left;
+  transition: transform 160ms cubic-bezier(.2,.7,.2,1), border-color 160ms ease, box-shadow 160ms ease;
+  box-shadow: 0 10px 30px rgba(0,0,0,.5);
+}
+.kkv2-chap-art {
+  position: relative;
+  width: 100%; height: 140px;
+  overflow: hidden;
+}
+.kkv2-chap-art svg { width: 100%; height: 100%; display: block; }
+/* Painted card art sits above the SVG placeholder (menuV2.js removes the img
+   on load error, so the SVG underneath is the no-asset fallback). */
+.kkv2-chap-img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; display: block; }
+.kkv2-chap-shade {
+  position: absolute; inset: 0;
+  background: linear-gradient(180deg, transparent 0%, transparent 50%, rgba(0,0,0,.7) 100%);
+}
+.kkv2-chap-lock {
+  position: absolute; inset: 0;
+  background: rgba(0,0,0,.65);
+  display: grid; place-items: center;
+  font-size: 32px;
+}
+.kkv2-chap-cleared {
+  position: absolute; top: 8px; right: 8px;
+  font-family: "Geist Mono", monospace;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  padding: 4px 7px;
+  background: rgba(100,180,110,.18);
+  color: #a9e8a4;
+  border: 1px solid rgba(100,180,110,.4);
+  border-radius: 2px;
+}
+.kkv2-chap-featured {
+  position: absolute; top: 8px; left: 8px; z-index: 1;
+  font-family: "Geist Mono", monospace;
+  font-size: 9px; font-weight: 800; letter-spacing: .11em;
+  padding: 5px 7px; color: #fff5c7;
+  background: linear-gradient(90deg, rgba(255,103,72,.94), rgba(188,74,255,.94));
+  border: 1px solid rgba(255,255,255,.65); border-radius: 2px;
+  box-shadow: 0 0 16px rgba(219,96,255,.55);
+}
+.kkv2-chap-body {
+  padding: 14px 16px 16px;
+  display: flex; flex-direction: column; gap: 4px;
+}
+.kkv2-chap-tier {
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  letter-spacing: 0.16em;
+  color: rgba(236,230,213,.5);
+  text-transform: uppercase;
+}
+.kkv2-chap-name {
+  font-family: "Cinzel", serif;
+  font-size: 17px;
+  font-weight: 600;
+  color: #f1ead6;
+  letter-spacing: 0.02em;
+  line-height: 1.2;
+}
+.kkv2-chap-meta {
+  display: flex; gap: 6px; align-items: center;
+  font-family: "Geist", system-ui, sans-serif;
+  font-size: 11px;
+  color: rgba(236,230,213,.55);
+  letter-spacing: 0.04em;
+  margin-top: 2px;
+}
+.kkv2-chap-diff { color: var(--tone-hi); font-weight: 600; }
+.kkv2-chap-sep { color: rgba(236,230,213,.25); }
+
+.kkv2-chap:hover, .kkv2-chap.is-focus, .kkv2-chap.is-selected {
+  transform: translateY(-4px);
+  border-color: var(--tone-mid);
+  box-shadow: 0 14px 36px rgba(0,0,0,.6), 0 0 0 1px var(--tone-mid), 0 0 24px var(--tone-glow);
+}
+.kkv2-chap.is-locked {
+  filter: grayscale(0.4) brightness(0.6);
+  cursor: not-allowed;
+}
+.kkv2-chap.is-locked:hover { transform: none; }
+.kkv2-chap.is-kaki-land {
+  border-color: rgba(125,236,255,.72);
+  box-shadow: 0 10px 30px rgba(0,0,0,.5), 0 0 22px rgba(111,227,255,.22);
+}
+.kkv2-chap.is-kaki-land:hover,
+.kkv2-chap.is-kaki-land.is-selected {
+  border-color: #c7f8ff;
+  box-shadow: 0 14px 36px rgba(0,0,0,.6), 0 0 0 1px rgba(125,236,255,.85), 0 0 30px rgba(166,105,255,.64);
+}
+
+/* ─── Footer ────────────────────────────────────────────── */
+.kkv2-foot {
+  position: absolute;
+  left: 56px; right: 56px; bottom: 28px;
+  display: flex; justify-content: space-between; align-items: center;
+  z-index: 10;
+  font-family: "Geist", system-ui, sans-serif;
+  font-size: 11px;
+  color: rgba(236,230,213,.5);
+  letter-spacing: 0.04em;
+}
+.kkv2-foot-left { display: flex; align-items: center; gap: 12px; }
+.kkv2-version { font-family: "Geist Mono", monospace; color: rgba(236,230,213,.4); }
+.kkv2-foot-right { display: flex; gap: 22px; }
+.kkv2-key { display: flex; align-items: center; gap: 8px; text-transform: uppercase; font-size: 10px; letter-spacing: 0.16em; }
+.kkv2-key kbd {
+  display: inline-block;
+  padding: 3px 7px;
+  font-family: "Geist Mono", monospace;
+  font-size: 10px;
+  background: rgba(255,255,255,.06);
+  border: 1px solid rgba(255,255,255,.12);
+  border-bottom: 1px solid rgba(255,255,255,.04);
+  border-radius: 3px;
+  color: rgba(236,230,213,.7);
+  min-width: 22px;
+  text-align: center;
+}
+
+/* ─── Heroes panel (overlay reveal) ─────────────────────── */
+.kkv2-overlay {
+  position: absolute; inset: 0;
+  background: radial-gradient(120% 80% at 50% 40%, rgba(10,6,4,.86), rgba(2,1,1,.96));
+  -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+  z-index: 50;
+  display: flex; flex-direction: column;
+  padding: 80px 96px 60px;
+  pointer-events: auto;
+}
+.kkv2-overlay-head {
+  display: flex; justify-content: space-between; align-items: flex-start;
+  margin-bottom: 24px;
+}
+.kkv2-overlay-title {
+  font-family: "Cinzel", serif;
+  font-size: 32px;
+  font-weight: 700;
+  letter-spacing: 0.24em;
+  text-transform: uppercase;
+  color: var(--tone-hi);
+  text-shadow: 0 2px 18px rgba(0,0,0,.7), 0 0 30px var(--tone-glow);
+}
+.kkv2-overlay-sub {
+  font-family: "Cormorant Garamond", serif;
+  font-style: italic;
+  font-size: 16px;
+  color: rgba(236,230,213,.55);
+  margin-top: 4px;
+}
+.kkv2-overlay-close {
+  font-family: "Geist Mono", monospace;
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  padding: 10px 16px;
+  background: rgba(20,14,10,.55);
+  border: 1px solid rgba(255,255,255,.12);
+  border-radius: 3px;
+  color: rgba(236,230,213,.75);
+  text-transform: uppercase;
+}
+.kkv2-overlay-close:hover { background: rgba(40,28,20,.85); color: #f1ead6; }
+.kkv2-overlay-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.kkv2-overlay-host {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-direction: column;
+  gap: 16px;
+}
+.kkv2-overlay-placeholder {
+  font-family: "Cormorant Garamond", serif;
+  font-style: italic;
+  font-size: 18px;
+  color: rgba(236,230,213,.5);
+}
+.kkv2-overlay-foot {
+  display: flex;
+  justify-content: center;
+  margin-top: 20px;
+}
+.kkv2-overlay-confirm {
+  font-family: "Cinzel", serif;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.28em;
+  padding: 14px 36px;
+  background: linear-gradient(180deg, rgba(255,210,127,.16), rgba(255,210,127,.06));
+  border: 1px solid rgba(255,210,127,.42);
+  border-radius: 3px;
+  color: #f5efe1;
+  text-transform: uppercase;
+  cursor: pointer;
+  box-shadow: 0 0 24px rgba(255,210,127,.18), inset 0 0 18px rgba(255,210,127,.08);
+  transition: background .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.kkv2-overlay-confirm:hover {
+  background: linear-gradient(180deg, rgba(255,210,127,.26), rgba(255,210,127,.12));
+  border-color: rgba(255,210,127,.7);
+  box-shadow: 0 0 32px rgba(255,210,127,.32), inset 0 0 22px rgba(255,210,127,.14);
+}
+.kkv2-overlay-confirm:focus-visible {
+  outline: 2px solid rgba(255,210,127,.8);
+  outline-offset: 3px;
+}
+
+/* Kaki Racing discipline selector. */
+.kkv2-race-overlay { padding-bottom: 42px; overflow-y: auto; }
+.kkv2-race-overlay .kkv2-overlay-foot {
+  position: sticky;
+  z-index: 4;
+  bottom: -42px;
+  margin: 10px -24px -42px;
+  padding: 12px 24px 18px;
+  background: linear-gradient(180deg, rgba(9,7,10,0), rgba(9,7,10,.94) 34%);
+  pointer-events: none;
+}
+.kkv2-race-overlay .kkv2-overlay-confirm { pointer-events: auto; }
+.kkv2-race-grid {
+  flex: 0 0 auto;
+  min-height: 0;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  align-items: stretch;
+  gap: 22px;
+}
+.kkv2-race-card {
+  position: relative;
+  min-height: 210px;
+  padding: 28px 30px 26px;
+  border: 1px solid rgba(255,255,255,.14);
+  border-radius: 7px;
+  background: linear-gradient(155deg, rgba(40,26,25,.76), rgba(13,9,12,.88));
+  color: #f4ead8;
+  text-align: left;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform .16s ease, border-color .16s ease, box-shadow .16s ease;
+}
+.kkv2-race-card::before { content: ""; position: absolute; inset: 0 0 auto; height: 5px; background: linear-gradient(90deg, #72e9ff, #ff73b6, #ffc968); opacity: .2; }
+.kkv2-race-card:hover { transform: translateY(-5px); border-color: rgba(255,211,143,.5); }
+.kkv2-race-card.is-deferred {
+  cursor: not-allowed;
+  filter: grayscale(.45) saturate(.65);
+  opacity: .68;
+}
+.kkv2-race-card.is-deferred:hover { transform: none; border-color: rgba(255,255,255,.14); }
+.kkv2-race-card.is-deferred em { color: #ffc44f; }
+.kkv2-race-card.is-selected { border-color: rgba(255,211,143,.88); box-shadow: 0 0 0 1px rgba(255,211,143,.2), 0 22px 60px rgba(0,0,0,.5), inset 0 0 45px rgba(255,159,102,.08); }
+.kkv2-race-card.is-selected::before { opacity: 1; box-shadow: 0 0 24px rgba(255,115,182,.65); }
+.kkv2-race-card span, .kkv2-race-card em { display: block; font: 700 12px/1 "Geist Mono", monospace; letter-spacing: .18em; color: #ffcc82; font-style: normal; }
+.kkv2-race-card strong { display: block; margin-top: 14px; font: 800 27px/1.08 "Cinzel", serif; letter-spacing: .02em; }
+.kkv2-race-card p { margin: 16px 0 40px; font: 500 16px/1.4 "Geist", sans-serif; color: rgba(244,234,216,.68); }
+.kkv2-race-card em { position: absolute; left: 30px; bottom: 24px; color: rgba(126,231,255,.8); }
+.kkv2-race-card-draw {
+  grid-column: 1 / -1;
+  min-height: 190px;
+  background:
+    linear-gradient(108deg, rgba(15,34,42,.98), rgba(24,51,57,.92) 54%, rgba(68,48,32,.88)),
+    repeating-linear-gradient(0deg, transparent 0 23px, rgba(145,240,196,.05) 24px),
+    repeating-linear-gradient(90deg, transparent 0 23px, rgba(145,240,196,.05) 24px);
+}
+.kkv2-race-card-draw::after { content: ""; position: absolute; inset: 0; pointer-events: none; background: radial-gradient(circle at 82% 45%, rgba(255,203,92,.12), transparent 28%); }
+.kkv2-race-card-draw > span i { display: inline-block; margin-right: 5px; padding: 4px 6px; color: #17272e; background: #ffcb5c; font-style: normal; letter-spacing: .1em; }
+.kkv2-race-card-draw strong { position: relative; z-index: 2; color: #fff1bd; }
+.kkv2-race-card-draw p { position: relative; z-index: 2; max-width: 62%; margin-top: 12px; color: rgba(235,247,230,.75); }
+.kkv2-race-card-draw svg { position: absolute; z-index: 1; top: 27px; right: 30px; width: min(34%, 310px); overflow: visible; filter: drop-shadow(0 12px 18px rgba(0,0,0,.35)); }
+.kkv2-race-card-draw svg path { fill: none; stroke-linecap: round; stroke-linejoin: round; }
+.kkv2-draw-shadow { stroke: rgba(5,13,17,.62); stroke-width: 17; }
+.kkv2-draw-line { stroke: #91f0c4; stroke-width: 5; stroke-dasharray: 620; stroke-dashoffset: 620; animation: kkv2-draw-track 3.8s cubic-bezier(.45,.05,.25,1) infinite; }
+.kkv2-race-card-draw svg circle { fill: #ffcb5c; stroke: #fff1bd; stroke-width: 2; animation: kkv2-draw-pulse 1.8s ease-in-out infinite; }
+@keyframes kkv2-draw-track { 0%, 10% { stroke-dashoffset: 620; } 72%, 100% { stroke-dashoffset: 0; } }
+@keyframes kkv2-draw-pulse { 50% { r: 8px; opacity: .7; } }
+.kkv2-race-card-monster {
+  background:
+    linear-gradient(90deg, rgba(18,8,24,.93), rgba(18,8,24,.58) 62%, rgba(18,8,24,.82)),
+    url("../assets/racing/monster-smash-key-art-oekaki-v2.webp") center 42% / cover no-repeat;
+}
+.kkv2-race-card-monster p { max-width: 72%; color: rgba(255,245,226,.86); text-shadow: 0 2px 8px #100616; }
+.kkv2-race-card-trials {
+  grid-column: 1 / -1;
+  min-height: 172px;
+  background:
+    radial-gradient(circle at 82% 18%, rgba(255,244,170,.28), transparent 15%),
+    linear-gradient(112deg, rgba(13,38,44,.96), rgba(26,55,58,.76) 42%, rgba(91,45,83,.82)),
+    repeating-linear-gradient(165deg, transparent 0 38px, rgba(255,255,255,.045) 39px 41px);
+}
+.kkv2-race-card-trials strong { color: #fff1bd; }
+.kkv2-race-card-trials p { max-width: 78%; margin-bottom: 32px; color: rgba(245,255,238,.8); }
+.kkv2-race-card-crash {
+  grid-column: 1 / -1;
+  min-height: 190px;
+  background:
+    linear-gradient(105deg, rgba(13,20,22,.98), rgba(24,31,31,.91) 52%, rgba(73,39,25,.86)),
+    repeating-linear-gradient(135deg, transparent 0 17px, rgba(255,196,79,.055) 18px 20px);
+}
+.kkv2-race-card-crash::before { height: 6px; background: linear-gradient(90deg, #ff594d, #ffc44f 45% 72%, #7de7ef); }
+.kkv2-race-card-crash::after { content: "INCIDENT 06"; position: absolute; right: 35px; bottom: 19px; color: rgba(255,196,79,.2); font: 900 42px/1 "Geist Mono", monospace; letter-spacing: -.08em; }
+.kkv2-race-card-crash strong { position: relative; z-index: 2; color: #fff1cf; }
+.kkv2-race-card-crash p { position: relative; z-index: 2; max-width: 62%; color: rgba(245,242,224,.75); }
+.kkv2-race-card-crash svg { position: absolute; z-index: 1; top: 22px; right: 28px; width: min(34%, 340px); opacity: .34; }
+.kkv2-race-card-crash svg path { fill: none; stroke: #7de7ef; stroke-width: 2; stroke-dasharray: 10 7; }
+.kkv2-race-card-crash svg circle { fill: rgba(255,89,77,.12); stroke: #ffc44f; stroke-width: 3; }
+.kkv2-crash-setup { flex: 0 0 auto; margin-top: 18px; padding: 17px; border: 1px solid rgba(255,196,79,.34); border-top: 4px solid #ffc44f; border-radius: 3px; background: linear-gradient(125deg, rgba(12,19,21,.96), rgba(29,33,31,.92)); box-shadow: inset 0 1px rgba(255,255,255,.05), 0 20px 55px rgba(0,0,0,.32); }
+.kkv2-crash-setup[hidden] { display: none; }
+.kkv2-crash-heading { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 0 4px 12px; }
+.kkv2-crash-heading div { display: grid; gap: 5px; }
+.kkv2-crash-heading span, .kkv2-crash-grid section > span { color: #ffc44f; font: 800 9px/1 "Geist Mono", monospace; letter-spacing: .18em; }
+.kkv2-crash-heading strong { color: #fff0cb; font: 800 16px/1 "Cinzel", serif; letter-spacing: .07em; }
+.kkv2-crash-heading em { color: #7de7ef; font: 700 9px/1 "Geist Mono", monospace; letter-spacing: .1em; font-style: normal; }
+.kkv2-crash-grid { display: grid; grid-template-columns: 1fr 1fr 1.15fr; gap: 9px; }
+.kkv2-crash-grid section { display: grid; align-content: start; gap: 6px; padding: 12px; border: 1px solid rgba(255,255,255,.1); background: rgba(255,255,255,.025); }
+.kkv2-crash-grid section > span { margin-bottom: 3px; color: rgba(255,240,210,.58); }
+.kkv2-crash-grid button { display: grid; gap: 4px; padding: 10px 11px; border: 1px solid rgba(255,255,255,.13); background: rgba(255,255,255,.035); color: #fff0d2; text-align: left; cursor: pointer; }
+.kkv2-crash-grid button b { color: #7de7ef; font: 800 10px/1 "Geist Mono", monospace; letter-spacing: .09em; }
+.kkv2-crash-grid button em, .kkv2-crash-brief em { color: rgba(255,255,255,.48); font: 700 8px/1.25 "Geist Mono", monospace; letter-spacing: .04em; font-style: normal; }
+.kkv2-crash-grid button.is-selected { border-color: #ffc44f; background: linear-gradient(90deg, rgba(255,196,79,.16), rgba(255,89,77,.07)); box-shadow: inset 3px 0 #ffc44f, 0 0 16px rgba(255,196,79,.1); }
+.kkv2-crash-grid button.is-selected b { color: #fff1cc; }
+.kkv2-crash-brief { border-left: 3px solid #ff594d !important; }
+.kkv2-crash-brief p { margin: 4px 0 13px; color: rgba(249,240,222,.78); font: 600 13px/1.45 "Geist", sans-serif; }
+.kkv2-crash-brief em { margin-top: auto; color: rgba(125,231,239,.72); line-height: 1.55; }
+.kkv2-trials-setup { flex: 0 0 auto; margin-top: 20px; padding: 18px; border: 1px solid rgba(126,231,255,.22); border-radius: 8px; background: linear-gradient(145deg, rgba(11,25,31,.9), rgba(35,19,35,.86)); box-shadow: inset 0 1px rgba(255,255,255,.06), 0 20px 55px rgba(0,0,0,.3); }
+.kkv2-trials-setup[hidden] { display: none; }
+.kkv2-trials-heading { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+.kkv2-trials-heading span, .kkv2-trials-heading em, .kkv2-trials-vehicles > span { font: 800 10px/1 "Geist Mono", monospace; letter-spacing: .18em; color: #ffcc82; font-style: normal; }
+.kkv2-trials-heading em { color: rgba(244,234,216,.48); letter-spacing: .08em; }
+.kkv2-trials-tracks { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; }
+.kkv2-trials-tracks button, .kkv2-trials-vehicles button { display: grid; gap: 5px; padding: 14px; border: 1px solid rgba(255,255,255,.14); border-radius: 5px; background: rgba(255,255,255,.045); color: #fff3db; text-align: left; }
+.kkv2-trials-tracks button b, .kkv2-trials-vehicles button b { font: 800 9px/1 "Geist Mono", monospace; letter-spacing: .13em; color: #79e9ff; }
+.kkv2-trials-tracks button strong { font: 800 14px/1.15 "Cinzel", serif; }
+.kkv2-trials-tracks button em, .kkv2-trials-vehicles button em { font: 700 8px/1.2 "Geist Mono", monospace; letter-spacing: .08em; color: rgba(255,240,220,.5); font-style: normal; }
+.kkv2-trials-tracks button.is-selected, .kkv2-trials-vehicles button.is-selected { border-color: #ffcc82; background: rgba(255,204,130,.12); box-shadow: 0 0 20px rgba(255,204,130,.13); }
+.kkv2-trials-tracks button:disabled { opacity: .42; filter: grayscale(.7); cursor: not-allowed; }
+.kkv2-trials-vehicles { display: grid; grid-template-columns: auto 1fr 1fr; align-items: center; gap: 10px; margin-top: 12px; }
+.kkv2-trials-vehicles > span { padding: 0 10px 0 2px; }
+.kkv2-trials-vehicles button { padding: 10px 13px; }
+.kkv2-race-count { display: flex; justify-content: center; align-items: center; gap: 10px; margin-top: 20px; }
+.kkv2-race-count[hidden] { display: none; }
+.kkv2-race-count span { margin-right: 10px; font: 800 10px/1 "Geist Mono", monospace; letter-spacing: .2em; color: rgba(244,234,216,.55); }
+.kkv2-race-count button { padding: 9px 16px; border: 1px solid rgba(255,255,255,.16); border-radius: 4px; background: rgba(0,0,0,.28); color: rgba(244,234,216,.7); font: 800 11px/1 "Geist Mono", monospace; }
+.kkv2-race-count button.is-selected { border-color: #ffcc82; color: #fff6e5; background: rgba(255,204,130,.14); box-shadow: 0 0 18px rgba(255,204,130,.18); }
+
+@media (max-width: 760px) {
+  .kkv2-race-card-draw p { max-width: 100%; }
+  .kkv2-race-card-draw svg { opacity: .26; width: 48%; right: -12px; top: 40px; }
+  .kkv2-race-card-crash p { max-width: 100%; }
+  .kkv2-race-card-crash svg { opacity: .12; width: 55%; right: -15px; }
+  .kkv2-crash-grid { grid-template-columns: 1fr; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .kkv2-draw-line { animation: none; stroke-dashoffset: 0; }
+  .kkv2-race-card-draw svg circle { animation: none; }
+}
+.kkv2-monster-setup { display: grid; gap: 10px; margin-top: 16px; padding: 14px; border: 1px solid rgba(255,115,182,.28); border-radius: 8px; background: linear-gradient(120deg, rgba(18,8,24,.94), rgba(18,35,42,.9)); }
+.kkv2-monster-setup[hidden] { display: none; }
+.kkv2-monster-heading { display: flex; justify-content: space-between; align-items: center; padding: 0 4px 7px; }
+.kkv2-monster-heading span, .kkv2-monster-heading em { font: 800 10px/1.2 "Geist Mono", monospace; letter-spacing: .16em; color: #ffcc82; font-style: normal; }
+.kkv2-monster-heading em { color: rgba(255,240,220,.58); letter-spacing: .055em; }
+.kkv2-monster-arena-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+.kkv2-monster-arena-grid button { display: grid; grid-template-columns: auto 1fr; align-items: center; gap: 5px 14px; min-height: 72px; padding: 12px 15px; border: 1px solid rgba(255,255,255,.14); border-radius: 5px; background: linear-gradient(130deg, rgba(255,255,255,.055), rgba(255,255,255,.02)); color: #fff3db; text-align: left; }
+.kkv2-monster-arena-grid button b { grid-column: 1 / -1; font: 800 10px/1 "Geist Mono", monospace; letter-spacing: .13em; color: #79e9ff; }
+.kkv2-monster-arena-grid button strong { font: 800 13px/1.25 "Cinzel", serif; color: #fff3db; }
+.kkv2-monster-arena-grid button em { justify-self: end; font: 700 8px/1.3 "Geist Mono", monospace; letter-spacing: .05em; color: rgba(255,240,220,.55); font-style: normal; text-align: right; }
+.kkv2-monster-arena-grid button.is-selected { border-color: #ffcc82; background: linear-gradient(130deg, rgba(255,204,130,.16), rgba(255,115,182,.09)); box-shadow: 0 0 20px rgba(255,115,182,.16); }
+.kkv2-monster-events { display: grid; grid-template-columns: minmax(180px, .72fr) repeat(3, 1fr); align-items: stretch; gap: 10px; }
+.kkv2-monster-events > div { display: grid; align-content: center; gap: 7px; padding: 4px 10px; }
+.kkv2-monster-events span, .kkv2-monster-events b { font: 800 10px/1 "Geist Mono", monospace; letter-spacing: .14em; color: #ffcc82; }
+.kkv2-monster-events em { font: 700 8px/1.3 "Geist Mono", monospace; letter-spacing: .045em; color: rgba(255,240,220,.55); font-style: normal; }
+.kkv2-monster-events button { display: grid; gap: 6px; padding: 11px 13px; border: 1px solid rgba(255,255,255,.14); border-radius: 5px; background: rgba(255,255,255,.045); color: #fff3db; text-align: left; }
+.kkv2-monster-events button b { color: #79e9ff; }
+.kkv2-monster-events button.is-selected { border-color: #ffcc82; background: rgba(255,204,130,.12); box-shadow: 0 0 20px rgba(255,115,182,.16); }
+.kkv2-monster-garage { display: grid; grid-template-columns: minmax(180px, .66fr) repeat(3, minmax(0, 1fr)); align-items: stretch; gap: 10px; }
+.kkv2-monster-garage > div { display: grid; align-content: center; gap: 7px; padding: 4px 10px; }
+.kkv2-monster-garage span, .kkv2-monster-garage b { font: 800 10px/1 "Geist Mono", monospace; letter-spacing: .16em; color: #ffcc82; }
+.kkv2-monster-garage div em, .kkv2-monster-garage button em { font: 700 9px/1.3 "Geist Mono", monospace; letter-spacing: .06em; color: rgba(255,240,220,.55); font-style: normal; }
+.kkv2-monster-garage button { display: grid; gap: 7px; padding: 13px 15px; border: 1px solid rgba(255,255,255,.14); border-radius: 5px; background: rgba(255,255,255,.045); color: #fff3db; text-align: left; }
+.kkv2-monster-garage button b { color: #79e9ff; }
+.kkv2-monster-garage button.is-selected { border-color: #ffcc82; background: rgba(255,204,130,.12); box-shadow: 0 0 20px rgba(255,115,182,.16); }
+
+/* ── Coarse pointers (phones): the menu's desktop-tuned px text reads too
+   small on a high-DPI handheld. Bump the sub-~18px text for legibility;
+   large display text (chapter name, big stat value) is fine as-is. font-size
+   only — no layout/position change — so nothing reflows out of place. ── */
+@media (pointer: coarse) {
+  /* The menu scene is a fixed 1920x1080 (16:9) stage scaled to FIT (see
+     menuV2.js _fitStage), so a wider phone (e.g. S24 landscape ~2.34) leaves
+     black side bars. Cover-scaling would crop the top account bar + bottom
+     PLAY card; stretching distorts the 3D hero. Instead fill the bar area with
+     a darkened cover of the room art — the framed scene reads as vignetted,
+     not black-barred. */
+  .kkv2-root {
+    background:
+      linear-gradient(rgba(6,4,3,.62), rgba(6,4,3,.82)),
+      url("../assets/sprites/menu-bg.png") center center / cover no-repeat;
+  }
+  /* Scale-up pass (user: "much bigger font"). ~+55% over the desktop px since
+     the whole 1920x1080 menu is scaled to ~0.37 on a phone. Touch targets
+     (icon buttons, nav, PLAY) enlarged too. */
+  .kkv2-word-main      { font-size: 38px; }
+  .kkv2-word-sub       { font-size: 20px; }
+  .kkv2-acct-name      { font-size: 20px; }
+  .kkv2-acct-tag       { font-size: 15px; }
+  .kkv2-acct-avatar    { width: 52px; height: 52px; }
+  .kkv2-iconbtn        { width: 58px; height: 58px; font-size: 25px; }
+  .kkv2-navitem        { font-size: 28px; }
+  .kkv2-nav-glyph      { font-size: 28px; }
+  .kkv2-nav-kbd        { font-size: 15px; }
+  .kkv2-cont-eyebrow   { font-size: 17px; }
+  .kkv2-cont-sub       { font-size: 22px; }
+  .kkv2-cont-name      { font-size: 40px; }
+  .kkv2-cont-val       { font-size: 37px; }
+  .kkv2-cont-label     { font-size: 14px; }
+  .kkv2-cont-of        { font-size: 22px; }
+  .kkv2-cont-btn       { font-size: 26px; padding: 18px 26px; }
+  .kkv2-cont-btn-glyph { font-size: 22px; }
+  .kkv2-cont-btn-kbd   { font-size: 15px; }
+  .kkv2-rail-eye       { font-size: 24px; }
+  .kkv2-rail-count     { font-size: 17px; }
+  .kkv2-tab            { font-size: 18px; }
+}

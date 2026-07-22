@@ -1,0 +1,44 @@
+{
+  "name": "kaki-survivors-2",
+  "version": "2.0.0",
+  "description": "Canonical WebGPU/refactor production release of Kaki Survivors.",
+  "scripts": {
+    "test": "npm run test:renderer && npm run test:racing",
+    "test:renderer": "node --test src/rendering/__tests__/*.test.mjs tools/webgpu/*.test.mjs",
+    "test:renderer:backends": "node tools/webgpu/smoke-backends.mjs",
+    "test:renderer:materials": "node tools/webgpu/smoke-material-gallery.mjs",
+    "test:renderer:postfx": "node tools/webgpu/smoke-postfx.mjs",
+    "test:renderer:instanced": "node tools/webgpu/smoke-instanced-materials.mjs",
+    "test:renderer:production": "node tools/webgpu/smoke-production-backends.mjs --output docs/webgpu/PRODUCTION_BACKEND_SMOKE_EVIDENCE",
+    "test:renderer:preference": "node tools/webgpu/smoke-renderer-preference.mjs --output docs/webgpu/RENDERER_PREFERENCE_SMOKE.json",
+    "test:renderer:lifecycle": "node tools/webgpu/smoke-mode-lifecycle.mjs --output docs/webgpu/MODE_LIFECYCLE_SMOKE.json",
+    "test:renderer:visual": "npm run test:renderer:materials && npm run test:renderer:postfx && npm run test:renderer:instanced",
+    "test:save-compatibility": "node --experimental-loader ./tools/_loader.mjs tools/smoke-meta-migration.mjs",
+    "test:racing": "node tools/smoke-racing-migration-availability.mjs && node tools/smoke-racing-cameras.mjs && node tools/smoke-racing-physics.mjs && node tools/smoke-racing-tracks.mjs && node tools/smoke-racing-draw-track.mjs && node tools/smoke-racing-monster.mjs && node tools/smoke-monster-arena.mjs && node tools/smoke-monster-vehicle-physics.mjs && node tools/smoke-monster-records.mjs && node tools/smoke-racing-trials.mjs && node tools/smoke-racing-crash.mjs && node tools/smoke-racing-crash-physics.mjs && node tools/validate-kaki-catastrophe-assets.mjs && node tools/smoke-racing-visuals.mjs && node tools/validate-rally-assets.mjs && node tools/smoke-racing-lifecycle.mjs",
+    "test:racing:migration": "node tools/smoke-racing-migration-availability.mjs",
+    "test:racing:crash": "node tools/smoke-racing-crash.mjs && node tools/smoke-racing-crash-physics.mjs && node tools/validate-kaki-catastrophe-assets.mjs",
+    "test:racing:crash-browser": "node tools/smoke-racing-crash-browser.mjs",
+    "test:racing:visual": "node tools/smoke-racing-visuals.mjs && node tools/validate-rally-assets.mjs && node tools/smoke-racing-lifecycle.mjs",
+    "test:racing:browser": "node tools/smoke-monster-arena-visual.mjs",
+    "test:racing:timer-browser": "node tools/smoke-monster-timed-run-browser.mjs",
+    "test:racing:camera-browser": "node tools/smoke-racing-cameras-browser.mjs",
+    "qa:racing:camera-perf": "node tools/benchmark-racing-cameras-browser.mjs",
+    "test:racing:draw-browser": "node tools/smoke-racing-draw-track-browser.mjs",
+    "qa:monster:motion": "node tools/capture-monster-motion.mjs"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/dknos/Kaki-Survivors-2.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/dknos/Kaki-Survivors-2/issues"
+  },
+  "homepage": "https://dknos.github.io/Kaki-Survivors-2/",
+  "type": "module",
+  "devDependencies": {
+    "pngjs": "^7.0.0"
+  }
+}

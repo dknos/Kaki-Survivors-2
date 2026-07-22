@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=3">
+  <title>Kaki Survivors</title>
+  <meta name="description" content="A Vampire-Survivors-style horde game. Survive the night.">
+  <meta name="color-scheme" content="dark">
+
+  <!-- Favicon — inline empty data URL suppresses the browser's implicit
+       /favicon.ico request (which otherwise 404s and logs a console error
+       at boot). No binary asset is shipped; replace with a real .ico/.png
+       when art lands. Pattern is the standard way to silence the implicit
+       request without adding a placeholder file. -->
+  <link rel="icon" href="data:,">
+
+  <!-- Open Graph / Twitter — social preview cards -->
+  <meta property="og:title" content="Kaki Survivors">
+  <meta property="og:description" content="A Vampire-Survivors-style horde game. Survive the night.">
+  <meta property="og:image" content="https://dknos.github.io/Kaki-Survivors-2/assets/og-card.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:url" content="https://dknos.github.io/Kaki-Survivors-2/">
+  <meta property="og:type" content="website">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:image" content="https://dknos.github.io/Kaki-Survivors-2/assets/og-card.png">
+  <meta name="twitter:title" content="Kaki Survivors">
+  <meta name="twitter:description" content="A Vampire-Survivors-style horde game. Survive the night.">
+
+  <!-- Menu V2 typefaces — Cinzel (display) / Cormorant Garamond (italic eyebrow) /
+       Geist + Geist Mono (UI body + kbd chips). Loaded eagerly so the first paint of
+       the new main menu has the correct ascenders/spacing. -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700;800;900&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <link href="./src/racing/racing.css?v=20260721tipsy1" rel="stylesheet">
+  <link href="./src/racing/crash/crash.css?v=20260721catastrophe1" rel="stylesheet">
+
+  <!-- Tiny stage-identity sprites start loading during the menu so ambient
+       life is decoded before a run's first rendered frame (four files ≈48 KB). -->
+  <link rel="preload" as="image" type="image/webp" crossorigin="anonymous" href="./assets/textures/ambient_moon_moth_256.webp">
+  <link rel="preload" as="image" type="image/webp" crossorigin="anonymous" href="./assets/textures/ambient_ember_moth_256.webp">
+  <link rel="preload" as="image" type="image/webp" crossorigin="anonymous" href="./assets/textures/ambient_star_kitten_256.webp">
+  <link rel="preload" as="image" type="image/webp" crossorigin="anonymous" href="./assets/textures/ambient_glowbat_256.webp">
+  <!-- Tiny Bullet Hell combat silhouettes (≈6 KB total). Boss art loads lazily
+       only when that biome is active, keeping normal-stage startup lean. -->
+  <link rel="preload" as="image" type="image/webp" crossorigin="anonymous" href="./assets/fx/bullethell/paw_bullet.webp">
+  <link rel="preload" as="image" type="image/webp" crossorigin="anonymous" href="./assets/fx/bullethell/paw_shot.webp">
+  <link rel="preload" as="image" type="image/webp" crossorigin="anonymous" href="./assets/fx/bullethell/cat_bell_reward.webp">
+  <!-- Core combat silhouettes: base/evolved pooled burgers, one pooled XP
+       shard, and the Forest tar hazard. Combined transfer is under 115 KB. -->
+  <link rel="preload" as="image" type="image/webp" crossorigin="anonymous" href="./assets/fx/weapons/cheesy_burger.webp">
+  <link rel="preload" as="image" type="image/webp" crossorigin="anonymous" href="./assets/fx/weapons/cheesy_burger_toxic.webp">
+  <link rel="preload" as="image" type="image/webp" crossorigin="anonymous" href="./assets/fx/pickups/xp_paw_crystal.webp">
+  <link rel="preload" as="image" type="image/webp" crossorigin="anonymous" href="./assets/fx/forest/tar_bog.webp">
+  <!-- Player Nova + hostile spectral bolts: authored combat silhouettes decode
+       before the first run; combined transfer remains below 75 KB. -->
+  <link rel="preload" as="image" type="image/webp" crossorigin="anonymous" href="./assets/fx/aoe/nova_pawburst.webp">
+  <link rel="preload" as="image" type="image/webp" crossorigin="anonymous" href="./assets/fx/projectiles/enemy_cat_spirit_bolt.webp">
+  <link rel="preload" as="image" type="image/webp" crossorigin="anonymous" href="./assets/fx/pickups/weapon_relic_drop.webp">
+  <link rel="preload" as="image" type="image/webp" crossorigin="anonymous" href="./assets/fx/rings/pickup_pulse.webp">
+  <link rel="preload" as="image" type="image/webp" crossorigin="anonymous" href="./assets/fx/pickups/pickup_paw_aura.webp">
+
+  <style>
+    /* Iter 10a — font-scale CSS var consumed by .kk-fs-* buckets in ui.js */
+    /* Iter 21c — narrow-viewport defaults so modals don't overflow on phones.
+       Inline _applyFontScale() at :root.style overrides this when a saved
+       slider value is present, so the player's option always wins. */
+    :root {
+      --kk-font-scale: 1;
+      --kk-hud-ink: #171018;
+      --kk-hud-surface: rgba(31, 20, 29, 0.86);
+      --kk-hud-surface-strong: rgba(20, 14, 21, 0.94);
+      --kk-hud-line: rgba(255, 226, 188, 0.30);
+      --kk-hud-line-soft: rgba(255, 255, 255, 0.08);
+      --kk-hud-cream: #fff0dc;
+      --kk-hud-muted: rgba(255, 240, 220, 0.64);
+      --kk-hud-honey: #ffd18b;
+      --kk-hud-mint: #82e7c4;
+      --kk-hud-violet: #d89cff;
+      --kk-hud-coral: #ff8f78;
+      --kk-hud-shadow: 0 14px 34px rgba(14, 7, 12, 0.46);
+    }
+    @media (max-width: 768px) { :root { --kk-font-scale: 0.85; } }
+    @media (max-width: 480px) { :root { --kk-font-scale: 0.70; } }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    html, body { width: 100%; height: 100%; overflow: hidden; background: #000; font-family: 'Courier New', monospace; color: #fff; }
+    /* Aspect-capped stage. The game world + every fixed-position UI overlay
+       live inside #kk-stage, which JS sizes to a centred max-16:9 box (see
+       main.js#computeStage). On wider-than-16:9 displays (e.g. 32:9 ultrawide)
+       the body's black background shows through as letterbox bars. The
+       `transform` on the stage is load-bearing: it makes `position:fixed`
+       descendants resolve relative to the stage box instead of the viewport,
+       so all the existing fixed overlays letterbox for free — no per-overlay
+       edits. (2D minigame canvases append to <body> directly, so they stay
+       full-viewport — a separate, lower-priority surface.) */
+    #kk-stage { position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); overflow: hidden; }
+    #game-canvas { display: block; position: absolute; inset: 0; width: 100%; height: 100%; touch-action: none; }
+    #ui-root { position: absolute; inset: 0; pointer-events: none; z-index: 10; }
+    #ui-root > * { pointer-events: auto; }
+    /* The HUD is a fullscreen passthrough layer, NOT an interactive panel — its
+       own children (hp bar, buttons) opt back in with pointer-events:auto. Without
+       this override the `#ui-root > *` rule above makes the fullscreen .kk-hud eat
+       every canvas click, which silently breaks home-decorate placement. */
+    #ui-root > .kk-hud { pointer-events: none; }
+  </style>
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "./vendor/three/build/three.webgpu.js",
+      "three/webgpu": "./vendor/three/build/three.webgpu.js",
+      "three/tsl": "./vendor/three/build/three.tsl.js",
+      "three/addons/": "./vendor/three/examples/jsm/",
+      "./src/assets.js": "./src/assets.js?v=20260721bridge1",
+      "./src/audio.js": "./src/audio.js?v=20260719feel3",
+      "./src/buttonPrompts.js": "./src/buttonPrompts.js?v=20260715b",
+      "./src/casinoInterior.js": "./src/casinoInterior.js?v=20260715b",
+      "./src/arenaDecor.js": "./src/arenaDecor.js?v=20260714i",
+      "./src/bells.js": "./src/bells.js?v=20260714i",
+      "./src/bossIntroCinematic.js": "./src/bossIntroCinematic.js?v=20260715c",
+      "./src/catacomb.js": "./src/catacomb.js?v=20260718a",
+      "./src/catacombEncounters.js": "./src/catacombEncounters.js?v=20260713a",
+      "./src/chest.js": "./src/chest.js?v=20260714h",
+      "./src/cinderBallistas.js": "./src/cinderBallistas.js?v=20260713a",
+      "./src/config.js": "./src/config.js?v=20260714i",
+      "./src/codex.js": "./src/codex.js?v=20260713c",
+      "./src/cutscene.js": "./src/cutscene.js?v=20260713a",
+      "./src/damageNumbers.js": "./src/damageNumbers.js?v=20260718a",
+      "./src/daycare.js": "./src/daycare.js?v=20260715c",
+      "./src/destructibles.js": "./src/destructibles.js?v=20260718a",
+      "./src/dungeonBuild.js": "./src/dungeonBuild.js?v=20260718a",
+      "./src/endRunSummary.js": "./src/endRunSummary.js?v=20260718a",
+      "./src/enemies.js": "./src/enemies.js?v=20260718a",
+      "./src/enemyEncounterDeck.js": "./src/enemyEncounterDeck.js?v=20260715b",
+      "./src/enemyAffixes.js": "./src/enemyAffixes.js?v=20260713c",
+      "./src/env.js": "./src/env.js?v=20260714i",
+      "./src/evolveCinematic.js": "./src/evolveCinematic.js?v=20260715c",
+      "./src/forestEnvHazards.js": "./src/forestEnvHazards.js?v=20260713a",
+      "./src/forestAmber.js": "./src/forestAmber.js?v=20260714a",
+      "./src/forestBossBars.js": "./src/forestBossBars.js?v=20260718a",
+      "./src/forestChests.js": "./src/forestChests.js?v=20260714h",
+      "./src/forestCoffins.js": "./src/forestCoffins.js?v=20260714h",
+      "./src/forestLandmarks.js": "./src/forestLandmarks.js?v=20260714h",
+      "./src/forestPickups.js": "./src/forestPickups.js?v=20260714g",
+      "./src/forestPortals.js": "./src/forestPortals.js?v=20260715c",
+      "./src/forestReaper.js": "./src/forestReaper.js?v=20260713a",
+      "./src/forestRooms.js": "./src/forestRooms.js?v=20260713a",
+      "./src/forestSealedDoors.js": "./src/forestSealedDoors.js?v=20260715c",
+      "./src/forestWeaponDrops.js": "./src/forestWeaponDrops.js?v=20260714h",
+      "./src/helltide.js": "./src/helltide.js?v=20260718a",
+      "./src/hero.js": "./src/hero.js?v=20260718a",
+      "./src/fx.js": "./src/fx.js?v=20260714h",
+      "./src/fx/pickupMarker.js": "./src/fx/pickupMarker.js?v=20260714h",
+      "./src/fxLayers.js": "./src/fxLayers.js?v=20260713a",
+      "./src/fxTextures.js": "./src/fxTextures.js?v=20260714d",
+      "./src/fx/novaBurst.js": "./src/fx/novaBurst.js?v=20260713b",
+      "./src/vfxBurst.js": "./src/vfxBurst.js?v=20260713d",
+      "./src/enemyProjectiles.js": "./src/enemyProjectiles.js?v=20260713b",
+      "./src/input.js": "./src/input.js?v=20260721drive1",
+      "./src/interior.js": "./src/interior.js?v=20260714c",
+      "./src/maomao.js": "./src/maomao.js?v=20260713a",
+      "./src/maomaoState.js": "./src/maomaoState.js?v=20260713a",
+      "./src/menuV2.js": "./src/menuV2.js?v=20260721kakivibe2",
+      "./src/meta.js": "./src/meta.js?v=20260714i",
+      "./src/miniEvents.js": "./src/miniEvents.js?v=20260718a",
+      "./src/forestHud.js": "./src/forestHud.js?v=20260718a",
+      "./src/forestSigilArc.js": "./src/forestSigilArc.js?v=20260718a",
+      "./src/minimapProjection.js": "./src/minimapProjection.js?v=20260718a",
+      "./src/portalShards.js": "./src/portalShards.js?v=20260718a",
+      "./src/pickups.js": "./src/pickups.js?v=20260714h",
+      "./src/pylons.js": "./src/pylons.js?v=20260714i",
+      "./src/runClock.js": "./src/runClock.js?v=20260718a",
+      "./src/racing/index.js": "./src/racing/index.js?v=20260721drive1",
+      "./src/racing/crash/crashMode.js": "./src/racing/crash/crashMode.js?v=20260721steer1",
+      "./src/racing/crash/crashRecords.js": "./src/racing/crash/crashRecords.js?v=20260721catastrophe1",
+      "./src/racing/cameras/cameraModes.js": "./src/racing/cameras/cameraModes.js?v=20260721catastrophe1",
+      "./src/racing/cameras/cameraSessionBinding.js": "./src/racing/cameras/cameraSessionBinding.js?v=20260721catastrophe1",
+      "./src/racing/cameras/cameraInput.js": "./src/racing/cameras/cameraInput.js?v=20260721drive1",
+      "./src/racing/cameras/chaseCameraCollision.js": "./src/racing/cameras/chaseCameraCollision.js?v=20260721chaseperf1",
+      "./src/racing/cameras/racingCameraManager.js": "./src/racing/cameras/racingCameraManager.js?v=20260721chaseperf1",
+      "./src/racing/cameras/racingCameraProfile.js": "./src/racing/cameras/racingCameraProfile.js?v=20260721catastrophe1",
+      "./src/racing/drawTrackGeneration.js": "./src/racing/drawTrackGeneration.js?v=20260721bridge1",
+      "./src/racing/drawTrackGeometry.js": "./src/racing/drawTrackGeometry.js?v=20260721bridge1",
+      "./src/racing/drawTrackMode.js": "./src/racing/drawTrackMode.js?v=20260721draw1",
+      "./src/racing/drawTrackStorage.js": "./src/racing/drawTrackStorage.js?v=20260721draw1",
+      "./src/racing/drawTrackThemes.js": "./src/racing/drawTrackThemes.js?v=20260721bridge1",
+      "./src/racing/drawTrackUI.js": "./src/racing/drawTrackUI.js?v=20260721bridge1",
+      "./src/racing/monsterArena.js": "./src/racing/monsterArena.js?v=20260721arenaart1",
+      "./src/racing/monsterArenaDefinition.js": "./src/racing/monsterArenaDefinition.js?v=20260719feel3",
+      "./src/racing/monsterDestruction.js": "./src/racing/monsterDestruction.js?v=20260721arenaart1",
+      "./src/racing/monsterDestructionRules.js": "./src/racing/monsterDestructionRules.js?v=20260720jump1",
+      "./src/racing/monsterRounds.js": "./src/racing/monsterRounds.js?v=20260721unlimited1",
+      "./src/racing/monsterScoring.js": "./src/racing/monsterScoring.js?v=20260720jump1",
+      "./src/racing/monsterSmash.js": "./src/racing/monsterSmash.js?v=20260721arenaart1",
+      "./src/racing/monsterSpotlights.js": "./src/racing/monsterSpotlights.js?v=20260719feel3",
+      "./src/racing/monsterRecords.js": "./src/racing/monsterRecords.js?v=20260721unlimited1",
+      "./src/racing/monsterVehiclePhysics.js": "./src/racing/monsterVehiclePhysics.js?v=20260720jump1",
+      "./src/racing/physics.js": "./src/racing/physics.js?v=20260721drive1",
+      "./src/racing/racingAssets.js": "./src/racing/racingAssets.js?v=20260719feel3",
+      "./src/racing/racingEnvironment.js": "./src/racing/racingEnvironment.js?v=20260721scenery1",
+      "./src/racing/racingManifest.js": "./src/racing/racingManifest.js?v=20260721arenaart1",
+      "./src/racing/racingVehicles.js": "./src/racing/racingVehicles.js?v=20260721drive2",
+      "./src/racing/racingVfx.js": "./src/racing/racingVfx.js?v=20260721arenaart1",
+      "./src/racing/tracks.js": "./src/racing/tracks.js?v=20260721catastrophe1",
+      "./src/racing/trialsEnvironment.js": "./src/racing/trialsEnvironment.js?v=20260719v2",
+      "./src/racing/trialsMode.js": "./src/racing/trialsMode.js?v=20260721drive1",
+      "./src/racing/trialsPhysics.js": "./src/racing/trialsPhysics.js?v=20260719k",
+      "./src/racing/trialsTracks.js": "./src/racing/trialsTracks.js?v=20260719k",
+      "./src/spawnDirector.js": "./src/spawnDirector.js?v=20260715b",
+      "./src/stageRules.js": "./src/stageRules.js?v=20260718a",
+      "./src/stageHazards.js": "./src/stageHazards.js?v=20260713a",
+      "./src/stageExplorationLayout.js": "./src/stageExplorationLayout.js?v=20260718a",
+      "./src/stageLife.js": "./src/stageLife.js?v=20260718a",
+      "./src/stageLandscapes.js": "./src/stageLandscapes.js?v=20260713a",
+      "./src/stageTerrainLayout.js": "./src/stageTerrainLayout.js?v=20260718a",
+      "./src/stages/cave/caveVault.js": "./src/stages/cave/caveVault.js?v=20260713a",
+      "./src/state.js": "./src/state.js?v=20260718a",
+      "./src/totems.js": "./src/totems.js?v=20260714i",
+      "./src/town.js": "./src/town.js?v=20260713a",
+      "./src/ui.js": "./src/ui.js?v=20260718a",
+      "./src/uiFocus.js": "./src/uiFocus.js?v=20260718a",
+      "./src/kakiLandPortals.js": "./src/kakiLandPortals.js?v=20260714j",
+      "./src/stages/kakiland/kakiLandStage.js": "./src/stages/kakiland/kakiLandStage.js?v=20260715b",
+      "./src/stages/kakiland/kakiLandPalette.js": "./src/stages/kakiland/kakiLandPalette.js?v=20260714i",
+      "./src/voidTeleportPads.js": "./src/voidTeleportPads.js?v=20260713a",
+      "./src/xp.js": "./src/xp.js?v=20260713a",
+      "./src/weapons/index.js": "./src/weapons/index.js?v=20260715b",
+      "./src/weapons/descriptions.js": "./src/weapons/descriptions.js?v=20260715b",
+      "./src/weapons/sig/pipes_arcwrench.js": "./src/weapons/sig/pipes_arcwrench.js?v=20260715b",
+      "./src/weapons/sig/pipes_grapple.js": "./src/weapons/sig/pipes_grapple.js?v=20260715b",
+      "./src/weapons/autoAim.js": "./src/weapons/autoAim.js?v=20260713b",
+      "./src/weapons/actives.js": "./src/weapons/actives.js?v=20260713d",
+      "./src/weapons/orbitals.js": "./src/weapons/orbitals.js?v=20260713a",
+      "./src/bullethell/announcer.js": "./src/bullethell/announcer.js?v=20260713a",
+      "./src/bullethell/bossPatterns.js": "./src/bullethell/bossPatterns.js?v=20260713a",
+      "./src/bullethell/bullets.js": "./src/bullethell/bullets.js?v=20260713a",
+      "./src/bullethell/foes.js": "./src/bullethell/foes.js?v=20260713a",
+      "./src/bullethell/index.js": "./src/bullethell/index.js?v=20260713a",
+      "./src/bullethell/items.js": "./src/bullethell/items.js?v=20260713a",
+      "./src/bullethell/shots.js": "./src/bullethell/shots.js?v=20260713a"
+    }
+  }
+  </script>
+</head>
+<body>
+  <div id="kk-stage">
+    <canvas id="game-canvas"></canvas>
+    <div id="ui-root"></div>
+  </div>
+  <script type="module" src="./src/main.js?v=20260721webgpu1"></script>
+</body>
+</html>

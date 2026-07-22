@@ -1,0 +1,48 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+.vscode/
+.idea/
+
+# Dependencies (none today — bundler-free importmap — but preempt)
+node_modules/
+
+# Local-only
+*.log
+.env
+.env.local
+
+# Background-agent worktrees (used by Claude Code Agent isolation)
+.claude/
+
+# AI-gen texture candidates (winners get promoted into assets/fx/)
+assets/fx/_candidates/
+
+# Local-only tooling artifacts (Codex 2026-05-15). Smoke screenshots,
+# thumbnails, and probe outputs are point-in-time diagnostic evidence, not
+# source — keep tools/ for scripts, not their outputs, so they never ship
+# to the GitHub Pages root.
+tools/_thumb_*.png
+tools/smoke-*.png
+tools/probe-detail.json
+tools/probe-report.txt
+
+# Playtest-bot run outputs (fun-loop 2026-06). Scripts (playtest-*.mjs) are
+# source; their JSON/JSONL/screenshot outputs are point-in-time evidence.
+tools/playtest-*.json
+tools/playtest-*.jsonl
+tools/playtest-*.png
+tools/accept*.json
+tools/accept*.jsonl
+tools/probe-*.json
+tools/probe-*.jsonl
+
+# Privacy-sensitive Oekaki archive workspace. Only reviewed, anonymized
+# derivatives may be promoted into docs/ or assets/.
+.oekaki-work/
+
+# Python tooling caches are local execution artifacts.
+__pycache__/
+*.pyc

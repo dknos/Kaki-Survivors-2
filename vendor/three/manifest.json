@@ -1,0 +1,23 @@
+{
+  "schemaVersion": 1,
+  "package": "three",
+  "version": "0.185.1",
+  "npmSpecifier": "three@0.185.1",
+  "npmIntegrity": "sha512-5aojFCXKwnjBRZvUnt3WFfEcvUJgkN5LlijRFN95hMy8WVkG4I0QNcJE+OuWvuJ0bOdStrbfXn0pkd6/QyiAlg==",
+  "npmTarball": "https://registry.npmjs.org/three/-/three-0.185.1.tgz",
+  "upstreamTag": "r185",
+  "upstreamCommit": "2431a09f46f34c560bc8e44b33be0e567723d5b9",
+  "selection": [
+    "LICENSE",
+    "package.json",
+    "build/three.core.js",
+    "build/three.module.js",
+    "build/three.webgpu.js",
+    "build/three.tsl.js",
+    "examples/jsm/**"
+  ],
+  "checksumAlgorithm": "sha256",
+  "checksumFile": "MANIFEST.sha256",
+  "officialFileCount": 436,
+  "officialByteCount": 12302220
+}

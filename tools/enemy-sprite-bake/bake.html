@@ -1,0 +1,141 @@
+<!doctype html><html><head><meta charset="utf-8">
+<script type="importmap">{"imports":{
+  "three":"./vendor/three/build/three.module.js",
+  "three/addons/":"./vendor/three/examples/jsm/"
+}}</script></head><body><script type="module">
+import * as THREE from 'three';
+import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
+import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
+const _draco = new DRACOLoader();
+const loader = new GLTFLoader();
+loader.setDRACOLoader(_draco);
+const load = (p) => new Promise((res, rej) => loader.load(p, res, undefined, rej));
+
+// Full trash roster (name -> glb path). Names MUST match ENEMY_TIERS glb keys
+// in src/config.js AND the asset-map keys in src/assets.js (so a 2D-billboard
+// trash mob matches the 3D elite of the same tier). Bake a subset via
+// ?only=a,b,c.
+const B = 'assets/breakroom/';
+const ROSTER = [
+  ['zombie',      B+'Mushnub.glb'],        ['goblin',      B+'Cactoro.glb'],
+  ['skeleton',    B+'Goleling.glb'],       ['orc',         B+'Orc-New.glb'],
+  ['demon',       B+'Demon-New.glb'],      ['robot',       B+'Goleling-Evolved.glb'],
+  ['mech',        B+'Yeti.glb'],           ['xeno',        B+'Blue-Demon.glb'],
+  ['slime',       B+'Pink-Slime.glb'],     ['wizard',      B+'Wizard.glb'],
+  ['ghost',       B+'Ghost.glb'],          ['spider',      B+'Spider.glb'],
+  ['wolf',        B+'Wolf.glb'],           ['ant',         B+'Ant.glb'],
+  ['beetle',      B+'Beetle.glb'],         ['ladybug',     B+'Ladybug.glb'],
+  ['grasshopper', B+'Grasshopper.glb'],    ['cockroach',   B+'Cockroach.glb'],
+  ['mantis',      B+'Mantis.glb'],         ['wasp',        B+'Wasp.glb'],
+  ['bee',         B+'Bee.glb'],            ['butterfly',   B+'Butterfly.glb'],
+  ['caterpillar', B+'Caterpillar.glb'],
+];
+
+const CELL = 128;          // px per frame cell
+const FRAMES = 4;          // bob-cycle frames
+const FPS = 8;
+// Game camera elevation: pos (40,60,40) -> origin ~= 47 deg pitch, 45 deg azimuth.
+const EL = Math.atan2(60, Math.hypot(40, 40));   // ~0.816 rad
+const AZ = Math.PI / 4;
+
+window.__r = { status: 'baking' };
+
+function makeRenderer() {
+  const r = new THREE.WebGLRenderer({ antialias: false, alpha: true, preserveDrawingBuffer: true });
+  r.setPixelRatio(1);
+  r.setSize(CELL, CELL, false);
+  r.setClearColor(0x000000, 0);   // transparent
+  r.outputColorSpace = THREE.SRGBColorSpace;
+  return r;
+}
+
+function frameModel(model) {
+  // Center + measure so we can frame an ortho cam to the bbox.
+  model.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(model);
+  const size = box.getSize(new THREE.Vector3());
+  const center = box.getCenter(new THREE.Vector3());
+  model.position.sub(center);          // recenter to origin
+  model.position.y += size.y / 2;      // feet near y=0, body above
+  return { size, center };
+}
+
+async function bakeOne(renderer, packCtx, name, path, col0, row) {
+  const gltf = await load(path);
+  const model = gltf.scene;
+  const scene = new THREE.Scene();
+  // Lit so sprites read 3D, not flat. Top-bright / bottom-dark hemisphere +
+  // a soft key from the camera side. Not matched to in-game exactly (tar pit).
+  const hemi = new THREE.HemisphereLight(0xffffff, 0x404048, 1.15);
+  scene.add(hemi);
+  const key = new THREE.DirectionalLight(0xffffff, 1.1);
+  key.position.set(0.5, 1, 0.8);
+  scene.add(key);
+  scene.add(model);
+  const { size } = frameModel(model);
+
+  const maxDim = Math.max(size.x, size.y, size.z) * 1.12; // padding
+  const half = maxDim / 2;
+  const cam = new THREE.OrthographicCamera(-half, half, half, -half, 0.01, 1000);
+  const R = 50;
+  cam.position.set(
+    Math.cos(EL) * Math.cos(AZ) * R,
+    Math.sin(EL) * R + size.y / 2,
+    Math.cos(EL) * Math.sin(AZ) * R,
+  );
+  cam.lookAt(0, size.y / 2, 0);
+
+  const baseY = model.position.y;
+  for (let f = 0; f < FRAMES; f++) {
+    const ph = (f / FRAMES) * Math.PI * 2;
+    // Procedural walk shimmer: vertical bob + squash + slight lean (NOT yaw -
+    // billboards always face the camera, so yaw views would never show).
+    model.position.y = baseY + Math.sin(ph) * size.y * 0.05;
+    model.scale.y = 1 - Math.cos(ph * 2) * 0.04;
+    model.rotation.z = Math.sin(ph) * 0.05;
+    renderer.render(scene, cam);
+    packCtx.drawImage(renderer.domElement, (col0 + f) * CELL, row * CELL);
+  }
+  // free
+  model.traverse(o => { if (o.geometry) o.geometry.dispose?.(); });
+  return { name, from: col0, count: FRAMES };
+}
+
+(async () => {
+  try {
+    const params = new URLSearchParams(location.search);
+    const only = params.get('only');
+    const roster = only ? ROSTER.filter(([n]) => only.split(',').includes(n)) : ROSTER;
+    // Grid pack: one enemy per row, FRAMES columns. Frame index is row-major
+    // (row*cols + col) so per-enemy anim ranges stay contiguous.
+    const cols = FRAMES;
+    const rows = roster.length;
+    const pack = document.createElement('canvas');
+    pack.width = cols * CELL; pack.height = rows * CELL;
+    const ctx = pack.getContext('2d');
+    const renderer = makeRenderer();
+    const anims = {};
+    for (let row = 0; row < roster.length; row++) {
+      const [name, path] = roster[row];
+      console.log('bake', row, name);
+      await bakeOne(renderer, ctx, name, path, 0, row);
+      window.__r = { status: 'baking', done: row + 1, of: roster.length };
+      const base = row * cols;
+      anims[name] = { from: base, to: base + FRAMES - 1, fps: FPS, loop: true };
+    }
+    renderer.dispose();
+    const json = {
+      version: 1, image: 'enemies_v1.png',
+      frameWidth: CELL, frameHeight: CELL,
+      cols, rows, frameCount: cols * rows,
+      pixelsPerWorldUnit: 48, anchor: [0.5, 1],
+      blendMode: 'alpha', alphaTest: 0.5, bloom: false,
+      billboard: 'cylinder', anims,
+      palette: 'neutral', license: 'baked-from-glb', source: 'tools/enemy-sprite-bake/bake.html',
+    };
+    window.__r = { status: 'ok', png: pack.toDataURL('image/png'), json, cols, names: Object.keys(anims) };
+  } catch (e) {
+    window.__r = { status: 'error', error: String(e && e.stack || e) };
+  }
+})();
+</script></body></html>

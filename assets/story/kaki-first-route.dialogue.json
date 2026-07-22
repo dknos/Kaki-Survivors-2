@@ -1,0 +1,81 @@
+{
+  "schemaVersion": 1,
+  "id": "kaki.first_route.v1",
+  "speakers": {
+    "kitty": {"name":"Kitty Kaki","nameTextId":"speaker.kitty","textStyle":"warm","portraits":{"neutral":"fallback:kitty:neutral","suspicious":"fallback:kitty:suspicious","defeat":"fallback:kitty:defeat"}},
+    "spool": {"name":"Spool","nameTextId":"speaker.spool","textStyle":"measured","portraits":{"neutral":"fallback:spool:neutral","panic":"fallback:spool:panic","affection":"fallback:spool:affection"}},
+    "nib": {"name":"Nib","nameTextId":"speaker.nib","textStyle":"clerk","portraits":{"neutral":"fallback:nib:neutral","approval":"fallback:nib:approval"}},
+    "rivet": {"name":"Rivet","nameTextId":"speaker.rivet","textStyle":"rival","portraits":{"neutral":"fallback:rivet:neutral","smug":"fallback:rivet:smug","defeat":"fallback:rivet:defeat"}},
+    "wax": {"name":"Wax","nameTextId":"speaker.wax","textStyle":"tide","portraits":{"neutral":"fallback:wax:neutral","suspicious":"fallback:wax:suspicious","approval":"fallback:wax:approval"}}
+  },
+  "reactions": {
+    "greeting":"fallback:reaction:greeting","approval":"fallback:reaction:approval","suspicion":"fallback:reaction:suspicion","panic":"fallback:reaction:panic","smugness":"fallback:reaction:smugness","defeat":"fallback:reaction:defeat","affection":"fallback:reaction:affection"
+  },
+  "lines": [
+    {"id":"hub.first_route.01","kind":"conversation","speaker":"spool","portrait":"neutral","reaction":"greeting","textId":"hub.first_route.01","text":"The west route came back with a loose edge.","conditions":["!flag:first_route_started"],"effects":["set:first_route_started","world:latchkey_banner=loose"],"tags":["hub","pre_expedition"],"next":"hub.first_route.02"},
+    {"id":"hub.first_route.02","kind":"conversation","speaker":"kitty","portrait":"suspicious","reaction":"suspicion","textId":"hub.first_route.02","text":"Loose like thread, or loose like weather?","tags":["hub","pre_expedition"],"next":"hub.first_route.03"},
+    {"id":"hub.first_route.03","kind":"conversation","speaker":"spool","portrait":"panic","reaction":"panic","textId":"hub.first_route.03","text":"Both. Bring one careful thing.","tags":["hub","pre_expedition"],"choices":[
+      {"id":"bring_thread","textId":"choice.bring_thread","text":"Bring the gold thread.","effects":["set:route_choice.thread","relationship:spool:+1"],"next":"hub.first_route.thread"},
+      {"id":"bring_bell","textId":"choice.bring_bell","text":"Bring the small bell.","effects":["set:route_choice.bell","relationship:spool:+1"],"next":"hub.first_route.bell"}
+    ]},
+    {"id":"hub.first_route.thread","kind":"conversation","speaker":"spool","portrait":"affection","reaction":"affection","textId":"hub.first_route.thread","text":"Good. It dislikes being wasted.","tags":["hub","pre_expedition"]},
+    {"id":"hub.first_route.bell","kind":"conversation","speaker":"spool","portrait":"neutral","reaction":"suspicion","textId":"hub.first_route.bell","text":"Good. If it answers, do not answer back.","tags":["hub","pre_expedition"]},
+
+    {"id":"expedition.switchback.entry","kind":"conversation","speaker":"nib","portrait":"neutral","reaction":"greeting","textId":"expedition.switchback.entry","text":"Felt Switchback. Three marks remain awake.","conditions":["flag:first_route_started","!flag:switchback_entered"],"effects":["set:switchback_entered"],"tags":["expedition","entry"],"next":"expedition.switchback.warning"},
+    {"id":"expedition.switchback.warning","kind":"conversation","speaker":"spool","portrait":"panic","reaction":"panic","textId":"expedition.switchback.warning","text":"Stamp, clip, needle. The desk escaped again.","tags":["expedition","entry"]},
+    {"id":"expedition.switchback.choice","kind":"conversation","speaker":"nib","portrait":"neutral","reaction":"suspicion","textId":"expedition.switchback.choice","text":"The torn path can be tied or shortened.","conditions":["flag:switchback_entered","!flag:switchback_route_chosen"],"tags":["expedition","event"],"choices":[
+      {"id":"tie_path","textId":"choice.tie_path","text":"Tie the long path.","effects":["set:switchback_route_chosen","set:switchback.long_path","world:felt_switchback=stitched"],"next":"expedition.switchback.tied"},
+      {"id":"cut_path","textId":"choice.cut_path","text":"Cut a safe shortcut.","effects":["set:switchback_route_chosen","set:switchback.short_path","world:felt_switchback=trimmed"],"next":"expedition.switchback.cut"}
+    ]},
+    {"id":"expedition.switchback.tied","kind":"conversation","speaker":"spool","portrait":"affection","reaction":"approval","textId":"expedition.switchback.tied","text":"Long route. Strong memory.","tags":["expedition","event"]},
+    {"id":"expedition.switchback.cut","kind":"conversation","speaker":"spool","portrait":"neutral","reaction":"suspicion","textId":"expedition.switchback.cut","text":"Short route. Keep the offcut.","tags":["expedition","event"]},
+    {"id":"expedition.seam.intro","kind":"conversation","speaker":"spool","portrait":"panic","reaction":"panic","textId":"expedition.seam.intro","text":"The seam is open. It noticed our feet.","conditions":["flag:switchback_route_chosen","!flag:seam_defeated"],"tags":["expedition","boss"]},
+    {"id":"expedition.relic.bent_lantern","kind":"conversation","speaker":"kitty","portrait":"suspicious","reaction":"suspicion","textId":"expedition.relic.bent_lantern","text":"Bent once. Still pointing somewhere.","conditions":["flag:seam_defeated","!flag:bent_lantern_found"],"effects":["set:bent_lantern_found","world:latchkey_banner=patched"],"tags":["expedition","relic"],"next":"expedition.relic.reply"},
+    {"id":"expedition.relic.reply","kind":"conversation","speaker":"spool","portrait":"affection","reaction":"affection","textId":"expedition.relic.reply","text":"Somewhere is more than yesterday.","tags":["expedition","relic"]},
+
+    {"id":"hub.first_route.return","kind":"conversation","speaker":"nib","portrait":"approval","reaction":"approval","textId":"hub.first_route.return","text":"The banner stays up without supervision.","conditions":["flag:bent_lantern_found","!flag:first_route_debriefed"],"effects":["set:first_route_debriefed","relationship:nib:+1"],"tags":["hub","post_expedition"],"next":"hub.first_route.return_spool"},
+    {"id":"hub.first_route.return_spool","kind":"conversation","speaker":"spool","portrait":"affection","reaction":"affection","textId":"hub.first_route.return_spool","text":"Your chair also remained. Mostly.","tags":["hub","post_expedition"]},
+
+    {"id":"rally.borrowed_post.pre","kind":"conversation","speaker":"rivet","portrait":"smug","reaction":"smugness","textId":"rally.borrowed_post.pre","text":"Loaner Four pulls left. I respect commitment.","conditions":["flag:first_route_debriefed"],"tags":["rally","pre_race"],"choices":[
+      {"id":"check_charm","textId":"choice.check_charm","text":"Check the spool charm.","effects":["set:rally.charm_checked","relationship:rivet:+1"],"next":"rally.borrowed_post.charm"},
+      {"id":"leave_it","textId":"choice.leave_it","text":"It knows what it did.","effects":["set:rally.charm_unchecked"],"next":"rally.borrowed_post.ready"}
+    ]},
+    {"id":"rally.borrowed_post.charm","kind":"conversation","speaker":"rivet","portrait":"neutral","reaction":"approval","textId":"rally.borrowed_post.charm","text":"Still tied. Now the car is nervous.","tags":["rally","pre_race"],"next":"rally.borrowed_post.ready"},
+    {"id":"rally.borrowed_post.ready","kind":"conversation","speaker":"rivet","portrait":"smug","reaction":"smugness","textId":"rally.borrowed_post.ready","text":"Drive the road awake. Avoid the mailbox.","tags":["rally","pre_race"]},
+    {"id":"rally.borrowed_post.post_win","kind":"conversation","speaker":"rivet","portrait":"defeat","reaction":"defeat","textId":"rally.borrowed_post.post_win","text":"Clean line. Unreasonable hubcap.","conditions":["context:result=win"],"tags":["rally","post_race"]},
+    {"id":"rally.borrowed_post.post_loss","kind":"conversation","speaker":"rivet","portrait":"neutral","reaction":"approval","textId":"rally.borrowed_post.post_loss","text":"The axle agrees with second place.","conditions":["context:result=loss"],"tags":["rally","post_race"]},
+
+    {"id":"surf.wax_letter.beach","kind":"conversation","speaker":"wax","portrait":"suspicious","reaction":"suspicion","textId":"surf.wax_letter.beach","text":"The return wave brought a dry corner.","conditions":["flag:first_route_debriefed"],"tags":["surf","beach"],"choices":[
+      {"id":"ride_first","textId":"choice.ride_first","text":"Ride it before asking.","effects":["set:surf.wax_respect","relationship:wax:+1"],"next":"surf.wax_letter.ride"},
+      {"id":"ask_first","textId":"choice.ask_first","text":"Ask what it remembers.","effects":["set:surf.wave_question"],"next":"surf.wax_letter.ask"}
+    ]},
+    {"id":"surf.wax_letter.ride","kind":"conversation","speaker":"wax","portrait":"approval","reaction":"approval","textId":"surf.wax_letter.ride","text":"Correct order. Question it after landing.","tags":["surf","beach"]},
+    {"id":"surf.wax_letter.ask","kind":"conversation","speaker":"wax","portrait":"neutral","reaction":"suspicion","textId":"surf.wax_letter.ask","text":"It remembers left. That is enough weather.","tags":["surf","beach"]},
+
+    {"id":"bark.kitty.wipeout.01","kind":"bark","speaker":"kitty","portrait":"defeat","reaction":"defeat","textId":"bark.kitty.wipeout.01","text":"We became briefly horizontal.","tags":["wipeout","defeat"],"weight":1,"cooldownMs":30000},
+    {"id":"bark.kitty.wipeout.02","kind":"bark","speaker":"kitty","portrait":"defeat","reaction":"defeat","textId":"bark.kitty.wipeout.02","text":"Wave: one. Dignity: damp.","tags":["wipeout","defeat"],"weight":1,"cooldownMs":30000},
+    {"id":"bark.rivet.secret","kind":"bark","speaker":"rivet","portrait":"smug","reaction":"smugness","textId":"bark.rivet.secret","text":"That mailbox is facing the wrong county.","tags":["rally_secret"],"weight":1,"cooldownMs":45000},
+    {"id":"bark.wax.hidden_wave","kind":"bark","speaker":"wax","portrait":"suspicious","reaction":"suspicion","textId":"bark.wax.hidden_wave","text":"Keep surfing. It is shy.","tags":["hidden_wave"],"weight":1,"cooldownMs":45000},
+
+    {"id":"stage.paper_woods.entry","kind":"conversation","speaker":"nib","portrait":"neutral","reaction":"suspicion","textId":"stage.paper_woods.entry","text":"Paper Woods. Fold nothing you intend to revisit.","conditions":["context:stage=twilight"],"tags":["survivors","stage_entry"]},
+    {"id":"stage.ceramic_basin.entry","kind":"conversation","speaker":"spool","portrait":"panic","reaction":"panic","textId":"stage.ceramic_basin.entry","text":"Ceramic Basin. The cups kept the heat again.","conditions":["context:stage=cinder"],"tags":["survivors","stage_entry"]},
+    {"id":"stage.woolen_drift.entry","kind":"conversation","speaker":"kitty","portrait":"suspicious","reaction":"suspicion","textId":"stage.woolen_drift.entry","text":"Woolen Drift. My echo is wearing a coat.","conditions":["context:stage=void"],"tags":["survivors","stage_entry"]},
+    {"id":"stage.glass_mile.entry","kind":"conversation","speaker":"nib","portrait":"neutral","reaction":"greeting","textId":"stage.glass_mile.entry","text":"Glass Mile. The survey marker requests patience.","conditions":["context:stage=cave"],"tags":["survivors","stage_entry"]},
+    {"id":"stage.chalk_plateau.entry","kind":"conversation","speaker":"spool","portrait":"affection","reaction":"affection","textId":"stage.chalk_plateau.entry","text":"Chalk Plateau. Last mark. Same careful feet.","conditions":["context:stage=kakiland"],"tags":["survivors","stage_entry"]},
+
+    {"id":"bark.kitty.level.01","kind":"bark","speaker":"kitty","portrait":"neutral","reaction":"approval","textId":"bark.kitty.level.01","text":"That fits. Suspiciously well.","tags":["survivors_level_up"],"weight":1,"cooldownMs":18000},
+    {"id":"bark.kitty.level.02","kind":"bark","speaker":"kitty","portrait":"suspicious","reaction":"suspicion","textId":"bark.kitty.level.02","text":"New pocket. Same number of hands.","tags":["survivors_level_up"],"weight":1,"cooldownMs":18000},
+    {"id":"bark.spool.level.01","kind":"bark","speaker":"spool","portrait":"affection","reaction":"approval","textId":"bark.spool.level.01","text":"Keep it. It already learned your shape.","tags":["survivors_level_up"],"weight":1,"cooldownMs":18000},
+    {"id":"bark.kitty.low_hp.01","kind":"bark","speaker":"kitty","portrait":"defeat","reaction":"panic","textId":"bark.kitty.low_hp.01","text":"I have fewer corners than before.","tags":["survivors_low_hp"],"weight":1,"cooldownMs":24000},
+    {"id":"bark.spool.low_hp.01","kind":"bark","speaker":"spool","portrait":"panic","reaction":"panic","textId":"bark.spool.low_hp.01","text":"Return with all important pieces.","tags":["survivors_low_hp"],"weight":1,"cooldownMs":24000},
+    {"id":"bark.kitty.chest.01","kind":"bark","speaker":"kitty","portrait":"suspicious","reaction":"suspicion","textId":"bark.kitty.chest.01","text":"A box practicing secrecy.","tags":["survivors_chest"],"weight":1,"cooldownMs":20000},
+    {"id":"bark.nib.chest.01","kind":"bark","speaker":"nib","portrait":"approval","reaction":"approval","textId":"bark.nib.chest.01","text":"Contents received. Box remains dramatic.","tags":["survivors_chest"],"weight":1,"cooldownMs":20000},
+    {"id":"bark.spool.boss.01","kind":"bark","speaker":"spool","portrait":"panic","reaction":"panic","textId":"bark.spool.boss.01","text":"Large problem. Clear stitching around the edge.","tags":["survivors_boss"],"weight":1,"cooldownMs":30000},
+    {"id":"bark.kitty.boss.01","kind":"bark","speaker":"kitty","portrait":"suspicious","reaction":"suspicion","textId":"bark.kitty.boss.01","text":"It brought its own weather.","tags":["survivors_boss"],"weight":1,"cooldownMs":30000},
+    {"id":"bark.nib.secret.01","kind":"bark","speaker":"nib","portrait":"approval","reaction":"approval","textId":"bark.nib.secret.01","text":"Unlisted route observed. Filing it under yes.","tags":["survivors_secret"],"weight":1,"cooldownMs":45000},
+    {"id":"bark.kitty.secret.01","kind":"bark","speaker":"kitty","portrait":"neutral","reaction":"approval","textId":"bark.kitty.secret.01","text":"Nobody hid this very confidently.","tags":["survivors_secret"],"weight":1,"cooldownMs":45000},
+    {"id":"bark.spool.repeat.01","kind":"bark","speaker":"spool","portrait":"neutral","reaction":"greeting","textId":"bark.spool.repeat.01","text":"The route remembers your left foot.","tags":["survivors_repeat"],"weight":1,"cooldownMs":60000},
+    {"id":"bark.kitty.repeat.01","kind":"bark","speaker":"kitty","portrait":"suspicious","reaction":"suspicion","textId":"bark.kitty.repeat.01","text":"Same road. New wrinkle.","tags":["survivors_repeat"],"weight":1,"cooldownMs":60000}
+  ],
+  "locales": {"en": {}}
+}

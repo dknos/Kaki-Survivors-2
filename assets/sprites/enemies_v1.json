@@ -1,0 +1,161 @@
+{
+  "version": 1,
+  "image": "enemies_v1.png",
+  "frameWidth": 128,
+  "frameHeight": 128,
+  "cols": 4,
+  "rows": 23,
+  "frameCount": 92,
+  "pixelsPerWorldUnit": 48,
+  "anchor": [
+    0.5,
+    1
+  ],
+  "blendMode": "alpha",
+  "alphaTest": 0.5,
+  "bloom": false,
+  "billboard": "cylinder",
+  "anims": {
+    "zombie": {
+      "from": 0,
+      "to": 3,
+      "fps": 8,
+      "loop": true
+    },
+    "goblin": {
+      "from": 4,
+      "to": 7,
+      "fps": 8,
+      "loop": true
+    },
+    "skeleton": {
+      "from": 8,
+      "to": 11,
+      "fps": 8,
+      "loop": true
+    },
+    "orc": {
+      "from": 12,
+      "to": 15,
+      "fps": 8,
+      "loop": true
+    },
+    "demon": {
+      "from": 16,
+      "to": 19,
+      "fps": 8,
+      "loop": true
+    },
+    "robot": {
+      "from": 20,
+      "to": 23,
+      "fps": 8,
+      "loop": true
+    },
+    "mech": {
+      "from": 24,
+      "to": 27,
+      "fps": 8,
+      "loop": true
+    },
+    "xeno": {
+      "from": 28,
+      "to": 31,
+      "fps": 8,
+      "loop": true
+    },
+    "slime": {
+      "from": 32,
+      "to": 35,
+      "fps": 8,
+      "loop": true
+    },
+    "wizard": {
+      "from": 36,
+      "to": 39,
+      "fps": 8,
+      "loop": true
+    },
+    "ghost": {
+      "from": 40,
+      "to": 43,
+      "fps": 8,
+      "loop": true
+    },
+    "spider": {
+      "from": 44,
+      "to": 47,
+      "fps": 8,
+      "loop": true
+    },
+    "wolf": {
+      "from": 48,
+      "to": 51,
+      "fps": 8,
+      "loop": true
+    },
+    "ant": {
+      "from": 52,
+      "to": 55,
+      "fps": 8,
+      "loop": true
+    },
+    "beetle": {
+      "from": 56,
+      "to": 59,
+      "fps": 8,
+      "loop": true
+    },
+    "ladybug": {
+      "from": 60,
+      "to": 63,
+      "fps": 8,
+      "loop": true
+    },
+    "grasshopper": {
+      "from": 64,
+      "to": 67,
+      "fps": 8,
+      "loop": true
+    },
+    "cockroach": {
+      "from": 68,
+      "to": 71,
+      "fps": 8,
+      "loop": true
+    },
+    "mantis": {
+      "from": 72,
+      "to": 75,
+      "fps": 8,
+      "loop": true
+    },
+    "wasp": {
+      "from": 76,
+      "to": 79,
+      "fps": 8,
+      "loop": true
+    },
+    "bee": {
+      "from": 80,
+      "to": 83,
+      "fps": 8,
+      "loop": true
+    },
+    "butterfly": {
+      "from": 84,
+      "to": 87,
+      "fps": 8,
+      "loop": true
+    },
+    "caterpillar": {
+      "from": 88,
+      "to": 91,
+      "fps": 8,
+      "loop": true
+    }
+  },
+  "palette": "neutral",
+  "license": "baked-from-glb",
+  "source": "tools/enemy-sprite-bake/bake.html"
+}

@@ -1,0 +1,8614 @@
+/**
+ * DOM-based UI overlay for Kitty Kaki Survivors.
+ * Mounts everything into #ui-root (defined in index.html).
+ * Cozy premium-fantasy aesthetic — warm glass, honey accents, crisp hierarchy.
+ *
+ * Public API (called by main.js):
+ *   initUI(), updateUI(), showLevelUpModal(choices), hideLevelUpModal(),
+ *   showDeathScreen(), showStartScreen(text), hideStartScreen()
+ */
+import { state } from './state.js';
+import {
+  commitRunResults, getMeta, saveMeta, setOption, achievementCount, ACHIEVEMENTS, isDiscovered, dailyChallengeConfig, commitDailyRun, equippedRelic, selectedStage, HOUSE_UPGRADES, houseLevel, houseCost, buyHouseUpgrade, QUEST_TEMPLATES, availableQuests, activeQuests, acceptQuest, abandonQuest, claimQuest, maxActiveQuests,
+  grantSigils,
+  isCharacterUnlocked,
+  // Iter 34 — Phase E (progression redesign)
+  isAvatarUnlocked, isAvatarUnlockable, spendEmbersForAvatar, AVATAR_UNLOCK_COSTS, getMastery,
+
+  SHOP_TREE, purchaseTreeNode, nodeUnlocked, nodeOwned, sigilCount,
+  addPreset, removePreset, listPresets, applyPreset,
+  weeklyMutatorConfig,
+  // Iter 10a — settings overhaul
+  exportMeta, importMeta, resetMeta,
+  // Punch List #4 — coin debit for the sigil-offer reroll button
+  spendCoins,
+  // Punch List #6 — cosmetic Daily Survivor badge query for start-screen pip
+  hasBadge,
+  isStageUnlocked,
+} from './meta.js';
+// Iter 10a — accessibility uniform pusher + audio mix setters routed from
+// the Options menu sliders. Imported eagerly so the Options modal sliders
+// don't have to await a dynamic import on every drag event.
+import { applyAccessibilityOptions } from './rendering/postfx/accessibilityPostfx.js';
+import { setMasterVolume, setMusicVolume, setSfxVolume, setAmbientVolume, sfx } from './audio.js';
+import { CHARACTERS, STAGES, AVATARS, SIGIL_REROLL, DAILY_SURVIVOR_BADGE_ID } from './config.js';
+import { SLOT_SYMBOLS, rollReel, resolveOutcome, applyOutcome, previewWeaponGrant } from './slotMachine.js';
+import { pushFocusScope, popFocusScope } from './uiFocus.js';
+import { formatPrompt } from './buttonPrompts.js';
+import { loadArenaDecor } from './arenaDecor.js';
+import { bindTooltip, unbindTooltip, hideTooltip } from './tooltips.js';
+import { weaponBlurb, passiveBlurb, fillerBlurb, characterBlurb, weaponStatRows, passiveStatRows } from './weapons/descriptions.js';
+import { ACTIVES } from './weapons/actives.js';
+import { showCodex } from './codex.js';
+import { showRunHistory, recordRunResult } from './runHistory.js';
+import { downloadShareCard, renderShareCard } from './shareCard.js';
+import { topRunsAcrossAll, formatSeedShareString } from './leaderboard.js';
+import { createCharCarousel } from './charCarousel.js';
+import { GLTF_CACHE } from './assets.js';
+import { readDps } from './dpsWindow.js';
+// P4H #142 — Accessibility hold-to-confirm wrapper for irreversible buttons.
+import { holdConfirm } from './holdConfirm.js';
+import {
+  normalizeRecoveryPresentation,
+  rendererBackendUrl,
+} from './rendering/recoveryPresentation.js';
+import {
+  normalizeBackendPreference,
+  rendererPreferenceReloadUrl,
+} from './rendering/rendererSettings.js';
+
+// ── Theme constants ──────────────────────────────────────────────────────────
+// Cozy pixel palette — warm honey-wood + pastel accents pulled from menu-bg.png
+// (blush #edcde0, lavender #d8b6e7, honey wood #cb925c/#6f4a35, mint #a1e2f7).
+// Text stays warm-cream so it keeps reading on the wood panels (backgrounds are
+// re-skinned to warm wood in the Cozy Pixel Retheme block appended to the CSS).
+const C = {
+  bg:      '#2b1a12',           // warm cocoa-wood
+  text:    '#fbeeda',           // warm cream
+  cyan:    '#8fe0d6',           // soft mint (passive + xp accent)
+  magenta: '#f3a6c4',           // blush rose
+  red:     '#ff8a72',           // warm coral
+  amber:   '#ffcf8a',           // honey gold
+  green:   '#a6de8f',           // soft leaf
+  ink:     'rgba(43, 26, 18, 0.88)',
+  edge:    'rgba(255, 214, 163, 0.30)',   // warm honey rim
+};
+// Font stacks — loaded via Google Fonts in injectFonts()
+const F = {
+  display: '"Pixelify Sans", "Baloo 2", "Segoe UI", system-ui, sans-serif',
+  body:    '"Nunito", "Segoe UI", "Helvetica Neue", -apple-system, system-ui, sans-serif',
+  mono:    '"JetBrains Mono", "Fira Code", "Consolas", monospace',
+};
+
+// Compact vector marks for MaoMao's run-support badge. Keeping these local
+// avoids loading the full Daycare overlay during combat while removing the
+// last platform-dependent color-emoji glyph from the hub-to-run perk cue.
+const OUTFIT_BADGE_PATHS = Object.freeze({
+  beanie: '<path d="M5 14c0-5 2.8-8 7-8s7 3 7 8M4.5 14h15v4h-15zM12 6V3.5"/><circle cx="12" cy="3.2" r="1.4"/>',
+  scarf: '<path d="M7 5.5c3.4 2 6.6 2 10 0v6c-3.4 2-6.6 2-10 0zM14 12.7v7l2-1.3 2 1.3v-9"/>',
+  crown: '<path d="m4 7 4.2 4L12 5l3.8 6L20 7l-1.5 11h-13zM6 15h12"/>',
+  moonbell: '<path d="M14.8 4.2a6.8 6.8 0 1 0 4.7 10.9A7.8 7.8 0 0 1 14.8 4.2Z"/><path d="M9 16.7h6l-1 2H10z"/>',
+  fallback: '<path d="M10.4 6.2c0-2.1 3.2-2.1 3.2 0 0 1.7-1.6 1.8-1.6 3.1L3.8 15h16.4L12 9.3"/>',
+});
+
+function _makeOutfitBadgeIcon(id) {
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('class', 'kk-outfit-badge-icon');
+  svg.setAttribute('viewBox', '0 0 24 24');
+  svg.setAttribute('aria-hidden', 'true');
+  svg.setAttribute('focusable', 'false');
+  svg.setAttribute('fill', 'none');
+  svg.setAttribute('stroke', 'currentColor');
+  svg.setAttribute('stroke-width', '1.7');
+  svg.setAttribute('stroke-linecap', 'round');
+  svg.setAttribute('stroke-linejoin', 'round');
+  svg.innerHTML = OUTFIT_BADGE_PATHS[id] || OUTFIT_BADGE_PATHS.fallback;
+  return svg;
+}
+
+// ── Generated pixel-art card icons ───────────────────────────────────────────
+// Ids that have a cozy neo-chibi pixel icon at assets/icons/<key>.webp. The
+// level-up card renders the image when the key is present, else falls back to
+// the emoji glyph — so this set can grow icon-by-icon with no card-code change.
+// Evolution cards use key 'evo_' + baseId (their own art); everything else
+// keys on the choice id (weapon / passive / filler / sig-weapon id).
+const ICON_ART = new Set([
+  // ── passives (grok neo-chibi pixel) ──
+  'spinach', 'armor', 'wings', 'tome', 'bracer', 'duration', 'hollow',
+  'pummarola', 'crown', 'vampirism', 'echo', 'berserk', 'steadfast', 'greed',
+  'soullink', 'druid_charm',
+  // ── draftable weapons ──
+  'orbitals', 'autoaim', 'chain', 'web', 'frostbloom', 'sigilbell',
+  'gloomsigil', 'echobolt',
+  // ── fillers ──
+  'heal', 'maxhp', 'speed', 'magnet', 'cooldown', 'damage', 'zoomout',
+  // ── evolutions (key: evo_<baseId>) ──
+  'evo_orbitals', 'evo_chain', 'evo_autoaim', 'evo_web', 'evo_dash',
+  // ── active ability ──
+  'nova',
+  // ── slot-machine-only reel faces (jackpot 777, dash whoosh) ──
+  'jackpot', 'dash',
+  // ── character sig weapons (rendered from the avatar 3D models, pixelated) ──
+  'sig_kitty_lucky_paw', 'sig_sote_warhowl', 'sig_cowboy_sixshooter',
+  'sig_pipes_arcwrench', 'sig_bomdia_sunburst', 'sig_mothman_dustcloak',
+  'sig_camper_signalfire', 'sig_space_satellites', 'sig_radcat_fallout',
+  'sig_mona_brushstroke', 'sig_bezelbug_facet', 'sig_rocker_powerchord',
+  'sig_borgirboss_rocketrack',
+]);
+function cardIconKey(choice) {
+  return choice.kind === 'evolution' ? 'evo_' + choice.id : choice.id;
+}
+
+// ── Build version ────────────────────────────────────────────────────────────
+// Flipped to '1.0.0' on the iter-11 ship commit (Shop Tree Live Wires —
+// the broken-tier-1-3-consumers gap was the last v1.0 blocker).
+export const KK_VERSION = '1.4.31';
+
+// ── Module-local DOM refs ────────────────────────────────────────────────────
+let _root = null;
+let _hud = null;
+let _hpFill = null;
+let _hpText = null;
+let _xpFill = null;
+let _outfitBadge = null;
+let _levelText = null;
+let _timeText = null;
+let _killsText = null;
+let _statsPanel = null;
+
+function markModalDialog(el, label) {
+  if (!el) return el;
+  el.setAttribute('role', 'dialog');
+  el.setAttribute('aria-modal', 'true');
+  el.setAttribute('aria-label', label);
+  return el;
+}
+
+let _modal = null;
+let _modalKeyHandler = null;
+let _modalFocusScope = null;
+// FOREST-V2-A12 (#116) — banish-mode interception. When `_banishMode` is
+// true, card clicks call `_banishHook(choices, idx)` instead of `pickChoice`.
+// The hook is set/cleared by showLevelUpModal's banish toggle. Module-scope
+// so paintCards' card click handler (closure over `choices`/`i`) can route
+// through pickChoice without re-wiring the listener.
+let _banishMode = false;
+let _banishHook = null;
+
+let _deathScreen = null;
+let _deathKeyHandler = null;
+let _deathFocusScope = null;
+
+let _startScreen = null;
+let _startFocusScope = null;
+let _startStageRowRef = null;
+let _startCharRowRef = null;
+let _startBtnRowRef = null;
+let _startPresetRowRef = null;
+let _charCarousel = null;
+// Iter 32d — two-view start screen. 'menu' = title + meta buttons + Play.
+// 'select' = carousel + archetype + stage + preset + Start Run + Back.
+// main.js gates click/Space → start by reading getStartView() === 'select'.
+let _startView = 'menu';
+let _menuPanel = null;
+let _selectPanel = null;
+export function getStartView() {
+  return _startScreen ? _startView : null;
+}
+function _setStartView(view) {
+  if (!_startScreen || !_menuPanel || !_selectPanel) return;
+  _startView = view;
+  _menuPanel.style.display   = view === 'menu'   ? 'flex' : 'none';
+  _selectPanel.style.display = view === 'select' ? 'flex' : 'none';
+  try { _refreshStartFocus(); } catch (_) {}
+}
+export function setStartView(view) { _setStartView(view); }
+function _refreshStartFocus() {
+  if (!_startScreen) return;
+  if (_startFocusScope) { popFocusScope(_startFocusScope); _startFocusScope = null; }
+  const chars = _startCharRowRef ? Array.from(_startCharRowRef.children).filter(el => el.style.cursor === 'pointer') : [];
+  const stages = _startStageRowRef ? Array.from(_startStageRowRef.children).filter(el => el.style.cursor === 'pointer') : [];
+  const presets = _startPresetRowRef ? Array.from(_startPresetRowRef.querySelectorAll('[data-focusable="1"]')) : [];
+  const btns = _startBtnRowRef ? Array.from(_startBtnRowRef.querySelectorAll('button')) : [];
+  const els = [...chars, ...stages, ...presets, ...btns];
+  if (!els.length) return;
+  _startFocusScope = pushFocusScope(els, { layout: 'auto' });
+}
+
+// Cache last values to avoid DOM thrash
+const _last = {
+  hpPct: -1,
+  hpColor: '',
+  xpPct: -1,
+  level: -1,
+  timeStr: '',
+  kills: -1,
+  bhMode: false, // last-seen bullet-hell state, to toggle survivors HUD once on change
+  hideTimer: null,   // last-seen combined "hide survivors timer" state (bullet-hell OR forest run)
+  danger: false,     // last-seen low-HP danger state, to toggle the vignette once on change
+};
+
+// ── Google Fonts loader ──────────────────────────────────────────────────────
+function injectFonts() {
+  if (document.getElementById('kk-fonts')) return;
+  // Preconnect to speed up font fetch
+  const pre1 = document.createElement('link');
+  pre1.rel = 'preconnect'; pre1.href = 'https://fonts.googleapis.com';
+  const pre2 = document.createElement('link');
+  pre2.rel = 'preconnect'; pre2.href = 'https://fonts.gstatic.com'; pre2.crossOrigin = 'anonymous';
+  const link = document.createElement('link');
+  link.id = 'kk-fonts'; link.rel = 'stylesheet';
+  // Cozy pixel retheme — pixel display face (Pixelify Sans) + rounded, highly
+  // readable body (Nunito), with Baloo 2 as a soft-rounded fallback for the
+  // display slot. Replaces the old Cinzel-serif dark-fantasy stack.
+  link.href = 'https://fonts.googleapis.com/css2?'
+    + 'family=Pixelify+Sans:wght@400;500;600;700'
+    + '&family=Baloo+2:wght@500;600;700;800'
+    + '&family=Nunito:wght@400;600;700;800'
+    + '&family=JetBrains+Mono:wght@400;600'
+    + '&display=swap';
+  document.head.appendChild(pre1);
+  document.head.appendChild(pre2);
+  document.head.appendChild(link);
+}
+
+// ── CSS injection ────────────────────────────────────────────────────────────
+function injectCSS() {
+  if (document.getElementById('kk-ui-style')) return;
+  injectFonts();
+  const css = `
+    /* ── Reset / base ── */
+    #ui-root, #ui-root * { box-sizing: border-box; }
+    #ui-root button {
+      font-family: ${F.body}; font-weight: 600;
+      letter-spacing: 0.18em; text-transform: uppercase;
+      transition: transform 0.14s ease, background 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+    }
+    #ui-root button:hover, #ui-root button:focus-visible {
+      outline: none;
+      transform: translateY(-1px);
+      box-shadow: 0 4px 16px rgba(127,255,228,0.18), 0 0 0 1px ${C.edge} inset;
+    }
+
+    /* ── HUD ── */
+    .kk-hud {
+      position: absolute; inset: 0;
+      pointer-events: none;
+      font-family: ${F.body};
+      color: ${C.text};
+    }
+    /* Low-HP danger vignette — sustained pulsing red edge glow while HP is low.
+       Center stays transparent so gameplay reads; only the screen edges flush
+       red. Painted first (behind HP/stats text) so readouts stay legible. */
+    .kk-danger-vig {
+      position: absolute; inset: 0;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.45s ease;
+      background: radial-gradient(ellipse at center,
+        rgba(200,24,32,0) 42%, rgba(200,24,32,0.18) 66%, rgba(210,26,34,0.62) 100%);
+    }
+    .kk-danger-vig.kk-danger-on {
+      animation: kk-danger-pulse 0.9s ease-in-out infinite;
+    }
+    @keyframes kk-danger-pulse {
+      0%, 100% { opacity: 0.42; }
+      50%      { opacity: 0.88; }
+    }
+    .kk-hp-wrap {
+      position: absolute; top: 22px; left: 22px;
+      display: flex; align-items: center; gap: 10px;
+      pointer-events: auto;
+    }
+    /* Equipped MaoMao outfit — small cozy pink pill under the HP bar so
+       the hub→combat buff actually reads mid-run (icon + effect). */
+    .kk-outfit-badge {
+      position: absolute; top: 48px; left: 22px;
+      display: flex; align-items: center; gap: 6px;
+      padding: 3px 9px 3px 7px;
+      font-size: 12px; font-weight: 700; letter-spacing: 0.04em;
+      color: #7a2f5e; background: rgba(255, 232, 244, 0.86);
+      border: 1.5px solid #ff8fc7; border-radius: 999px;
+      box-shadow: 0 1px 6px rgba(120, 40, 120, 0.28);
+      text-shadow: 0 1px 0 rgba(255,255,255,0.6);
+      pointer-events: none; white-space: nowrap;
+    }
+    .kk-outfit-badge-icon { width: 16px; height: 16px; display: block; flex: 0 0 auto; }
+    .kk-hp-label {
+      font-family: ${F.display};
+      font-size: 13px; font-weight: 700; letter-spacing: 0.32em;
+      color: ${C.amber};
+    }
+    .kk-hp-bar {
+      width: 240px; height: 12px;
+      background: rgba(8,14,12,0.72);
+      border-radius: 6px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset,
+                  0 0 0 1px ${C.edge} inset,
+                  0 2px 12px rgba(0,0,0,0.45);
+      position: relative; overflow: hidden;
+    }
+    .kk-hp-fill {
+      height: 100%; width: 100%;
+      background: linear-gradient(180deg, #a8ff9a, #4ec56a 65%, #2f8a48);
+      border-radius: 6px;
+      transition: width 0.12s linear, background 0.2s linear;
+    }
+    .kk-xp-bar {
+      position: absolute; top: 0; left: 0; right: 0;
+      height: 4px;
+      background: rgba(8,14,12,0.55);
+      pointer-events: auto;
+    }
+    .kk-xp-fill {
+      height: 100%; width: 0%;
+      background: linear-gradient(90deg, ${C.cyan}, ${C.amber});
+      box-shadow: 0 0 8px rgba(127,255,228,0.55);
+      transition: width 0.12s linear;
+    }
+    .kk-stats {
+      position: absolute; top: 22px; right: 22px;
+      text-align: right;
+      pointer-events: auto;
+      line-height: 1.35;
+    }
+    .kk-stats .kk-line {
+      font-family: ${F.body};
+      font-size: 13px; letter-spacing: 0.14em; opacity: 0.95;
+    }
+    .kk-stats .kk-level {
+      font-family: ${F.display};
+      font-size: 30px; font-weight: 900;
+      color: ${C.amber};
+      letter-spacing: 0.18em;
+      text-shadow: 0 2px 12px rgba(0,0,0,0.6);
+    }
+    .kk-stats .kk-time {
+      font-family: ${F.mono};
+      font-size: 22px; color: ${C.text};
+      letter-spacing: 0.10em;
+    }
+    .kk-stats .kk-kills {
+      font-size: 14px; color: ${C.text}; opacity: 0.88;
+      letter-spacing: 0.14em;
+    }
+
+    /* ── Modal scaffold ── */
+    .kk-modal {
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse at center, rgba(0,0,0,0.35), rgba(0,0,0,0.72) 75%),
+        rgba(8,14,12,0.62);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      pointer-events: auto;
+      font-family: ${F.body};
+      z-index: 100;
+    }
+    .kk-modal-title {
+      font-family: ${F.display};
+      font-size: calc(var(--kk-font-scale, 1) * 44px); font-weight: 900;
+      letter-spacing: 0.18em; margin-bottom: 32px;
+      color: ${C.amber};
+      text-shadow: 0 2px 16px rgba(0,0,0,0.55);
+    }
+    @keyframes kk-pulse {
+      0%, 100% { opacity: 1; }
+      50% { opacity: 0.72; }
+    }
+    @keyframes kk-fade-in {
+      from { opacity: 0; transform: translateY(8px); }
+      to   { opacity: 1; transform: translateY(0); }
+    }
+    @keyframes kk-banner-in {
+      from { opacity: 0; transform: translate(-50%, 6px); }
+      to   { opacity: 1; transform: translate(-50%, 0); }
+    }
+    .kk-card-row {
+      display: flex; flex-direction: row; gap: 22px;
+      max-width: 96vw;
+    }
+    .kk-card {
+      width: 232px; min-height: 296px;
+      background: linear-gradient(180deg, rgba(20,28,22,0.92), rgba(8,14,12,0.94));
+      border: 1px solid ${C.edge};
+      border-radius: 10px;
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.04) inset,
+        0 18px 32px rgba(0,0,0,0.55),
+        0 0 0 1px rgba(0,0,0,0.4);
+      padding: 20px 18px; cursor: pointer;
+      display: flex; flex-direction: column; align-items: center;
+      color: ${C.text};
+      animation: kk-fade-in 0.28s ease-out backwards;
+    }
+    .kk-card:hover, .kk-card:focus {
+      transform: translateY(-6px);
+      border-color: ${C.amber};
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.05) inset,
+        0 20px 36px rgba(0,0,0,0.6),
+        0 0 22px rgba(255,210,127,0.28);
+      outline: none;
+    }
+    .kk-card-num {
+      font-family: ${F.display};
+      font-size: calc(var(--kk-font-scale, 1) * 11px); color: ${C.amber};
+      margin-bottom: 4px; letter-spacing: 0.32em;
+      opacity: 0.8;
+    }
+    .kk-card-icon {
+      font-size: calc(var(--kk-font-scale, 1) * 60px); line-height: 1; margin: 6px 0 10px;
+      filter: drop-shadow(0 4px 10px rgba(0,0,0,0.5));
+    }
+    .kk-card-name {
+      font-family: ${F.display};
+      font-size: calc(var(--kk-font-scale, 1) * 19px); font-weight: 700; color: ${C.text};
+      text-align: center; margin-bottom: 4px;
+      letter-spacing: 0.08em;
+    }
+    .kk-card-level {
+      font-family: ${F.body};
+      font-size: calc(var(--kk-font-scale, 1) * 11px); color: ${C.amber};
+      margin-bottom: 12px; letter-spacing: 0.32em;
+      text-transform: uppercase;
+    }
+    .kk-card-desc {
+      font-size: calc(var(--kk-font-scale, 1) * 12.5px); color: rgba(245,239,225,0.78);
+      text-align: center; line-height: 1.5;
+      flex: 1;
+      font-family: ${F.body};
+    }
+
+    /* ── Death screen ── */
+    .kk-death {
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse at center, rgba(0,0,0,0.55), rgba(0,0,0,0.92) 78%),
+        rgba(8,14,12,0.88);
+      backdrop-filter: blur(10px);
+      -webkit-backdrop-filter: blur(10px);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+      pointer-events: auto;
+      font-family: ${F.body};
+      z-index: 110;
+      padding: 32px 16px;
+    }
+    .kk-death-title {
+      font-family: ${F.display};
+      font-size: calc(var(--kk-font-scale, 1) * 76px); font-weight: 900; letter-spacing: 0.18em;
+      color: ${C.red};
+      text-shadow: 0 4px 18px rgba(0,0,0,0.6), 0 0 22px rgba(255,94,94,0.35);
+      margin-bottom: 28px;
+    }
+    .kk-death-stats {
+      font-family: ${F.body};
+      font-size: calc(var(--kk-font-scale, 1) * 15px); color: ${C.text};
+      line-height: 1.9; margin-bottom: 18px;
+      text-align: left;
+      background: rgba(8,14,12,0.55);
+      border: 1px solid ${C.edge}; border-radius: 8px;
+      padding: 18px 28px; min-width: min(360px, 90vw);
+      letter-spacing: 0.04em;
+    }
+    .kk-death-stats .kk-stat-val {
+      font-family: ${F.mono};
+      color: ${C.amber};
+      float: right; margin-left: 18px;
+    }
+    .kk-death-hint {
+      font-size: calc(var(--kk-font-scale, 1) * 12px); color: rgba(245,239,225,0.7);
+      letter-spacing: 0.28em; text-transform: uppercase;
+      margin-top: 10px;
+    }
+
+    /* ── Start screen ── */
+    .kk-start {
+      position: fixed; inset: 0;
+      background:
+        radial-gradient(ellipse at 50% 30%, rgba(127,255,228,0.08), transparent 60%),
+        radial-gradient(ellipse at center, rgba(0,0,0,0.55), rgba(0,0,0,0.88) 80%);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      display: flex; flex-direction: column;
+      align-items: center; justify-content: flex-start;
+      overflow-y: auto; overflow-x: hidden;
+      padding: clamp(12px, 2vh, 24px) 20px clamp(24px, 6vh, 60px);
+      gap: clamp(2px, 0.6vh, 8px);
+      pointer-events: auto;
+      font-family: ${F.body};
+      z-index: 90;
+    }
+    .kk-start-title {
+      font-family: ${F.display};
+      font-size: clamp(28px, calc(var(--kk-font-scale, 1) * 5.2vw), calc(var(--kk-font-scale, 1) * 56px));
+      font-weight: 900;
+      letter-spacing: 0.22em;
+      color: ${C.amber};
+      text-shadow:
+        0 2px 20px rgba(0,0,0,0.65),
+        0 0 36px rgba(255,210,127,0.25);
+      margin-bottom: 6px;
+      text-align: center;
+      line-height: 1.05;
+    }
+    .kk-start-sub {
+      font-family: ${F.body};
+      font-size: calc(var(--kk-font-scale, 1) * 13px); color: rgba(245,239,225,0.78);
+      letter-spacing: 0.34em; text-transform: uppercase;
+      animation: kk-pulse 1.6s ease-in-out infinite;
+    }
+
+    /* ── Panel chrome — used for shop / grimoire / options ── */
+    .kk-panel {
+      background: linear-gradient(180deg, rgba(20,28,22,0.94), rgba(8,14,12,0.96));
+      border: 1px solid ${C.edge};
+      border-radius: 12px;
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.04) inset,
+        0 24px 48px rgba(0,0,0,0.65);
+      padding: 24px 28px;
+      animation: kk-fade-in 0.28s ease-out;
+    }
+
+    /* ── Mobile ── */
+    /* Iter 21b — drop hardcoded font-size overrides so the global --kk-font-scale
+       responsive default (set in index.html @media block) actually reaches modal
+       text. We keep layout overrides (column cards, narrower HP bar) since those
+       aren't covered by the scale var. */
+    @media (max-width: 600px) {
+      .kk-card-row { flex-direction: column; gap: 12px; }
+      .kk-card { width: 80vw; min-height: 0; padding: 12px; }
+      .kk-card-icon { margin: 4px 0 8px; }
+      .kk-modal-title { margin-bottom: 18px; }
+      .kk-hp-bar { width: 150px; }
+    }
+    /* ──────────────────────────────────────────────────────────────────
+       Iter 29b — unified menu visual polish.
+       Layered ON TOP of the original class rules; reinforces consistency
+       across every modal (start screen, death, options, shop, house,
+       grimoire, quests, casino, hall, codex). Tokens stay in C/F so the
+       design language stays single-source.
+       ────────────────────────────────────────────────────────────────── */
+    /* Modal scaffold — richer backdrop, smooth fade-in entry */
+    .kk-modal, .kk-death, .kk-start {
+      animation: kk-modal-in 0.32s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    @keyframes kk-modal-in {
+      from { opacity: 0; backdrop-filter: blur(0px); -webkit-backdrop-filter: blur(0px); }
+      to   { opacity: 1; }
+    }
+    /* Modal title — ornamental gold underline that draws in on entry */
+    .kk-modal-title {
+      position: relative;
+      padding-bottom: 14px;
+    }
+    .kk-modal-title::after {
+      content: '';
+      position: absolute; left: 50%; bottom: 0;
+      width: 220px; height: 2px;
+      transform: translateX(-50%);
+      background: linear-gradient(90deg,
+        transparent 0%,
+        ${C.amber} 18%,
+        ${C.amber} 50%,
+        ${C.amber} 82%,
+        transparent 100%);
+      box-shadow: 0 0 14px ${C.amber}66;
+      animation: kk-underline-in 0.6s cubic-bezier(0.4, 0, 0.2, 1) 0.18s backwards;
+    }
+    @keyframes kk-underline-in {
+      from { transform: translateX(-50%) scaleX(0); opacity: 0; }
+      to   { transform: translateX(-50%) scaleX(1); opacity: 1; }
+    }
+    /* Panel — subtle inner glow + animated top edge highlight */
+    .kk-panel {
+      position: relative;
+      background: linear-gradient(180deg, rgba(22,32,26,0.92), rgba(8,14,12,0.96)) !important;
+      border-color: rgba(255,210,127,0.22) !important;
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.06) inset,
+        0 0 0 1px rgba(0,0,0,0.45) inset,
+        0 12px 28px rgba(0,0,0,0.55),
+        0 0 0 1px rgba(255,210,127,0.08) !important;
+    }
+    .kk-panel::before {
+      content: '';
+      position: absolute; top: -1px; left: 14%; right: 14%; height: 1px;
+      background: linear-gradient(90deg, transparent, ${C.amber}, transparent);
+      opacity: 0.45;
+      pointer-events: none;
+    }
+    /* Card hover — slightly lifted glow + amber edge sheen */
+    .kk-card {
+      transition: transform 0.18s ease, border-color 0.18s ease, box-shadow 0.18s ease;
+    }
+    .kk-card:hover, .kk-card:focus {
+      transform: translateY(-6px) scale(1.015);
+    }
+    /* ── Button system (3 tiers) ──
+       Apply via .kk-btn-primary / .kk-btn-secondary / .kk-btn-danger.
+       Existing inline-styled buttons stay; new code can opt in. */
+    .kk-btn-primary, .kk-btn-secondary, .kk-btn-danger {
+      padding: 11px 24px;
+      border-radius: 8px;
+      font-family: ${F.display};
+      font-size: calc(var(--kk-font-scale, 1) * 13px);
+      font-weight: 700;
+      letter-spacing: 0.28em;
+      text-transform: uppercase;
+      cursor: pointer;
+      transition: transform 0.14s ease, border-color 0.14s ease,
+                  box-shadow 0.18s ease, background 0.18s ease, color 0.18s ease;
+      backdrop-filter: blur(2px);
+    }
+    .kk-btn-primary {
+      background: linear-gradient(180deg, rgba(28,34,30,0.95), rgba(12,18,14,0.95));
+      border: 1px solid ${C.amber};
+      color: ${C.amber};
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.06) inset,
+        0 8px 22px rgba(0,0,0,0.5),
+        0 0 18px rgba(255,210,127,0.18);
+    }
+    .kk-btn-primary:hover, .kk-btn-primary:focus-visible {
+      transform: translateY(-2px);
+      background: linear-gradient(180deg, rgba(48,40,28,0.95), rgba(28,22,14,0.95));
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.08) inset,
+        0 14px 28px rgba(0,0,0,0.55),
+        0 0 26px rgba(255,210,127,0.45);
+    }
+    .kk-btn-secondary {
+      background: linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86));
+      border: 1px solid ${C.edge};
+      color: ${C.text};
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.04) inset,
+        0 6px 18px rgba(0,0,0,0.5);
+    }
+    .kk-btn-secondary:hover, .kk-btn-secondary:focus-visible {
+      transform: translateY(-2px);
+      border-color: ${C.cyan};
+      color: ${C.cyan};
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.06) inset,
+        0 12px 24px rgba(0,0,0,0.55),
+        0 0 22px rgba(127,255,228,0.22);
+    }
+    .kk-btn-danger {
+      background: linear-gradient(180deg, rgba(40,16,16,0.95), rgba(20,8,8,0.95));
+      border: 1px solid ${C.red};
+      color: ${C.red};
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.04) inset,
+        0 8px 22px rgba(0,0,0,0.5),
+        0 0 18px rgba(255,94,94,0.18);
+    }
+    .kk-btn-danger:hover, .kk-btn-danger:focus-visible {
+      transform: translateY(-2px);
+      background: linear-gradient(180deg, rgba(64,20,20,0.95), rgba(28,10,10,0.95));
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.06) inset,
+        0 14px 28px rgba(0,0,0,0.55),
+        0 0 26px rgba(255,94,94,0.45);
+    }
+    /* Section headers shared across modals — uppercase amber chip with rule */
+    .kk-section-hdr {
+      font-family: ${F.display};
+      font-size: calc(var(--kk-font-scale, 1) * 12px);
+      font-weight: 700;
+      letter-spacing: 0.36em;
+      color: ${C.amber};
+      text-transform: uppercase;
+      padding: 0 0 8px 0;
+      margin: 4px 0 10px 0;
+      border-bottom: 1px solid rgba(255,210,127,0.22);
+      position: relative;
+    }
+    .kk-section-hdr::after {
+      content: '';
+      position: absolute; left: 0; bottom: -1px;
+      width: 36px; height: 1px;
+      background: ${C.amber};
+      box-shadow: 0 0 6px ${C.amber};
+    }
+    /* Scrollbar polish — dark-themed thin scrollbar in modal panels */
+    .kk-modal::-webkit-scrollbar,
+    .kk-death::-webkit-scrollbar,
+    .kk-panel::-webkit-scrollbar {
+      width: 8px; height: 8px;
+    }
+    .kk-modal::-webkit-scrollbar-track,
+    .kk-death::-webkit-scrollbar-track,
+    .kk-panel::-webkit-scrollbar-track {
+      background: rgba(8,14,12,0.55);
+      border-radius: 4px;
+    }
+    .kk-modal::-webkit-scrollbar-thumb,
+    .kk-death::-webkit-scrollbar-thumb,
+    .kk-panel::-webkit-scrollbar-thumb {
+      background: linear-gradient(180deg, ${C.amber}88, ${C.amber}44);
+      border-radius: 4px;
+      border: 1px solid rgba(0,0,0,0.4);
+    }
+    .kk-modal::-webkit-scrollbar-thumb:hover,
+    .kk-death::-webkit-scrollbar-thumb:hover,
+    .kk-panel::-webkit-scrollbar-thumb:hover {
+      background: ${C.amber};
+    }
+    /* Generic global override — make every button feel snappier */
+    #ui-root button:active { transform: translateY(0); transition-duration: 0.05s; }
+
+    /* ─────────────────────────────────────────────────────────────────
+       Iter 29c — ornamental corner frames.
+       Every .kk-panel auto-receives four gold corner pieces (procedural
+       SVG data-URIs, ~150 bytes each). On top of the existing panel
+       gradient — no JS change, pure CSS layering. Adds the "real game
+       UI / Hades-style ward" feel without external assets. */
+    .kk-panel {
+      background-image:
+        url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cg fill='none' stroke='%23ffd27f' stroke-width='1.3' stroke-linecap='round' opacity='0.85'%3E%3Cpath d='M 4 4 L 18 4 M 4 4 L 4 18'/%3E%3Ccircle cx='4' cy='4' r='1.6' fill='%23ffd27f' stroke='none'/%3E%3Cpath d='M 18 4 Q 24 5, 22 11'/%3E%3Cpath d='M 4 18 Q 5 24, 11 22'/%3E%3C/g%3E%3C/svg%3E"),
+        url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cg fill='none' stroke='%23ffd27f' stroke-width='1.3' stroke-linecap='round' opacity='0.85'%3E%3Cpath d='M 36 4 L 22 4 M 36 4 L 36 18'/%3E%3Ccircle cx='36' cy='4' r='1.6' fill='%23ffd27f' stroke='none'/%3E%3Cpath d='M 22 4 Q 16 5, 18 11'/%3E%3Cpath d='M 36 18 Q 35 24, 29 22'/%3E%3C/g%3E%3C/svg%3E"),
+        url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cg fill='none' stroke='%23ffd27f' stroke-width='1.3' stroke-linecap='round' opacity='0.85'%3E%3Cpath d='M 4 36 L 18 36 M 4 36 L 4 22'/%3E%3Ccircle cx='4' cy='36' r='1.6' fill='%23ffd27f' stroke='none'/%3E%3Cpath d='M 18 36 Q 24 35, 22 29'/%3E%3Cpath d='M 4 22 Q 5 16, 11 18'/%3E%3C/g%3E%3C/svg%3E"),
+        url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 40 40'%3E%3Cg fill='none' stroke='%23ffd27f' stroke-width='1.3' stroke-linecap='round' opacity='0.85'%3E%3Cpath d='M 36 36 L 22 36 M 36 36 L 36 22'/%3E%3Ccircle cx='36' cy='36' r='1.6' fill='%23ffd27f' stroke='none'/%3E%3Cpath d='M 22 36 Q 16 35, 18 29'/%3E%3Cpath d='M 36 22 Q 35 16, 29 18'/%3E%3C/g%3E%3C/svg%3E"),
+        linear-gradient(180deg, rgba(22,32,26,0.92), rgba(8,14,12,0.96)) !important;
+      background-position: top left, top right, bottom left, bottom right, 0 0 !important;
+      background-repeat: no-repeat, no-repeat, no-repeat, no-repeat, no-repeat !important;
+      background-size: 40px 40px, 40px 40px, 40px 40px, 40px 40px, cover !important;
+    }
+
+    /* Cards get a subtler treatment — single top-edge flourish only,
+       since 4 corners are visually heavy on a 232px-wide card. */
+    .kk-card {
+      background-image:
+        url("data:image/svg+xml;utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 120 12'%3E%3Cg fill='none' stroke='%23ffd27f' stroke-width='1' stroke-linecap='round' opacity='0.7'%3E%3Cline x1='12' y1='6' x2='48' y2='6'/%3E%3Cline x1='72' y1='6' x2='108' y2='6'/%3E%3Ccircle cx='60' cy='6' r='1.8' fill='%23ffd27f' stroke='none'/%3E%3Ccircle cx='12' cy='6' r='1.0' fill='%23ffd27f' stroke='none'/%3E%3Ccircle cx='108' cy='6' r='1.0' fill='%23ffd27f' stroke='none'/%3E%3C/g%3E%3C/svg%3E"),
+        linear-gradient(180deg, rgba(20,28,22,0.92), rgba(8,14,12,0.94)) !important;
+      background-position: center 8px, 0 0 !important;
+      background-repeat: no-repeat, no-repeat !important;
+      background-size: 80% 12px, cover !important;
+    }
+
+    /* Iter 29 — small-screen modal fits.
+       Modals are full-viewport flex containers; cards/grids inside use
+       minmax(280-320px, 1fr) which doesn't shrink past their min and
+       overflows narrow viewports. Force responsive overrides below 720px
+       so every modal stays inside the viewport without horizontal scroll. */
+    @media (max-width: 720px) {
+      .kk-fs-xl { font-size: calc(var(--kk-font-scale, 1) * 22px) !important; }
+      .kk-fs-lg { font-size: calc(var(--kk-font-scale, 1) * 17px) !important; }
+      .kk-fs-md { font-size: calc(var(--kk-font-scale, 1) * 14px) !important; }
+      .kk-fs-sm { font-size: calc(var(--kk-font-scale, 1) * 12px) !important; }
+    }
+    @media (max-width: 480px) {
+      /* Force every grid-template-columns: repeat(auto-fill, minmax(NNNpx, 1fr))
+         pattern to single-column. Catches Shop / House / Grimoire / Quest /
+         Codex / Hall of Records / Casino card grids without per-modal CSS. */
+      [style*="grid-template-columns: repeat(auto-fill"] { grid-template-columns: 1fr !important; }
+      /* Cards/inputs hard-floor */
+      button, input, select, textarea { max-width: 100%; }
+      /* Modal containers — clamp padding so headers don't bleed off-screen. */
+      .kk-death, .kk-start { padding: 18px 10px !important; }
+    }
+    /* Iter 30 — every full-screen menu must fit-with-scroll, never clip.
+       The old centered modals (level-up, death) predate the
+       flex-start + overflow-y:auto pattern the casino/shop/grimoire/etc.
+       menus already use. A centered flex container WITH overflow clips
+       BOTH ends — the top scrolls out of reach. "safe center" keeps the
+       centered look while content fits and falls back to start-alignment
+       (top reachable) once it overflows; overflow-y then lets it scroll.
+       The plain center first-declaration is a fallback for any engine
+       that cannot parse "safe center" (parser keeps the last valid one). */
+    .kk-modal, .kk-death {
+      justify-content: center;
+      justify-content: safe center;
+      overflow-y: auto; overflow-x: hidden;
+      overscroll-behavior: contain;
+      -webkit-overflow-scrolling: touch;
+      padding: clamp(16px, 4vh, 40px) 16px;
+    }
+    /* Short landscape (phone held sideways, ~360-440px tall): the 44px title +
+       margin + 296px cards overflow a 400px viewport. Shrink the header + card
+       min-height so the level-up/draft fits without scrolling or feeling
+       cramped. Keyed on height so it never touches desktop or portrait. */
+    @media (max-height: 480px) {
+      .kk-modal-title { font-size: calc(var(--kk-font-scale, 1) * 26px); margin-bottom: 12px; }
+      .kk-card        { min-height: 232px; }
+    }
+    /* Catch-all — never let any modal overflow horizontally. */
+    body { overflow-x: hidden; }
+
+    /* ═════════════════════════════════════════════════════════════════
+       COZY PIXEL RETHEME (2026-07)
+       Reskins every in-game menu (level-up, death/victory, HUD bars,
+       shop/grimoire/options panels, buttons) from the old dark-fantasy
+       look to the cozy kawaii pixel-art vibe of the menu-bg. Appended
+       LAST + !important so it wins over the Iter-29 card/panel !important
+       rules above. Pure CSS + additive — deleting this block is a clean
+       revert. Per-kind card border COLORS (passive=mint, evo=honey) are
+       left intact: this block never !important-s border-color, so the JS
+       inline accents in paintCards still show; only the chunky wood frame
+       + wood plate + icon plaque are forced.
+       ═════════════════════════════════════════════════════════════════ */
+    /* Warm, soft backdrop instead of the cold black blur */
+    .kk-modal, .kk-death, .kk-start {
+      background:
+        radial-gradient(ellipse at 50% 34%, rgba(216,182,231,0.20), transparent 62%),
+        radial-gradient(ellipse at center, rgba(58,36,52,0.42), rgba(34,20,30,0.76) 82%),
+        rgba(40,26,34,0.60) !important;
+      backdrop-filter: blur(5px) !important;
+      -webkit-backdrop-filter: blur(5px) !important;
+    }
+    /* Cozy honey-wood card plate with a chunky pixel frame (border-color left
+       to the JS inline per-kind accent; width + rings forced) */
+    .kk-card {
+      background-image: linear-gradient(180deg, rgba(74,48,30,0.96), rgba(52,33,20,0.97)) !important;
+      background-size: cover !important;
+      background-position: 0 0 !important;
+      background-repeat: no-repeat !important;
+      border-width: 3px; border-style: solid; border-color: #8a5a34;
+      border-radius: 12px;
+      box-shadow:
+        0 0 0 2px rgba(255,236,206,0.22) inset,
+        0 0 0 4px rgba(60,38,22,0.92),
+        0 14px 26px rgba(28,15,9,0.5),
+        0 0 20px rgba(255,205,138,0.10) !important;
+      image-rendering: pixelated;
+    }
+    .kk-card:hover, .kk-card:focus {
+      box-shadow:
+        0 0 0 2px rgba(255,244,224,0.30) inset,
+        0 0 0 4px rgba(72,46,27,0.95),
+        0 18px 30px rgba(28,15,9,0.55),
+        0 0 26px rgba(255,205,138,0.35) !important;
+    }
+    /* Emoji sits on a cozy pastel "coin" plaque — reads as designed art, not a
+       bare glyph. The icon-image phase swaps the glyph for pixel art inside
+       this same plate (.kk-card-icon img). */
+    .kk-card-icon {
+      width: 92px; height: 92px;
+      margin: 8px auto 12px !important;
+      display: flex; align-items: center; justify-content: center;
+      font-size: calc(var(--kk-font-scale, 1) * 50px) !important;
+      background: radial-gradient(circle at 50% 38%, #fff6ec 0%, #f6dcc6 62%, #e7c0a4 100%);
+      border: 3px solid #8a5a34;
+      border-radius: 18px;
+      box-shadow: 0 0 0 2px rgba(255,247,236,0.6) inset, 0 4px 10px rgba(28,15,9,0.35);
+      image-rendering: pixelated;
+      filter: none;
+    }
+    .kk-card-icon img { width: 74px; height: 74px; object-fit: contain; image-rendering: pixelated; }
+    /* Card text — warm cream on wood */
+    .kk-card-name { color: #fff2dd !important; letter-spacing: 0.04em !important; }
+    .kk-card-desc { color: rgba(251,238,218,0.86) !important; }
+    /* Titles — honey */
+    .kk-modal-title, .kk-start-title { color: #ffd79a !important; }
+    /* Death/victory stats plate — warm wood */
+    .kk-death-stats {
+      background: rgba(58,37,24,0.62) !important;
+      border-color: rgba(255,214,163,0.28) !important;
+    }
+    /* HP / XP troughs — warm */
+    .kk-hp-bar, .kk-xp-bar { background: rgba(48,30,20,0.72) !important; }
+    /* Panels (shop / grimoire / options) — warm wood (drops the gold SVG
+       corners; cozy doesn't need the ornate wards) */
+    .kk-panel {
+      background-image: linear-gradient(180deg, rgba(70,46,30,0.95), rgba(48,31,20,0.97)) !important;
+      background-size: cover !important;
+      background-position: 0 0 !important;
+      border-color: rgba(255,214,163,0.30) !important;
+      box-shadow:
+        0 0 0 2px rgba(255,236,206,0.14) inset,
+        0 18px 34px rgba(22,12,7,0.55) !important;
+    }
+    /* Buttons — cozy honey */
+    .kk-btn-primary {
+      background: linear-gradient(180deg, #ffcf8a, #e79c4e) !important;
+      border: 2px solid #7a4a2c !important; color: #3a2312 !important;
+      box-shadow: 0 0 0 2px rgba(255,247,232,0.42) inset, 0 6px 16px rgba(28,15,9,0.4) !important;
+    }
+    .kk-btn-primary:hover, .kk-btn-primary:focus-visible {
+      background: linear-gradient(180deg, #ffdca0, #f0a85a) !important;
+    }
+    /* Slot machine — pixel reel faces + cozy jackpot sunburst */
+    .kk-slot-img { width: 92px; height: 92px; image-rendering: pixelated; object-fit: contain; }
+    .kk-slot-emoji { font-size: calc(var(--kk-font-scale, 1) * 60px); line-height: 1; }
+    .kk-slot-sun {
+      position: absolute; left: 50%; top: 42%;
+      width: 480px; height: 480px; margin-left: -240px; margin-top: -240px;
+      z-index: 1; pointer-events: none; border-radius: 50%;
+      background: repeating-conic-gradient(from 0deg,
+        rgba(255,214,138,0.9) 0deg 7deg, rgba(255,214,138,0) 7deg 18deg);
+      -webkit-mask: radial-gradient(circle, #000 26%, transparent 72%);
+      mask: radial-gradient(circle, #000 26%, transparent 72%);
+      animation: kk-slot-sun-spin 12s linear infinite, kk-slot-sun-in 0.45s ease-out backwards;
+      filter: drop-shadow(0 0 18px rgba(255,205,110,0.5));
+    }
+    @keyframes kk-slot-sun-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }
+    @keyframes kk-slot-sun-in { from { opacity: 0; } to { opacity: 0.9; } }
+
+    /* ═════════════════════════════════════════════════════════════════
+       VICTORY.EXE — a real win state, visually separate from defeat.
+       The generated crew scene owns the left side; live run results sit in
+       the intentionally quiet right-side pixel window.
+       ═════════════════════════════════════════════════════════════════ */
+    .kk-death.kk-victory-screen {
+      --kk-win-mint: #80ead7;
+      --kk-win-pink: #ff92c8;
+      --kk-win-gold: #ffd56f;
+      --kk-win-ink: #201a38;
+      align-items: flex-end;
+      justify-content: center;
+      padding: 14px clamp(14px, 2.2vw, 34px) !important;
+      background:
+        linear-gradient(90deg, rgba(20,14,30,0.02) 0 52%, rgba(25,19,48,0.16) 61%, rgba(20,15,42,0.52) 100%),
+        #514a78 url('assets/screens/victory_crew_hangout_20260716.webp') center / cover no-repeat !important;
+      background-attachment: fixed !important;
+      image-rendering: pixelated;
+      backdrop-filter: none !important;
+      -webkit-backdrop-filter: none !important;
+      overflow: hidden;
+      isolation: isolate;
+    }
+    .kk-death.kk-victory-screen::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background:
+        repeating-linear-gradient(0deg, rgba(255,255,255,.022) 0 1px, transparent 1px 4px),
+        radial-gradient(circle at 23% 42%, transparent 0 38%, rgba(25,14,35,.16) 78%);
+      mix-blend-mode: soft-light;
+    }
+    .kk-victory-shell {
+      position: relative; z-index: 2;
+      width: min(500px, 39vw);
+      max-height: calc(100vh - 28px);
+      overflow-y: auto; overflow-x: hidden;
+      display: flex; flex-direction: column; align-items: stretch;
+      gap: 9px;
+      padding: 0 16px 16px;
+      box-sizing: border-box;
+      background: linear-gradient(180deg, rgba(54,45,88,.94), rgba(29,24,55,.97));
+      border: 3px solid var(--kk-win-mint);
+      border-radius: 2px;
+      box-shadow:
+        0 0 0 2px #7564a6 inset,
+        7px 7px 0 rgba(21,16,40,.88),
+        0 18px 56px rgba(12,8,25,.60),
+        0 0 30px rgba(128,234,215,.18);
+      animation: kk-victory-window-in .58s steps(7, end) both;
+      scrollbar-width: thin;
+      scrollbar-color: var(--kk-win-pink) rgba(20,15,40,.62);
+    }
+    .kk-victory-shell::-webkit-scrollbar { width: 10px; }
+    .kk-victory-shell::-webkit-scrollbar-track { background: rgba(20,15,40,.62); }
+    .kk-victory-shell::-webkit-scrollbar-thumb { background: var(--kk-win-pink); border: 2px solid #2c244d; }
+    @keyframes kk-victory-window-in {
+      from { opacity: 0; transform: translate(18px, 10px) scale(.96); }
+      to { opacity: 1; transform: translate(0, 0) scale(1); }
+    }
+    .kk-victory-windowbar {
+      min-height: 30px; margin: 0 -16px 2px; padding: 0 7px 0 11px;
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      color: #30274f;
+      background: linear-gradient(90deg, var(--kk-win-mint), #94d7ff 54%, #c79cff);
+      border-bottom: 3px solid #241d43;
+      font-family: ${F.mono}; font-size: 10px; font-weight: 900;
+      letter-spacing: .14em; text-transform: uppercase;
+      text-shadow: 1px 1px 0 rgba(255,255,255,.44);
+    }
+    .kk-victory-window-controls { display: flex; gap: 4px; }
+    .kk-victory-window-controls i {
+      width: 12px; height: 12px; display: block;
+      background: #f8d7ff; border: 2px solid #34294f;
+      box-shadow: 1px 1px 0 rgba(255,255,255,.64) inset;
+    }
+    .kk-victory-window-controls i:nth-child(2) { background: var(--kk-win-gold); }
+    .kk-victory-window-controls i:nth-child(3) { background: var(--kk-win-pink); }
+    .kk-victory-kicker {
+      margin-top: 3px; text-align: center;
+      color: var(--kk-win-gold); font-family: ${F.mono};
+      font-size: 11px; font-weight: 900; letter-spacing: .26em;
+      text-transform: uppercase; text-shadow: 2px 2px 0 #211a3a;
+    }
+    .kk-victory-screen .kk-death-title {
+      margin: 0 !important; text-align: center;
+      font-family: ${F.display};
+      font-size: clamp(31px, 3.5vw, 52px) !important;
+      line-height: .98; letter-spacing: .07em !important;
+      color: #fff2bf !important;
+      text-shadow:
+        3px 3px 0 #5a376d,
+        -2px -2px 0 #2b2349,
+        0 0 18px rgba(255,146,200,.45) !important;
+    }
+    .kk-victory-subtitle {
+      margin: 0 auto 2px; max-width: 94%; text-align: center;
+      color: #d9d3ff; font-family: ${F.body};
+      font-size: 13px; font-weight: 800; line-height: 1.32;
+      letter-spacing: .10em; text-transform: uppercase;
+    }
+    .kk-victory-marquee {
+      overflow: hidden; margin: 0 -4px; padding: 6px 0;
+      color: #33254a; background: var(--kk-win-gold);
+      border: 2px solid #2b2145;
+      font-family: ${F.mono}; font-size: 9px; font-weight: 900;
+      letter-spacing: .16em; white-space: nowrap;
+      box-shadow: 2px 2px 0 #15102b;
+    }
+    .kk-victory-marquee span {
+      display: inline-block; padding-left: 100%;
+      animation: kk-victory-marquee 15s linear infinite;
+    }
+    @keyframes kk-victory-marquee { to { transform: translateX(-100%); } }
+    .kk-victory-quickstats {
+      display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 6px;
+    }
+    .kk-victory-stat {
+      min-width: 0; padding: 8px 5px 7px; text-align: center;
+      background: rgba(18,14,38,.58);
+      border: 2px solid rgba(148,215,255,.48);
+      box-shadow: 2px 2px 0 rgba(14,10,29,.70);
+    }
+    .kk-victory-stat-label {
+      display: block; margin-bottom: 3px;
+      color: #aaa3d2; font-family: ${F.mono};
+      font-size: 8px; font-weight: 800; letter-spacing: .18em;
+      text-transform: uppercase;
+    }
+    .kk-victory-stat-value {
+      display: block; overflow: hidden; text-overflow: ellipsis;
+      color: #fff1c8; font-family: ${F.mono};
+      font-size: 14px; font-weight: 900; letter-spacing: .03em;
+      white-space: nowrap;
+    }
+    .kk-victory-stat:nth-child(4) .kk-victory-stat-value { color: var(--kk-win-gold); }
+    .kk-victory-stat:nth-child(5) .kk-victory-stat-value { color: #ff9d88; }
+    .kk-victory-stat:nth-child(6) .kk-victory-stat-value { color: #dc9dff; }
+    .kk-victory-relic-chip {
+      padding: 8px 10px; overflow: hidden;
+      color: #fff1c8; background: rgba(17,24,27,.78);
+      border: 2px solid var(--kk-win-gold);
+      box-shadow: 2px 2px 0 rgba(14,10,29,.70);
+      font-family: ${F.body}; font-size: 11px; font-weight: 800;
+      letter-spacing: .055em; line-height: 1.25;
+      white-space: nowrap; text-overflow: ellipsis;
+    }
+    .kk-victory-relic-chip strong {
+      color: var(--kk-win-gold); font-family: ${F.mono};
+      font-size: 9px; letter-spacing: .13em; text-transform: uppercase;
+    }
+    .kk-victory-screen #kk-run-highlights,
+    .kk-victory-screen .kk-death-stats,
+    .kk-victory-screen .kk-victory-shell > div,
+    .kk-victory-screen .kk-victory-shell > section,
+    .kk-victory-screen .kk-victory-details > div {
+      min-width: 0 !important; width: 100% !important; max-width: none !important;
+      box-sizing: border-box;
+    }
+    .kk-victory-screen #kk-run-highlights {
+      margin: 0 !important; padding: 8px 10px !important;
+      background: rgba(32,22,49,.74) !important;
+      border: 2px solid rgba(255,146,200,.52) !important;
+      border-radius: 2px !important;
+      box-shadow: 2px 2px 0 rgba(14,10,29,.70) !important;
+    }
+    .kk-victory-details {
+      width: 100%; box-sizing: border-box;
+      background: rgba(16,13,34,.54); border: 2px solid rgba(128,234,215,.40);
+      box-shadow: 2px 2px 0 rgba(14,10,29,.70);
+    }
+    .kk-victory-details > summary {
+      padding: 9px 11px; cursor: pointer; list-style: none;
+      color: var(--kk-win-mint); font-family: ${F.mono};
+      font-size: 10px; font-weight: 900; letter-spacing: .16em;
+      text-transform: uppercase; user-select: none;
+    }
+    .kk-victory-details > summary::-webkit-details-marker { display: none; }
+    .kk-victory-details > summary::before { content: '+ '; color: var(--kk-win-pink); }
+    .kk-victory-details[open] > summary::before { content: '- '; }
+    .kk-victory-details[open] > summary { border-bottom: 2px solid rgba(128,234,215,.28); }
+    .kk-victory-details > *:not(summary) { margin: 8px !important; width: calc(100% - 16px) !important; }
+    .kk-victory-screen .kk-death-stats { padding: 12px 14px !important; column-gap: 16px !important; }
+    .kk-victory-screen .kk-end-actions {
+      display: grid !important; grid-template-columns: 1fr 1fr;
+      gap: 7px !important; margin: 1px 0 0 !important; width: 100%;
+    }
+    .kk-victory-screen .kk-end-actions button {
+      min-width: 0; width: 100%; padding: 10px 8px !important;
+      border-width: 2px !important; border-radius: 2px !important;
+      font-family: ${F.mono} !important; font-size: 10px !important;
+      font-weight: 900 !important; line-height: 1.25;
+      letter-spacing: .10em !important; text-transform: uppercase;
+      box-shadow: 3px 3px 0 #15102b !important;
+    }
+    .kk-victory-screen .kk-victory-primary {
+      grid-column: 1 / -1; grid-row: 1;
+      color: #2f2445 !important;
+      background: linear-gradient(180deg, #fff0a8, var(--kk-win-gold)) !important;
+      border-color: #493454 !important;
+    }
+    .kk-victory-screen .kk-death-hint {
+      margin: 2px 0 0; text-align: center;
+      color: rgba(218,211,255,.72); font-family: ${F.mono};
+      font-size: 8px; letter-spacing: .12em;
+    }
+    .kk-victory-webnote {
+      padding-top: 2px; text-align: center;
+      color: rgba(193,187,229,.62); font-family: ${F.mono};
+      font-size: 8px; letter-spacing: .10em; text-transform: uppercase;
+    }
+    @media (max-width: 760px) {
+      .kk-death.kk-victory-screen {
+        align-items: stretch; justify-content: flex-end;
+        padding: max(41vh, 236px) 8px 8px !important;
+        background-size: auto max(46vh, 264px) !important;
+        background-position: 25% top !important;
+        background-repeat: no-repeat !important;
+        overflow-y: auto;
+      }
+      .kk-victory-shell { width: 100%; max-height: none; padding-inline: 11px; }
+      .kk-victory-windowbar { margin-inline: -11px; }
+      .kk-victory-screen .kk-death-title { font-size: clamp(28px, 10vw, 44px) !important; }
+    }
+    @media (max-height: 520px) and (min-width: 761px) {
+      .kk-victory-shell { width: min(530px, 43vw); max-height: calc(100vh - 14px); gap: 6px; }
+      .kk-victory-windowbar { min-height: 24px; }
+      .kk-victory-screen .kk-death-title { font-size: 29px !important; }
+      .kk-victory-kicker, .kk-victory-marquee, .kk-victory-webnote { display: none; }
+      .kk-victory-stat { padding-block: 5px; }
+    }
+
+    /* ═════════════════════════════════════════════════════════════════
+       COMPACT COMMAND DECK (2026-07)
+       All persistent run information shares one shallow bottom rail. The
+       middle lane is reserved for the camera-aligned tactical map, leaving
+       the playfield and all four corners clear during combat.
+       ═════════════════════════════════════════════════════════════════ */
+    .kk-hud {
+      -webkit-font-smoothing: antialiased;
+      font-variant-numeric: tabular-nums;
+      --kk-hud-panel: linear-gradient(145deg, rgba(42,28,39,.94), rgba(18,14,20,.96));
+      --kk-deck-height: 70px;
+      --kk-map-slot: 144px;
+    }
+    .kk-command-deck {
+      position: absolute; z-index: 38;
+      left: 50%; bottom: max(8px, env(safe-area-inset-bottom));
+      transform: translateX(-50%);
+      width: min(1180px, calc(100% - 20px));
+      min-height: var(--kk-deck-height);
+      display: grid;
+      grid-template-columns: minmax(0, 1fr) var(--kk-map-slot) minmax(0, 1fr);
+      align-items: center; gap: 8px;
+      padding: 9px 10px 7px;
+      pointer-events: none;
+      background:
+        linear-gradient(180deg, rgba(255,255,255,.045), transparent 22%),
+        linear-gradient(145deg, rgba(43,29,40,.91), rgba(17,13,19,.94));
+      border: 1px solid rgba(255,226,188,.27);
+      border-top-color: rgba(255,245,226,.42);
+      border-radius: 15px;
+      box-shadow: 0 12px 30px rgba(10,5,9,.45), inset 0 1px 0 rgba(255,255,255,.06);
+      backdrop-filter: blur(14px) saturate(125%);
+      -webkit-backdrop-filter: blur(14px) saturate(125%);
+      contain: layout paint;
+    }
+    .kk-command-deck::after {
+      content: ''; position: absolute; top: -1px; left: 7%; right: 7%; height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(130,231,196,.54) 28%, rgba(216,156,255,.54) 72%, transparent);
+      pointer-events: none;
+    }
+    .kk-deck-left, .kk-deck-right {
+      min-width: 0; display: flex; align-items: center; gap: 6px;
+    }
+    .kk-deck-left { justify-content: flex-start; }
+    .kk-deck-right { justify-content: flex-end; }
+    .kk-deck-map-slot {
+      width: 100%; height: 100%; min-height: 52px;
+      border-inline: 1px solid rgba(255,255,255,.055);
+    }
+
+    .kk-xp-bar {
+      position: absolute; z-index: 2;
+      top: 2px; left: 12px; right: 12px; height: 3px;
+      background: rgba(8,7,10,.72) !important;
+      border-radius: 999px; overflow: hidden;
+      box-shadow: inset 0 1px 2px rgba(0,0,0,.6);
+      pointer-events: none;
+    }
+    .kk-xp-bar::after {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
+      opacity: .45; pointer-events: none;
+    }
+    .kk-xp-fill {
+      position: relative;
+      background: linear-gradient(90deg, #6fd9bb 0%, #a7e9d2 48%, #ffd18b 100%);
+      box-shadow: 0 0 8px rgba(130,231,196,.48), inset 0 1px 0 rgba(255,255,255,.5);
+    }
+
+    .kk-hp-wrap {
+      position: relative; top: auto; left: auto;
+      flex: 1 1 222px; width: min(232px, 52%); min-width: 178px; min-height: 50px;
+      display: grid; grid-template-columns: 30px minmax(0,1fr);
+      align-items: center; gap: 8px;
+      padding: 6px 9px 6px 7px;
+      background: rgba(255,255,255,.025);
+      border: 1px solid rgba(255,226,188,.14);
+      border-radius: 10px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.035);
+      overflow: visible;
+    }
+    .kk-hp-icon {
+      width: 30px; height: 30px; display: grid; place-items: center;
+      color: #ff9a86;
+      background: radial-gradient(circle at 42% 32%, rgba(255,208,190,.18), rgba(255,143,120,.05));
+      border: 1px solid rgba(255,154,134,.28); border-radius: 8px;
+    }
+    .kk-hp-icon svg { width: 18px; height: 18px; display: block; fill: currentColor; filter: drop-shadow(0 2px 5px rgba(255,95,92,.24)); }
+    .kk-hp-content { min-width: 0; }
+    .kk-hp-meta { display: flex; align-items: baseline; justify-content: space-between; gap: 7px; margin: 0 1px 3px; }
+    .kk-hp-label {
+      font-family: ${F.body}; font-size: 8px; font-weight: 900;
+      letter-spacing: .18em; text-transform: uppercase; color: var(--kk-hud-muted);
+    }
+    .kk-hp-value {
+      font-family: ${F.mono}; font-size: 9px; font-weight: 700;
+      letter-spacing: .02em; color: var(--kk-hud-cream); white-space: nowrap;
+      text-shadow: 0 1px 4px rgba(0,0,0,.55);
+    }
+    .kk-hp-bar {
+      width: 100%; height: 8px;
+      background: rgba(8,7,10,.76) !important;
+      border: 1px solid rgba(255,255,255,.07); border-radius: 999px;
+      box-shadow: inset 0 2px 4px rgba(0,0,0,.5); overflow: hidden;
+    }
+    .kk-hp-bar::after {
+      content: ''; position: absolute; inset: 0; z-index: 2; pointer-events: none;
+      background: repeating-linear-gradient(90deg, transparent 0 24%, rgba(15,8,10,.28) 24% 25%);
+      border-radius: inherit;
+    }
+    .kk-hp-fill {
+      --kk-hp-color: #a6de8f; position: relative;
+      background: linear-gradient(180deg,
+        color-mix(in srgb, var(--kk-hp-color), white 25%) 0%,
+        var(--kk-hp-color) 56%,
+        color-mix(in srgb, var(--kk-hp-color), black 22%) 100%);
+      border-radius: inherit;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.48), 0 0 7px currentColor;
+    }
+    .kk-hp-fill::after {
+      content: ''; position: absolute; inset: 1px 2px auto; height: 1px;
+      border-radius: 999px; background: rgba(255,255,255,.42);
+    }
+    .kk-outfit-badge {
+      top: -6px; right: -6px; left: auto;
+      width: 22px; height: 22px; min-width: 22px; padding: 2px;
+      justify-content: center; gap: 0;
+      font-size: 0; background: rgba(255,232,244,.94);
+      box-shadow: 0 3px 8px rgba(38,15,31,.38);
+    }
+    .kk-outfit-badge-icon { width: 14px; height: 14px; }
+
+    .kk-stats {
+      position: relative; top: auto; right: auto;
+      flex: 1 1 210px; width: min(220px, 48%); min-width: 166px; min-height: 50px;
+      display: grid; grid-template-columns: .72fr 1.18fr .82fr .82fr;
+      align-items: center; gap: 0;
+      padding: 5px 4px;
+      background: rgba(255,255,255,.018);
+      border: 1px solid rgba(255,226,188,.11); border-radius: 10px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.025);
+      text-align: left; line-height: 1; overflow: visible;
+    }
+    .kk-stats-primary, .kk-stats-secondary { display: contents; }
+    .kk-stat-metric {
+      min-width: 0; padding: 0 6px;
+      border-left: 1px solid rgba(255,255,255,.06);
+    }
+    .kk-stat-metric:first-child { border-left: 0; }
+    .kk-stat-label {
+      margin-bottom: 4px;
+      font-family: ${F.body}; font-size: 6px; font-weight: 900;
+      letter-spacing: .13em; text-transform: uppercase;
+      color: var(--kk-hud-muted); white-space: nowrap;
+    }
+    .kk-stats .kk-line, .kk-stats .kk-stat-value {
+      opacity: 1; font-family: ${F.mono}; font-weight: 700;
+      font-variant-numeric: tabular-nums; text-shadow: 0 1px 5px rgba(0,0,0,.55);
+      white-space: nowrap;
+    }
+    .kk-stats .kk-level {
+      font-family: ${F.display}; font-size: 17px; line-height: .85;
+      font-weight: 700; letter-spacing: 0; color: var(--kk-hud-honey);
+    }
+    .kk-stats .kk-time {
+      font-family: ${F.mono}; font-size: 13px; line-height: 1;
+      letter-spacing: 0; color: var(--kk-hud-cream);
+    }
+    .kk-stats .kk-kills, .kk-stats .kk-dps {
+      font-size: 11px; letter-spacing: 0; color: var(--kk-hud-cream); opacity: .94;
+    }
+    .kk-stats .kk-dps { color: var(--kk-hud-mint); }
+    .kk-elite-timer {
+      position: absolute; left: 50%; bottom: calc(100% + 7px); transform: translateX(-50%);
+      margin: 0; padding: 3px 8px;
+      border: 1px solid rgba(255,209,139,.34); border-radius: 999px;
+      background: rgba(25,16,22,.86); box-shadow: 0 6px 14px rgba(10,5,8,.3);
+      font-family: ${F.mono}; font-size: 7px; font-weight: 700;
+      letter-spacing: .09em; text-align: center; text-transform: uppercase;
+      color: var(--kk-hud-honey); white-space: nowrap;
+    }
+    .kk-elite-timer:empty { display: none; }
+
+    .kk-ability-dock {
+      position: static; display: flex; flex-direction: row; gap: 5px;
+      width: auto; flex: 0 0 auto; pointer-events: none;
+    }
+    .kk-ability-chip {
+      position: relative;
+      display: none; place-items: center;
+      grid-template-columns: 1fr; grid-template-rows: 1fr;
+      width: 46px; height: 50px; min-height: 0; padding: 4px;
+      background: linear-gradient(180deg, rgba(255,255,255,.055), rgba(255,255,255,.018));
+      border: 1px solid color-mix(in srgb, var(--kk-ability-accent, var(--kk-hud-mint)), transparent 52%);
+      border-radius: 9px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.07);
+      transition: opacity .16s ease, border-color .16s ease, filter .16s ease, box-shadow .16s ease;
+      overflow: hidden;
+    }
+    .kk-ability-active { --kk-ability-accent: var(--kk-hud-honey); }
+    .kk-ability-dash { --kk-ability-accent: var(--kk-hud-mint); }
+    .kk-ability-chip.kk-ability-ready {
+      border-color: color-mix(in srgb, var(--kk-ability-accent), transparent 25%);
+      box-shadow: 0 0 11px color-mix(in srgb, var(--kk-ability-accent), transparent 82%), inset 0 1px 0 rgba(255,255,255,.08);
+    }
+    .kk-ability-chip.kk-ability-ready::after {
+      content: ''; position: absolute; left: 4px; bottom: 4px;
+      width: 5px; height: 5px; border-radius: 50%;
+      background: var(--kk-ability-accent); box-shadow: 0 0 6px var(--kk-ability-accent);
+    }
+    .kk-ability-icon {
+      width: 32px; height: 32px; display: grid; place-items: center;
+      color: var(--kk-ability-accent); border: 0; border-radius: 7px;
+      background: radial-gradient(circle, color-mix(in srgb, var(--kk-ability-accent), transparent 84%), transparent 72%);
+    }
+    .kk-ability-icon svg { width: 21px; height: 21px; fill: none; stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .kk-ability-copy { position: absolute; inset: 0; pointer-events: none; }
+    .kk-ability-name, .kk-ability-rank {
+      position: absolute !important; width: 1px !important; height: 1px !important;
+      padding: 0 !important; margin: -1px !important; overflow: hidden !important;
+      clip: rect(0,0,0,0) !important; white-space: nowrap !important; border: 0 !important;
+    }
+    .kk-ability-status {
+      position: absolute; left: 3px; right: 3px; bottom: 3px;
+      margin: 0; font-family: ${F.mono}; font-size: 7px; line-height: 1; font-weight: 800;
+      color: var(--kk-hud-cream); text-align: center; white-space: nowrap;
+      text-shadow: 0 1px 4px rgba(0,0,0,.9); overflow: hidden;
+    }
+    .kk-ability-key {
+      position: absolute; top: 3px; right: 3px;
+      min-width: 0; max-width: 34px; padding: 2px 3px;
+      border: 1px solid rgba(255,255,255,.13); border-radius: 4px;
+      background: rgba(5,4,7,.74); box-shadow: 0 1px 2px rgba(0,0,0,.45);
+      font-family: ${F.mono}; font-size: 6px; line-height: 1; font-weight: 800;
+      letter-spacing: 0; text-align: center; text-transform: uppercase;
+      color: var(--kk-hud-cream); white-space: nowrap; overflow: hidden;
+    }
+
+    .kk-weapon-panel {
+      position: static; flex: 0 1 auto;
+      display: flex; align-items: center; justify-content: flex-end; gap: 5px;
+      padding: 0; max-width: 100%; min-width: 0;
+      border: 0; border-radius: 0; background: none; box-shadow: none;
+      backdrop-filter: none; -webkit-backdrop-filter: none;
+      pointer-events: none;
+    }
+    .kk-weapon-panel:empty { display: none; }
+    .kk-weapon-cell {
+      position: relative; width: 42px; height: 50px; flex: 0 1 42px; min-width: 31px;
+      display: grid; grid-template-rows: 1fr auto; place-items: center;
+      padding: 3px 3px 2px; color: var(--kk-hud-cream);
+      background: linear-gradient(180deg, rgba(255,255,255,.052), rgba(255,255,255,.014));
+      border: 1px solid rgba(130,231,196,.42); border-radius: 9px;
+      box-shadow: inset 0 1px 0 rgba(255,255,255,.07);
+      transition: transform .14s ease, border-color .14s ease, box-shadow .14s ease;
+    }
+    .kk-weapon-cell:hover {
+      transform: translateY(-2px); border-color: var(--kk-hud-mint);
+      box-shadow: 0 6px 14px rgba(8,5,8,.3), 0 0 11px rgba(130,231,196,.14), inset 0 1px 0 rgba(255,255,255,.09);
+    }
+    .kk-weapon-cell.kk-weapon-evolved {
+      border-color: rgba(255,209,139,.7);
+      box-shadow: 0 0 12px rgba(255,209,139,.14), inset 0 1px 0 rgba(255,255,255,.09);
+    }
+    .kk-weapon-icon { width: 27px; height: 27px; display: grid; place-items: center; font-size: 20px; line-height: 1; }
+    .kk-weapon-icon img { width: 27px; height: 27px; display: block; object-fit: contain; image-rendering: pixelated; }
+    .kk-weapon-level {
+      font-family: ${F.mono}; font-size: 7px; line-height: 1; font-weight: 700;
+      letter-spacing: .03em; color: var(--kk-hud-mint);
+    }
+    .kk-weapon-evolved .kk-weapon-level { color: var(--kk-hud-honey); }
+
+    @media (max-width: 1040px) {
+      .kk-hud { --kk-map-slot: 128px; }
+      .kk-command-deck { width: calc(100% - 14px); gap: 5px; padding-inline: 7px; }
+      .kk-deck-left, .kk-deck-right { gap: 4px; }
+      .kk-hp-wrap { min-width: 166px; padding-inline: 6px; }
+      .kk-hp-icon { width: 27px; height: 27px; }
+      .kk-stats { min-width: 150px; }
+      .kk-stat-metric { padding-inline: 4px; }
+      .kk-ability-chip { width: 42px; }
+      .kk-weapon-panel { gap: 3px; }
+      .kk-weapon-cell { width: 37px; flex-basis: 37px; }
+    }
+    @media (max-width: 780px), (pointer: coarse) {
+      .kk-hud { --kk-deck-height: 62px; --kk-map-slot: 112px; }
+      .kk-command-deck { bottom: max(6px, env(safe-area-inset-bottom)); min-height: 62px; padding: 7px 6px 5px; border-radius: 12px; }
+      .kk-hp-wrap { width: min(59%, 188px); min-width: 146px; min-height: 44px; grid-template-columns: minmax(0,1fr); padding: 5px 7px; }
+      .kk-hp-icon { display: none; }
+      .kk-hp-label { font-size: 7px; }
+      .kk-hp-value { font-size: 8px; }
+      .kk-stats { width: min(41%, 132px); min-width: 104px; min-height: 44px; padding-inline: 2px; }
+      .kk-stat-label { font-size: 5px; letter-spacing: .06em; }
+      .kk-stat-metric { padding-inline: 3px; }
+      .kk-stats .kk-level { font-size: 14px; }
+      .kk-stats .kk-time { font-size: 9px; }
+      .kk-stats .kk-kills, .kk-stats .kk-dps { font-size: 9px; }
+      .kk-ability-chip { width: 38px; height: 44px; }
+      .kk-ability-icon { width: 28px; height: 28px; }
+      .kk-ability-icon svg { width: 18px; height: 18px; }
+      .kk-weapon-cell { width: 34px; height: 44px; flex-basis: 34px; min-width: 27px; border-radius: 7px; }
+      .kk-weapon-icon, .kk-weapon-icon img { width: 23px; height: 23px; font-size: 18px; }
+      .kk-achievement-toast, .kk-secret-toast { top: 12px !important; right: 66px !important; }
+    }
+    @media (max-width: 620px) {
+      .kk-hud { --kk-map-slot: 100px; }
+      .kk-stats-secondary .kk-stat-metric:last-child { display: none; }
+      .kk-stats { grid-template-columns: .72fr 1.12fr .8fr; }
+      .kk-hp-wrap { min-width: 126px; }
+      .kk-stats { min-width: 86px; }
+    }
+    @media (pointer: coarse) {
+      .kk-ability-dock { display: none; }
+      .kk-deck-right { padding-right: 80px; }
+      .kk-achievement-toast, .kk-secret-toast { top: 12px !important; right: 66px !important; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      .kk-hp-fill, .kk-xp-fill, .kk-ability-chip, .kk-weapon-cell { transition-duration: 0.01ms !important; }
+      .kk-victory-shell { animation: none !important; }
+      .kk-victory-marquee span { animation: none !important; padding-left: 0; }
+    }
+  `;
+  const style = document.createElement('style');
+  style.id = 'kk-ui-style';
+  style.textContent = css;
+  document.head.appendChild(style);
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
+function fmtTime(sec) {
+  const s = Math.max(0, Math.floor(sec));
+  const m = Math.floor(s / 60);
+  const r = s % 60;
+  return `${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+}
+
+function hpColorFor(pct) {
+  if (pct < 0.30) return C.red;
+  if (pct < 0.60) return C.amber;
+  return C.green;
+}
+
+// ── Iter-9 helpers: share clipboard + small green toast ─────────────────────
+// `copyTextToClipboard` prefers navigator.clipboard.writeText (HTTPS / modern)
+// but falls back to a hidden textarea + execCommand('copy') so the affordance
+// still works on localhost dev and older browsers. Returns a Promise<boolean>.
+function copyTextToClipboard(text) {
+  const s = String(text == null ? '' : text);
+  // Modern path
+  if (typeof navigator !== 'undefined' && navigator.clipboard && navigator.clipboard.writeText) {
+    try {
+      return navigator.clipboard.writeText(s).then(() => true).catch(() => _fallbackCopy(s));
+    } catch (_) { /* fall through to fallback */ }
+  }
+  return Promise.resolve(_fallbackCopy(s));
+}
+function _fallbackCopy(s) {
+  try {
+    const ta = document.createElement('textarea');
+    ta.value = s;
+    ta.setAttribute('readonly', '');
+    ta.style.cssText = 'position:fixed; left:-9999px; top:0; opacity:0;';
+    document.body.appendChild(ta);
+    ta.select();
+    const ok = document.execCommand('copy');
+    document.body.removeChild(ta);
+    return !!ok;
+  } catch (_) { return false; }
+}
+
+// 1.4s green pulse — matches the achievement toast cadence called out in the
+// iter-9 tuning table. Anchored top-center so it doesn't fight the death/start
+// modals stacked beneath it.
+function _kkShowMicroToast(text, color) {
+  const root = _root || document.getElementById('ui-root') || document.body;
+  if (!root) return;
+  // Iter 18 — auto-fire UI error SFX when caller passed the red color (the
+  // existing "Share failed" / "Copy failed" call sites are the contract). The
+  // green/amber/cyan toasts stay silent so success acks don't double-cue with
+  // the uiClick that triggered them.
+  if (color === C.red) { try { sfx.uiError(); } catch (_) {} }
+  const toast = document.createElement('div');
+  const col = color || C.green;
+  toast.style.cssText = `
+    position: fixed; left: 50%; top: 12%;
+    transform: translateX(-50%);
+    max-width: 92vw; box-sizing: border-box; text-align: center;
+    padding: 8px 18px;
+    background: linear-gradient(180deg, rgba(20,28,22,0.86), rgba(8,14,12,0.92));
+    border: 1px solid ${col};
+    border-radius: 8px;
+    font-family: ${F.body};
+    font-size: 12px; letter-spacing: 0.22em; text-transform: uppercase;
+    color: ${col};
+    text-shadow: 0 0 6px ${col}55;
+    box-shadow: 0 8px 22px rgba(0,0,0,0.55), 0 0 18px ${col}33;
+    pointer-events: none;
+    z-index: 200;
+    animation: kk-fade-in 0.18s ease-out;
+  `;
+  toast.textContent = text;
+  root.appendChild(toast);
+  setTimeout(() => { if (toast.parentNode) toast.parentNode.removeChild(toast); }, 1400);
+}
+
+// Compose a runHistory-style entry from the live state — what we hand to the
+// share-card renderer when there's no committed runHistory entry yet. Mirrors
+// recordRunResult's shape (see src/runHistory.js).
+function _runEntryFromState() {
+  if (!state) return null;
+  const stageId = (state.run && state.run.stage && state.run.stage.id) || 'forest';
+  const charId  = (state.run && state.run.character) || 'kitty';
+  const mode    = state.modes && state.modes.hyper ? 'hyper'
+              : state.modes && state.modes.endless ? 'endless'
+              : state.modes && state.modes.daily ? 'daily'
+              : state.modes && state.modes.weekly ? 'weekly'
+              : state.modes && state.modes.bossRush ? 'boss-rush'
+              : 'normal';
+  const weaponsUsed = Array.isArray(state.weapons)
+    ? state.weapons.map(w => ({ id: w.id, level: w.level || 1, evolved: !!(w.inst && w.inst.evolved) }))
+    : [];
+  return {
+    stage: stageId,
+    character: charId,
+    mode,
+    durationSec: Math.max(0, Math.floor((state.time && state.time.game) || 0)),
+    level: (state.hero && state.hero.level) || 0,
+    kills: (state.run && state.run.kills) || 0,
+    dmgDealt: Math.floor((state.run && state.run.dmgDealt) || 0),
+    weaponsUsed,
+    outcome: state.victory ? 'victory' : 'death',
+    endedAt: new Date().toISOString(),
+    // The committed entry will have a seed; the leaderboard's makeSeed is
+    // available at share time but we leave the fallback to shareCard.js.
+  };
+}
+
+let _registry = null;
+async function loadRegistry() {
+  if (_registry) return _registry;
+  try {
+    const m = await import('./weapons/index.js');
+    _registry = m.REGISTRY || m.default || {};
+  } catch (e) {
+    _registry = {};
+  }
+  return _registry;
+}
+
+// ── Public API ───────────────────────────────────────────────────────────────
+
+export function initUI() {
+  injectCSS();
+  // Defensive hot-reload/re-init cleanup. The shared banner owns a timeout;
+  // clear both together so an old callback cannot remove a banner mounted by
+  // the new UI lifecycle.
+  _clearSharedBanner();
+  _root = document.getElementById('ui-root');
+  if (!_root) {
+    console.error('[ui] #ui-root not found');
+    return;
+  }
+  // Iter 10a accessibility: make ui-root a polite live region so screen
+  // readers announce toasts (achievements, secrets, run-end summaries)
+  // without interrupting the user's current focus.
+  if (!_root.hasAttribute('aria-live')) {
+    _root.setAttribute('aria-live', 'polite');
+    _root.setAttribute('aria-relevant', 'additions text');
+  }
+
+  // Try to warm registry cache (non-blocking)
+  loadRegistry();
+
+  // Build HUD container
+  _hud = document.createElement('div');
+  _hud.className = 'kk-hud';
+
+  // Low-HP danger vignette (first child → painted behind all readouts).
+  _dangerVig = document.createElement('div');
+  _dangerVig.className = 'kk-danger-vig';
+  _hud.appendChild(_dangerVig);
+
+  // XP progress is the hairline along the compact command deck's top edge.
+  const xpBar = document.createElement('div');
+  xpBar.className = 'kk-xp-bar';
+  xpBar.setAttribute('role', 'progressbar');
+  xpBar.setAttribute('aria-label', 'Experience progress');
+  xpBar.setAttribute('aria-valuemin', '0');
+  _xpFill = document.createElement('div');
+  _xpFill.className = 'kk-xp-fill';
+  xpBar.appendChild(_xpFill);
+
+  // Vitality cluster. The command deck gives it a stable bottom-left slot so
+  // combat never loses a whole upper corner to a large floating card.
+  const hpWrap = document.createElement('div');
+  hpWrap.className = 'kk-hp-wrap';
+  hpWrap.setAttribute('role', 'group');
+  hpWrap.setAttribute('aria-label', 'Player vitality');
+  const hpIcon = document.createElement('div');
+  hpIcon.className = 'kk-hp-icon';
+  hpIcon.setAttribute('aria-hidden', 'true');
+  hpIcon.innerHTML = '<svg viewBox="0 0 24 24"><path d="M12 20.2 4.4 13A5.1 5.1 0 0 1 11.7 5.8l.3.4.3-.4A5.1 5.1 0 0 1 19.6 13Z"/></svg>';
+  const hpContent = document.createElement('div');
+  hpContent.className = 'kk-hp-content';
+  const hpMeta = document.createElement('div');
+  hpMeta.className = 'kk-hp-meta';
+  const hpLabel = document.createElement('div');
+  hpLabel.className = 'kk-hp-label';
+  hpLabel.textContent = 'HP';
+  _hpText = document.createElement('div');
+  _hpText.className = 'kk-hp-value';
+  _hpText.textContent = '100 / 100';
+  const hpBar = document.createElement('div');
+  hpBar.className = 'kk-hp-bar';
+  hpBar.setAttribute('role', 'progressbar');
+  hpBar.setAttribute('aria-label', 'Health');
+  hpBar.setAttribute('aria-valuemin', '0');
+  _hpFill = document.createElement('div');
+  _hpFill.className = 'kk-hp-fill';
+  hpBar.appendChild(_hpFill);
+  hpMeta.appendChild(hpLabel);
+  hpMeta.appendChild(_hpText);
+  hpContent.appendChild(hpMeta);
+  hpContent.appendChild(hpBar);
+  hpWrap.appendChild(hpIcon);
+  hpWrap.appendChild(hpContent);
+
+  // Equipped daycare outfit badge (hidden until a buff-granting outfit is worn).
+  _outfitBadge = document.createElement('div');
+  _outfitBadge.className = 'kk-outfit-badge';
+  _outfitBadge.style.display = 'none';
+  hpWrap.appendChild(_outfitBadge);
+
+  // Run telemetry is four tiny metrics beside HP in the left deck wing.
+  const stats = document.createElement('div');
+  stats.className = 'kk-stats';
+  _statsPanel = stats;
+  stats.setAttribute('aria-label', 'Run status');
+  const makeMetric = (labelText, valueClass) => {
+    const metric = document.createElement('div');
+    metric.className = 'kk-stat-metric';
+    const label = document.createElement('div');
+    label.className = 'kk-stat-label';
+    label.textContent = labelText;
+    const value = document.createElement('div');
+    value.className = `kk-line kk-stat-value ${valueClass}`;
+    metric.appendChild(label);
+    metric.appendChild(value);
+    return { metric, value };
+  };
+  const statsPrimary = document.createElement('div');
+  statsPrimary.className = 'kk-stats-primary';
+  const levelMetric = makeMetric('Level', 'kk-level');
+  _levelText = levelMetric.value;
+  _levelText.textContent = '01';
+  const timeMetric = makeMetric('Run Time', 'kk-time');
+  _timeText = timeMetric.value;
+  _timeText.textContent = '00:00';
+  statsPrimary.appendChild(levelMetric.metric);
+  statsPrimary.appendChild(timeMetric.metric);
+
+  const statsSecondary = document.createElement('div');
+  statsSecondary.className = 'kk-stats-secondary';
+  const killsMetric = makeMetric('Kills', 'kk-kills');
+  _killsText = killsMetric.value;
+  _killsText.textContent = '0';
+  const dpsMetric = makeMetric('DPS', 'kk-dps');
+  _dpsText = dpsMetric.value;
+  _dpsText.textContent = '0';
+  statsSecondary.appendChild(killsMetric.metric);
+  statsSecondary.appendChild(dpsMetric.metric);
+
+  // Next mini-boss countdown (small, below kills)
+  _nextBossText = document.createElement('div');
+  _nextBossText.className = 'kk-elite-timer';
+  stats.appendChild(statsPrimary);
+  stats.appendChild(statsSecondary);
+  stats.appendChild(_nextBossText);
+
+  // WoW-like action slots. Names remain available to assistive tech/tooltips;
+  // visually, only icon, key, cooldown, and a ready dot occupy the rail.
+  const abilityDock = document.createElement('div');
+  abilityDock.className = 'kk-ability-dock';
+  const makeAbilityChip = (id, kind, iconMarkup, name, key) => {
+    const chip = document.createElement('div');
+    chip.id = id;
+    chip.className = `kk-ability-chip kk-ability-${kind}`;
+    const icon = document.createElement('div');
+    icon.className = 'kk-ability-icon';
+    icon.innerHTML = iconMarkup;
+    const copy = document.createElement('div');
+    copy.className = 'kk-ability-copy';
+    const nameEl = document.createElement('div');
+    nameEl.className = 'kk-ability-name';
+    nameEl.textContent = name;
+    const statusEl = document.createElement('div');
+    statusEl.className = 'kk-ability-status';
+    statusEl.textContent = '';
+    copy.appendChild(nameEl);
+    copy.appendChild(statusEl);
+    const keyEl = document.createElement('div');
+    keyEl.className = 'kk-ability-key';
+    keyEl.textContent = key;
+    chip.appendChild(icon);
+    chip.appendChild(copy);
+    chip.appendChild(keyEl);
+    return { chip, nameEl, statusEl, keyEl };
+  };
+  const activeChip = makeAbilityChip(
+    'kk-active-readout',
+    'active',
+    '<svg viewBox="0 0 24 24"><path d="m12 2 2.2 6.1L20 6l-3.3 5.4L22 15l-6.4.2L15 22l-3-5.8L9 22l-.6-6.8L2 15l5.3-3.6L4 6l5.8 2.1Z"/></svg>',
+    'Active',
+    'Q',
+  );
+  _activeReadout = activeChip.chip;
+  _activeNameText = activeChip.nameEl;
+  _activeStatusText = activeChip.statusEl;
+  _activeKeyText = activeChip.keyEl;
+
+  const dashChip = makeAbilityChip(
+    'kk-dash-readout',
+    'dash',
+    '<svg viewBox="0 0 24 24"><path d="M3 7h8l-3 3h8l-3 3h8M5 17h7"/></svg>',
+    'Dash',
+    'Shift',
+  );
+  _dashReadout = dashChip.chip;
+  _dashStatusText = dashChip.statusEl;
+  _dashKeyText = dashChip.keyEl;
+  const dashRank = document.createElement('span');
+  dashRank.className = 'kk-ability-rank';
+  dashRank.textContent = 'R1';
+  dashChip.nameEl.appendChild(dashRank);
+  _dashRankText = dashRank;
+  abilityDock.appendChild(activeChip.chip);
+  abilityDock.appendChild(dashChip.chip);
+
+  // Legacy readout ids remain stable for smoke/accessibility consumers.
+
+  // Weapon roster — bottom-right HUD chip showing icons + level pips
+  _weaponPanel = document.createElement('div');
+  _weaponPanel.id = 'kk-weapon-panel';
+  _weaponPanel.className = 'kk-weapon-panel';
+  _weaponPanel.setAttribute('aria-label', 'Equipped weapons');
+
+  // One structural rail, split around a reserved center slot. The minimap is
+  // owned by portalShards.js but uses the exact same fixed center geometry.
+  const commandDeck = document.createElement('div');
+  commandDeck.id = 'kk-command-deck';
+  commandDeck.className = 'kk-command-deck';
+  commandDeck.setAttribute('role', 'group');
+  commandDeck.setAttribute('aria-label', 'Combat command deck');
+  const deckLeft = document.createElement('div');
+  deckLeft.className = 'kk-deck-left';
+  const mapSlot = document.createElement('div');
+  mapSlot.className = 'kk-deck-map-slot';
+  mapSlot.setAttribute('aria-hidden', 'true');
+  const deckRight = document.createElement('div');
+  deckRight.className = 'kk-deck-right';
+  deckLeft.appendChild(hpWrap);
+  deckLeft.appendChild(stats);
+  deckRight.appendChild(abilityDock);
+  deckRight.appendChild(_weaponPanel);
+  commandDeck.appendChild(deckLeft);
+  commandDeck.appendChild(mapSlot);
+  commandDeck.appendChild(deckRight);
+  commandDeck.appendChild(xpBar);
+  _hud.appendChild(commandDeck);
+  _root.appendChild(_hud);
+
+}
+
+/** Hide combat-only chrome while a non-combat hub scene owns the screen. */
+export function setHUDVisible(visible) {
+  if (!_hud) return;
+  _hud.style.display = visible ? '' : 'none';
+}
+
+let _dashReadout = null;
+let _dashStatusText = null;
+let _dashKeyText = null;
+let _dashRankText = null;
+let _activeReadout = null;
+let _activeNameText = null;
+let _activeStatusText = null;
+let _activeKeyText = null;
+let _weaponPanel = null;
+let _dangerVig = null;
+let _nextBossText = null;
+let _dpsText = null;
+const _weaponCells = new Map(); // id -> {wrap, level}
+
+export function updateUI() {
+  // Boss/evolution cinematics own the centre HUD while active. Clear a
+  // pre-existing lower-priority notice as soon as a cinematic begins; new
+  // lower-priority notices are rejected in showBanner() below.
+  if (_banner && _bannerPriority < BANNER_PRIORITY.cinematic && _hasBlockingCinematic()) {
+    _clearSharedBanner();
+  }
+  if (!_hpFill) return;
+  const h = state.hero;
+
+  // Bullet-hell draws its own top-center HUD (wave/graze/bomb/items, owned by
+  // bullethell/index.js). Hide the survivors chrome that is dead or wrong in
+  // that mode — XP strip, LV readout, ELITE-IN countdown — and skip their
+  // per-frame writes so they don't render over the mode HUD. Toggle once on
+  // mode change (not every frame); restored when leaving the mode.
+  const bhMode = state.mode === 'bullethell';
+  if (bhMode !== _last.bhMode) {
+    const disp = bhMode ? 'none' : '';
+    if (_xpFill && _xpFill.parentElement) _xpFill.parentElement.style.display = disp;
+    if (_levelText) _levelText.style.display = disp;
+    if (_nextBossText) _nextBossText.style.display = disp;
+    // Bullet-hell is wave-based with its own top-center HUD (wave/graze/bombs);
+    // the survivors kills + DPS readouts are meaningless there, so hide them too.
+    if (_killsText) _killsText.style.display = disp;
+    if (_dpsText) _dpsText.style.display = disp;
+    if (_statsPanel) _statsPanel.style.display = disp;
+    _last.bhMode = bhMode;
+  }
+
+  // Bullet Hell is wave-based and owns a dedicated mode HUD. Every survivors
+  // stage, including Forest, now reads time from this bottom-deck metric; the
+  // old large Forest clock remains a screen-reader-only lifecycle hook.
+  const hideTimer = bhMode;
+  if (hideTimer !== _last.hideTimer) {
+    if (_timeText) {
+      const metric = _timeText.parentElement;
+      _timeText.style.display = hideTimer ? 'none' : '';
+      if (metric) metric.style.display = hideTimer ? 'none' : '';
+    }
+    _last.hideTimer = hideTimer;
+  }
+
+  // HP
+  const hpPct = Math.max(0, Math.min(1, h.hp / Math.max(1, h.hpMax)));
+  if (hpPct !== _last.hpPct) {
+    _hpFill.style.width = (hpPct * 100).toFixed(1) + '%';
+    if (_hpText) _hpText.textContent = `${Math.max(0, Math.ceil(h.hp))} / ${Math.max(1, Math.ceil(h.hpMax))}`;
+    const hpBar = _hpFill.parentElement;
+    if (hpBar) {
+      hpBar.setAttribute('aria-valuenow', String(Math.max(0, Math.ceil(h.hp))));
+      hpBar.setAttribute('aria-valuemax', String(Math.max(1, Math.ceil(h.hpMax))));
+    }
+    _last.hpPct = hpPct;
+  }
+  const col = hpColorFor(hpPct);
+  if (col !== _last.hpColor) {
+    _hpFill.style.setProperty('--kk-hp-color', col);
+    _hpFill.style.color = col;
+    _last.hpColor = col;
+  }
+
+  // Sustained low-HP danger cue — a pulsing red edge vignette while HP is low,
+  // so a player in trouble has a persistent warning (not just a transient hurt
+  // flash + a bar they may not be watching). Combat modes only; off at 0 HP
+  // (game-over screen takes over). CSS animation drives the pulse; JS only
+  // toggles the class on state change.
+  const _dangerCombat = (state.mode === 'run' || state.mode === 'bullethell' || state.mode === 'catacomb');
+  const danger = _dangerCombat && !state.gameOver && hpPct > 0 && hpPct < 0.30;
+  if (danger !== _last.danger) {
+    if (_dangerVig) _dangerVig.classList.toggle('kk-danger-on', danger);
+    _last.danger = danger;
+  }
+
+  // XP + Level — skipped in bullet-hell (elements hidden above; mode has no xp/levels).
+  if (!bhMode) {
+    const xpPct = Math.max(0, Math.min(1, h.xp / Math.max(1, h.xpNext)));
+    if (xpPct !== _last.xpPct) {
+      _xpFill.style.width = (xpPct * 100).toFixed(1) + '%';
+      const xpBar = _xpFill.parentElement;
+      if (xpBar) {
+        xpBar.setAttribute('aria-valuenow', String(Math.floor(h.xp)));
+        xpBar.setAttribute('aria-valuemax', String(Math.max(1, Math.floor(h.xpNext))));
+      }
+      _last.xpPct = xpPct;
+    }
+    if (h.level !== _last.level) {
+      _levelText.textContent = String(h.level).padStart(2, '0');
+      _last.level = h.level;
+    }
+  }
+
+  // Time
+  const t = fmtTime(state.time.game);
+  if (t !== _last.timeStr) {
+    _timeText.textContent = t;
+    _last.timeStr = t;
+  }
+
+  // Kills
+  if (state.run.kills !== _last.kills) {
+    _killsText.textContent = String(state.run.kills);
+    _last.kills = state.run.kills;
+  }
+
+  // Equipped daycare outfit — hub→combat cue. Static for the run; write only
+  // when the worn outfit changes (mirrors state.run.outfitBuff set at apply time).
+  const ob = state.run.outfitBuff;
+  const obId = ob ? ob.id : null;
+  if (_outfitBadge && obId !== _last.outfitId) {
+    if (ob) {
+      const label = document.createElement('span');
+      label.textContent = ob.label;
+      _outfitBadge.replaceChildren(_makeOutfitBadgeIcon(ob.id), label);
+      _outfitBadge.title = `${ob.name} — worn by MaoMao`;
+      _outfitBadge.style.display = '';
+    } else {
+      _outfitBadge.style.display = 'none';
+    }
+    _last.outfitId = obId;
+  }
+
+  // DPS — fixed-bucket sliding-window mean over the last 5s.
+  if (_dpsText) {
+    const dps = readDps(state.run._dpsWin, state.time.game);
+    const fmt = dps >= 1000 ? (dps/1000).toFixed(1) + 'K' : Math.round(dps).toString();
+    _dpsText.textContent = fmt;
+  }
+
+  // Mini-boss countdown (uses globally-attached fn to avoid frame-time imports).
+  // Skipped in bullet-hell — no survivors mini-boss timer there.
+  if (!bhMode && _nextBossText && typeof window.__kkNextMiniBoss === 'function') {
+    const sec = window.__kkNextMiniBoss();
+    if (sec === null) _nextBossText.textContent = '';
+    else _nextBossText.textContent = `NEXT ELITE  ·  ${fmtTime(sec)}`;
+  }
+
+  // Weapon panel (rebuild only when the weapon set/levels change)
+  if (_weaponPanel) _updateWeaponPanel();
+
+  // Dash readout
+  if (_dashReadout) {
+    if (bhMode) {
+      _dashReadout.style.display = 'none';
+    } else if (h.dashUnlocked) {
+      _dashReadout.style.display = 'grid';
+      const ready = h.dashCD <= 0;
+      if (_dashStatusText) _dashStatusText.textContent = ready ? '' : `${h.dashCD.toFixed(1)}s`;
+      if (_dashRankText) _dashRankText.textContent = `R${h.dashLevel}`;
+      if (_dashKeyText) _dashKeyText.textContent = 'Shift';
+      _dashReadout.title = `Dash · Rank ${h.dashLevel} · ${ready ? 'Ready' : `${h.dashCD.toFixed(1)} seconds`}`;
+      _dashReadout.setAttribute('aria-label', _dashReadout.title);
+      _dashReadout.classList.toggle('kk-ability-ready', ready);
+      _dashReadout.style.opacity = ready ? '1' : '0.68';
+    } else {
+      _dashReadout.style.display = 'none';
+    }
+  }
+
+  // Active-ability readout (DMD-hybrid)
+  if (_activeReadout) {
+    const a = h.active;
+    const pipes = state.run && state.run.avatar === 'pipes';
+    const grapple = pipes && state.run.pipesGrapple;
+    if (pipes) {
+      _activeReadout.style.display = 'grid';
+      const phase = (grapple && grapple.phase) || 'idle';
+      const cd = (grapple && grapple.cooldown) || 0;
+      let hookText;
+      if (phase === 'flying') hookText = 'Hook deployed';
+      else if (phase === 'orbit') hookText = `Swing charge ${Math.round(((grapple && grapple.charge) || 0) * 100)}%`;
+      else if (phase === 'thrown') hookText = 'Target launched';
+      else hookText = cd <= 0 ? 'Ready to grapple' : `${cd.toFixed(1)}s cooldown`;
+      if (a && a.id) {
+        const def = ACTIVES[a.id];
+        const nm = (def && def.name) || 'ACTIVE';
+        hookText += a.cd <= 0 ? ` · ${nm} ready` : ` · ${nm} ${a.cd.toFixed(1)}s`;
+      }
+      if (_activeNameText) _activeNameText.textContent = 'Grapple';
+      if (_activeStatusText) {
+        _activeStatusText.textContent = phase === 'orbit'
+          ? `${Math.round(((grapple && grapple.charge) || 0) * 100)}%`
+          : (phase === 'idle' && cd > 0 ? `${cd.toFixed(1)}s` : '');
+      }
+      if (_activeKeyText) _activeKeyText.textContent = 'RMB';
+      const ready = phase !== 'idle' || cd <= 0;
+      _activeReadout.title = `Grapple · ${hookText}`;
+      _activeReadout.setAttribute('aria-label', _activeReadout.title);
+      _activeReadout.classList.toggle('kk-ability-ready', ready);
+      _activeReadout.style.opacity = ready ? '1' : '0.68';
+    } else if (a && a.id) {
+      _activeReadout.style.display = 'grid';
+      const def = ACTIVES[a.id];
+      const nm = (def && def.name) || 'Active';
+      const ready = a.cd <= 0;
+      if (_activeNameText) _activeNameText.textContent = `${nm} · R${a.level}`;
+      if (_activeStatusText) _activeStatusText.textContent = ready ? '' : `${a.cd.toFixed(1)}s`;
+      if (_activeKeyText) _activeKeyText.textContent = 'Q';
+      _activeReadout.title = `${nm} · Rank ${a.level} · ${ready ? 'Ready' : `${a.cd.toFixed(1)} seconds`}`;
+      _activeReadout.setAttribute('aria-label', _activeReadout.title);
+      _activeReadout.classList.toggle('kk-ability-ready', ready);
+      _activeReadout.style.opacity = ready ? '1' : '0.68';
+    } else {
+      _activeReadout.style.display = 'none';
+    }
+  }
+}
+
+// Chain-breaker state (see block inside showLevelUpModal): consecutive
+// modal opens within the same frozen game-time beat.
+let _chainModalCount = 0;
+let _chainGameT = -1;
+
+export function showLevelUpModal(choices) {
+  // Iter 21a — kill any hover tooltip before this modal covers the source el.
+  // Without this, click-through into a modal leaves the tooltip floating at
+  // z:9999 with no mouseleave fired (the source detaches / gets occluded).
+  try { hideTooltip(); } catch (_) {}
+  if (_modal) hideLevelUpModal();
+  // Punch List #4 (2026-05-16) — coin-paid reroll counter is PER-OFFER, so
+  // wipe it every time a fresh modal opens. Covers all three entry paths:
+  // xp.js _triggerLevelUp, xp.js applyLevelUpChoice cascade, and the local
+  // doSkip cascade below. Without this the cap (SIGIL_REROLL.capPerOffer)
+  // would leak across queued levels in a multi-level XP injection.
+  if (state && state.run) state.run.rerollsThisOffer = 0;
+
+  // Chain-breaker (fun-loop iter 1.1): cap back-to-back draft modals at 2
+  // per gameplay beat. Game time freezes while a modal is up, so cascade
+  // opens share ~the same clock; >0.5s of game time elapsed = a new beat.
+  // Beyond 2 chained modals, BANK the remaining levels (no conversion, no
+  // loss — replaces the old reroll converter whose value cliff made 3
+  // banked levels worth less than 2), resume gameplay, and let xp.js
+  // re-trigger the draft after 3s of play. Sits here (not in the drain
+  // loops) so every entry path — xp.js _triggerLevelUp, the
+  // applyLevelUpChoice cascade, doSkip, and hero.js direct-XP — is covered.
+  if (state && state.time) {
+    if (state.time.game - _chainGameT > 0.5) _chainModalCount = 0;
+    _chainGameT = state.time.game;
+    if (_chainModalCount >= 2 && (state.pendingLevelCount || 0) > 0) {
+      state.pendingLevelUp = false;
+      state.levelModalHoldUntil = state.time.game + 3;
+      const n = state.pendingLevelCount;
+      _kkShowMicroToast(`+${n} level${n > 1 ? 's' : ''} banked — draft resumes shortly`, C.cyan);
+      return;
+    }
+    _chainModalCount++;
+  }
+
+  const registry = _registry || {};
+  // Try to ensure registry is loaded (fire-and-forget; cards will fall back gracefully)
+  if (!_registry) loadRegistry().then(() => {
+    // If modal still open, repaint card contents
+    if (_modal) repaintCards(choices);
+  });
+
+  _modal = document.createElement('div');
+  _modal.className = 'kk-modal';
+
+  const title = document.createElement('div');
+  title.className = 'kk-modal-title';
+  // Iter 32i — show queue count when multiple levels are pending so the
+  // player understands the cascade ("Level Up · 3 more after this").
+  const remaining = state && state.pendingLevelCount ? state.pendingLevelCount : 1;
+  title.textContent = remaining > 1 ? `Level Up · +${remaining - 1} more` : 'Level Up';
+  _modal.appendChild(title);
+  const sub = document.createElement('div');
+  sub.style.cssText = `font-family: ${F.body}; font-size: calc(var(--kk-font-scale, 1) * 12px); letter-spacing: 0.34em;
+    color: rgba(245,239,225,0.62); text-transform: uppercase; margin: -22px 0 28px;`;
+  sub.textContent = remaining > 1 ? `Cascade — pick to continue` : 'Choose your path';
+  _modal.appendChild(sub);
+
+  const row = document.createElement('div');
+  row.className = 'kk-card-row';
+  row.dataset.role = 'cards';
+  _modal.appendChild(row);
+
+  // Reroll / skip controls (only show when player has charges)
+  const qolRow = document.createElement('div');
+  qolRow.style.cssText = 'display:flex; gap:14px; margin-top:24px; pointer-events:auto;';
+  function qolBtn(label, accent, charges) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.innerHTML = `${label} <span style="font-family:${F.mono};font-size:calc(var(--kk-font-scale, 1) * 11px);opacity:0.78;margin-left:6px;">×${charges}</span>`;
+    b.style.cssText = `padding: 10px 22px; cursor: pointer;
+      background: linear-gradient(180deg, rgba(20,28,22,0.86), rgba(8,14,12,0.92));
+      border: 1px solid ${C.edge}; border-radius: 8px;
+      color: ${accent};
+      font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 13px); font-weight: 700;
+      letter-spacing: 0.26em;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 20px rgba(0,0,0,0.5);`;
+    return b;
+  }
+  // Punch List #4 (2026-05-16) — current coin cost of the next reroll on
+  // THIS offer. 30 → 50 → 70 ... ramps by SIGIL_REROLL.costRamp per use,
+  // capped at SIGIL_REROLL.capPerOffer rerolls per offer.
+  function _coinRerollCost() {
+    const used = (state.run && state.run.rerollsThisOffer) || 0;
+    return SIGIL_REROLL.firstCost + used * SIGIL_REROLL.costRamp;
+  }
+  function rebuildQol() {
+    qolRow.innerHTML = '';
+    if (state.hero.rerolls > 0) {
+      // Reroll bound to Q on kbm (no semantic action in the prompt map);
+      // render a Q pill directly so the visual style matches.
+      const qPill = `<span class="kk-prompt" style="--kk-prompt-color:${C.cyan}">Q</span>`;
+      const b = qolBtn(`${qPill}Reroll`, C.cyan, state.hero.rerolls);
+      b.onclick = () => doReroll();
+      qolRow.appendChild(b);
+    }
+    if (state.hero.skips > 0) {
+      const b = qolBtn(`${formatPrompt('interact', '')}Skip`, C.amber, state.hero.skips);
+      b.onclick = () => doSkip();
+      qolRow.appendChild(b);
+    }
+    // Punch List #4 — coin-paid reroll (always shown; orthogonal to the
+    // consumable `state.hero.rerolls` charge above). Cost ramps 30 → 50 → 70
+    // per offer; cap at SIGIL_REROLL.capPerOffer per offer. Disabled state is
+    // visual only — clicks while disabled still fire sfx.uiError so the
+    // player gets feedback when they can't afford or have hit the cap.
+    const used = (state.run && state.run.rerollsThisOffer) || 0;
+    const capped = used >= SIGIL_REROLL.capPerOffer;
+    const cost = _coinRerollCost();
+    const meta = getMeta();
+    const broke = (meta.coins || 0) < cost;
+    const disabled = capped || broke;
+    const pill = capped
+      ? `<span style="font-family:${F.mono};font-size:calc(var(--kk-font-scale, 1) * 11px);opacity:0.78;margin-left:6px;">MAX</span>`
+      : `<span style="font-family:${F.mono};font-size:calc(var(--kk-font-scale, 1) * 11px);opacity:0.78;margin-left:6px;">${cost}🪙</span>`;
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.innerHTML = `Reroll ${pill}`;
+    b.style.cssText = `padding: 10px 22px; cursor: ${disabled ? 'not-allowed' : 'pointer'};
+      background: linear-gradient(180deg, rgba(20,28,22,0.86), rgba(8,14,12,0.92));
+      border: 1px solid ${C.edge}; border-radius: 8px;
+      color: ${disabled ? 'rgba(245,239,225,0.35)' : C.amber};
+      font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 13px); font-weight: 700;
+      letter-spacing: 0.26em;
+      opacity: ${disabled ? '0.55' : '1'};
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 20px rgba(0,0,0,0.5);`;
+    b.onclick = () => doCoinReroll();
+    qolRow.appendChild(b);
+  }
+  function doReroll() {
+    if (state.hero.rerolls <= 0) return;
+    state.hero.rerolls -= 1;
+    import('./weapons/index.js').then(({ weaponChoices }) => {
+      const fresh = weaponChoices(3 + ((state && state.run && state.run.casinoExtraChoices) || 0));
+      // FOREST-V2-A12 (#116) — honor BANISH "permanently" across all reroll
+      // paths, not just the new gold one. Strip banished ids from the
+      // legacy hero-charge reroll too.
+      const banned = (state.run && state.run._banishedThisRun) || new Set();
+      const filtered = banned.size ? fresh.filter(c => !banned.has(c.id)) : fresh;
+      state.levelUpChoices = filtered;
+      paintCards(row, filtered, _registry || {});
+      rebuildQol();
+      if (typeof row._kkRefreshFocus === 'function') row._kkRefreshFocus();
+    });
+  }
+  // Punch List #4 — coin-paid reroll. Distinct from doReroll (which uses
+  // the consumable `state.hero.rerolls` charges). Guards: cap, affordability.
+  // Both negative paths play sfx.uiError; success path plays sfx.uiClick.
+  function doCoinReroll() {
+    const used = (state.run && state.run.rerollsThisOffer) || 0;
+    if (used >= SIGIL_REROLL.capPerOffer) {
+      try { sfx.uiError && sfx.uiError(); } catch (_) {}
+      return;
+    }
+    const cost = _coinRerollCost();
+    if (!spendCoins(cost)) {
+      try { sfx.uiError && sfx.uiError(); } catch (_) {}
+      return;
+    }
+    state.run.rerollsThisOffer = used + 1;
+    try { sfx.uiClick && sfx.uiClick(); } catch (_) {}
+    import('./weapons/index.js').then(({ weaponChoices }) => {
+      const fresh = weaponChoices(3 + ((state && state.run && state.run.casinoExtraChoices) || 0));
+      // FOREST-V2-A12 (#116) — banished ids stay banished across the
+      // meta-coin reroll path too.
+      const banned = (state.run && state.run._banishedThisRun) || new Set();
+      const filtered = banned.size ? fresh.filter(c => !banned.has(c.id)) : fresh;
+      state.levelUpChoices = filtered;
+      paintCards(row, filtered, _registry || {});
+      rebuildQol();
+      if (typeof row._kkRefreshFocus === 'function') row._kkRefreshFocus();
+    });
+  }
+  function doSkip() {
+    if (state.hero.skips <= 0) return;
+    state.hero.skips -= 1;
+    // Iter 32i — Skip burns one queued level too. If more queued, re-open
+    // with a fresh roll; else close.
+    state.pendingLevelCount = Math.max(0, (state.pendingLevelCount || 1) - 1);
+    state.levelUpChoices.length = 0;
+    hideLevelUpModal();
+    if (state.pendingLevelCount > 0) {
+      import('./weapons/index.js').then(({ weaponChoices }) => {
+        state.pendingLevelUp = true;
+        state.levelUpChoices = weaponChoices(3 + ((state && state.run && state.run.casinoExtraChoices) || 0));
+        showLevelUpModal(state.levelUpChoices);
+      });
+    } else {
+      state.pendingLevelUp = false;
+    }
+  }
+  _modal.appendChild(qolRow);
+  rebuildQol();
+
+  // ─────────────────────────────────────────────────────────────────────
+  // FOREST-V2-A12 (#116) — Level-up gold economy: REROLL / BANISH / SKIP.
+  // VS-style QoL buttons fed by `state.run.gold` (per-run pool from forest
+  // chests). Orthogonal to the meta-coin reroll + hero-charge reroll/skip
+  // above; they share the same modal but draw on different currencies.
+  // Surgery kept inline (under the 300-line threshold) — no helper file.
+  // ─────────────────────────────────────────────────────────────────────
+  const goldText = document.createElement('div');
+  goldText.dataset.role = 'gold-label';
+  goldText.style.cssText = `font-family:${F.mono}; font-size:calc(var(--kk-font-scale, 1) * 13px);
+    color:${C.amber}; letter-spacing:0.22em; text-transform:uppercase;
+    margin-top:18px; margin-bottom:6px; text-align:center; pointer-events:none;`;
+  _modal.appendChild(goldText);
+
+  const econRow = document.createElement('div');
+  econRow.dataset.role = 'econ-row';
+  econRow.style.cssText = 'display:flex; gap:14px; margin-top:6px; pointer-events:auto; justify-content:center;';
+  _modal.appendChild(econRow);
+
+  const banishPrompt = document.createElement('div');
+  banishPrompt.dataset.role = 'banish-prompt';
+  banishPrompt.style.cssText = `display:none; margin-top:14px; padding:10px 18px;
+    font-family:${F.mono}; font-size:calc(var(--kk-font-scale, 1) * 12px);
+    color:${C.red}; letter-spacing:0.24em; text-transform:uppercase;
+    border:1px solid ${C.red}; border-radius:6px; text-align:center;
+    background:rgba(255,94,94,0.08); pointer-events:none;`;
+  banishPrompt.textContent = 'Click a choice to banish (75g) — ESC to cancel';
+  _modal.appendChild(banishPrompt);
+
+  // Cost ramp + caps live here so changes stay co-located.
+  const REROLL_BASE = 50;
+  const REROLL_STEP = 25;
+  const BANISH_COST = 75;
+  function _rerollCost() {
+    const used = (state.run && state.run._rerollsThisRun) || 0;
+    return REROLL_BASE + REROLL_STEP * used;
+  }
+  function _gold() { return (state.run && state.run.gold) || 0; }
+
+  // weaponChoices() doesn't accept an exclusion arg — wrap-and-filter as
+  // the brief's watch-out recommends. Re-rolls until the result has no
+  // banished ids, with a small retry cap so a near-empty pool can't spin.
+  function _rollNonBanished(n) {
+    const banned = (state.run && state.run._banishedThisRun) || new Set();
+    return import('./weapons/index.js').then(({ weaponChoices }) => {
+      let attempts = 0;
+      let fresh = weaponChoices(n);
+      let filtered = fresh.filter(c => !banned.has(c.id));
+      while (filtered.length < n && attempts < 6) {
+        const more = weaponChoices(n);
+        for (const m of more) {
+          if (!banned.has(m.id) && !filtered.find(f => f.id === m.id)) {
+            filtered.push(m);
+            if (filtered.length >= n) break;
+          }
+        }
+        attempts++;
+      }
+      // Pool depleted: return whatever survived, even if <n. The
+      // pool-depleted gate in rebuildEcon disables further interactions
+      // when the hand drops below 3, so an under-sized array is safe.
+      // Never fall back to the unfiltered roll — that would leak a
+      // banished id through the gold REROLL and break "permanently".
+      return filtered.slice(0, n);
+    });
+  }
+
+  // Pool-depleted gate: count unique non-banished options on the current
+  // hand. If <3 valid rolls exist, REROLL/BANISH disable + show "depleted".
+  function _poolDepleted() {
+    const banned = (state.run && state.run._banishedThisRun) || new Set();
+    const cur = state.levelUpChoices || [];
+    const valid = cur.filter(c => !banned.has(c.id));
+    return valid.length < 3;
+  }
+
+  function econBtn(label, costLabel, accent, disabled, onClick) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.innerHTML = `${label} <span style="font-family:${F.mono};
+      font-size:calc(var(--kk-font-scale, 1) * 11px); opacity:0.78; margin-left:8px;">${costLabel}</span>`;
+    b.style.cssText = `padding:10px 22px; cursor:${disabled ? 'not-allowed' : 'pointer'};
+      background: linear-gradient(180deg, rgba(20,28,22,0.86), rgba(8,14,12,0.92));
+      border:1px solid ${C.edge}; border-radius:8px;
+      color:${disabled ? 'rgba(245,239,225,0.35)' : accent};
+      font-family:${F.display}; font-size:calc(var(--kk-font-scale, 1) * 13px); font-weight:700;
+      letter-spacing:0.26em; opacity:${disabled ? '0.55' : '1'};
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 20px rgba(0,0,0,0.5);`;
+    b.dataset.disabled = disabled ? '1' : '0';
+    b.onclick = () => {
+      if (b.dataset.disabled === '1') {
+        try { sfx.uiError && sfx.uiError(); } catch (_) {}
+        return;
+      }
+      onClick();
+    };
+    return b;
+  }
+
+  function rebuildEcon() {
+    econRow.innerHTML = '';
+    goldText.textContent = `Gold: ${_gold()}`;
+    const depleted = _poolDepleted();
+    const rerollCost = _rerollCost();
+    const rerollDisabled = _banishMode || depleted || _gold() < rerollCost;
+    const banishDisabled = depleted || _gold() < BANISH_COST;
+    const skipDisabled = false; // SKIP is free; symmetric gold>=0 check never fails.
+
+    const rerollLabel = depleted ? 'POOL DEPLETED' : `(${rerollCost}g)`;
+    const rb = econBtn('REROLL', rerollLabel, C.cyan, rerollDisabled, () => {
+      if (_gold() < rerollCost) return;
+      state.run.gold -= rerollCost;
+      state.run._rerollsThisRun = ((state.run._rerollsThisRun) || 0) + 1;
+      try { sfx.reroll && sfx.reroll(); } catch (_) {}
+      _rollNonBanished(3 + ((state && state.run && state.run.casinoExtraChoices) || 0)).then(fresh => {
+        state.levelUpChoices = fresh;
+        paintCards(row, fresh, _registry || {});
+        rebuildEcon();
+        if (typeof row._kkRefreshFocus === 'function') row._kkRefreshFocus();
+      });
+    });
+    econRow.appendChild(rb);
+
+    const banishLabel = _banishMode ? '(CANCEL)' : (depleted ? 'POOL DEPLETED' : '(75g)');
+    const bb = econBtn('BANISH', banishLabel, C.red, banishDisabled && !_banishMode, () => {
+      // Toggle: arm → disarm (cancel). Disarm always allowed even while disabled.
+      _banishMode = !_banishMode;
+      banishPrompt.style.display = _banishMode ? 'block' : 'none';
+      _modal.classList.toggle('kk-banish-mode', _banishMode);
+      try { sfx.banish && sfx.banish(); } catch (_) {}
+      rebuildEcon();
+    });
+    econRow.appendChild(bb);
+
+    const sb = econBtn('SKIP', '(+25% HP)', C.green, skipDisabled, () => {
+      try { sfx.skipHeal && sfx.skipHeal(); } catch (_) {}
+      // Heal 25% of max — a consolation, not the optimal play (the old
+      // full-heal + 2s invuln was strictly better than picking). Then burn
+      // one queued level (mirrors the legacy doSkip cascade decrement above
+      // so the cascade counter stays honest when SKIP bypasses the pick).
+      try {
+        if (state.hero && state.hero.hpMax) {
+          state.hero.hp = Math.min(state.hero.hpMax,
+            state.hero.hp + state.hero.hpMax * 0.25);
+        }
+      } catch (_) {}
+      // Clear banish mode on exit so it doesn't bleed to the next modal.
+      _banishMode = false; _banishHook = null;
+      state.pendingLevelCount = Math.max(0, (state.pendingLevelCount || 1) - 1);
+      state.levelUpChoices.length = 0;
+      hideLevelUpModal();
+      if (state.pendingLevelCount > 0) {
+        _rollNonBanished(3 + ((state && state.run && state.run.casinoExtraChoices) || 0)).then(fresh => {
+          state.pendingLevelUp = true;
+          state.levelUpChoices = fresh;
+          showLevelUpModal(fresh);
+        });
+      } else {
+        state.pendingLevelUp = false;
+      }
+    });
+    econRow.appendChild(sb);
+  }
+
+  // Banish-click handler: spend gold, mark id, re-roll just that slot
+  // (with retry until different id or pool exhausted), then drop banish mode.
+  _banishHook = (choiceList, idx) => {
+    if (!choiceList || !choiceList[idx]) return;
+    if (_gold() < BANISH_COST) {
+      try { sfx.uiError && sfx.uiError(); } catch (_) {}
+      _banishMode = false; _banishHook = null;
+      banishPrompt.style.display = 'none';
+      _modal && _modal.classList.remove('kk-banish-mode');
+      rebuildEcon();
+      return;
+    }
+    const target = choiceList[idx];
+    state.run.gold -= BANISH_COST;
+    if (!state.run._banishedThisRun) state.run._banishedThisRun = new Set();
+    state.run._banishedThisRun.add(target.id);
+    try { sfx.banish && sfx.banish(); } catch (_) {}
+    // Re-roll just that slot. Retry up to 6 times to get a non-banished
+    // id different from the others currently shown; if pool exhausted,
+    // splice the slot out so the row shrinks rather than show a dup.
+    import('./weapons/index.js').then(({ weaponChoices }) => {
+      const banned = state.run._banishedThisRun;
+      const others = new Set(choiceList.filter((_, j) => j !== idx).map(c => c.id));
+      let replacement = null;
+      for (let attempt = 0; attempt < 6 && !replacement; attempt++) {
+        const roll = weaponChoices(3 + ((state && state.run && state.run.casinoExtraChoices) || 0));
+        for (const r of roll) {
+          if (!banned.has(r.id) && !others.has(r.id)) { replacement = r; break; }
+        }
+      }
+      if (replacement) {
+        choiceList[idx] = replacement;
+      } else {
+        // Pool depleted: drop the slot rather than leave a banished card up.
+        choiceList.splice(idx, 1);
+      }
+      state.levelUpChoices = choiceList;
+      _banishMode = false; _banishHook = null;
+      banishPrompt.style.display = 'none';
+      _modal && _modal.classList.remove('kk-banish-mode');
+      paintCards(row, state.levelUpChoices, _registry || {});
+      rebuildEcon();
+      if (typeof row._kkRefreshFocus === 'function') row._kkRefreshFocus();
+    });
+  };
+
+  rebuildEcon();
+  // End FOREST-V2-A12 gold economy block.
+
+  // Mount on <body>, not #ui-root: #ui-root lives inside #kk-stage (a
+  // transformed stacking context at the body-level default z), while the
+  // forest HUD is body-mounted at z:70 — so a modal trapped in #ui-root gets
+  // painted OVER by the HUD (kills/clock occluding the title). On <body> the
+  // modal's z:100 wins and its backdrop covers the HUD. Teardown is
+  // parent-agnostic (parentNode.removeChild), so this is reparent-safe.
+  document.body.appendChild(_modal);
+
+  // FOREST-V2-A12 (#116) — strip banished ids from the initial display. The
+  // upstream callers (xp.js _triggerLevelUp, xp.js applyLevelUpChoice
+  // cascade, hero.js post-XP path) hand us raw weaponChoices() output that
+  // hasn't been filtered. Mutate `choices` in place so paintCards + the
+  // hotkey dispatch (Digit1/2/3 → pickChoice(state.levelUpChoices, …)) and
+  // banish hook all reference the same trimmed array.
+  try {
+    const banned = (state.run && state.run._banishedThisRun) || new Set();
+    if (banned.size && Array.isArray(choices)) {
+      for (let i = choices.length - 1; i >= 0; i--) {
+        if (banned.has(choices[i].id)) choices.splice(i, 1);
+      }
+      // Keep state.levelUpChoices in sync if upstream passed that reference.
+      if (state.levelUpChoices !== choices) state.levelUpChoices = choices;
+    }
+  } catch (_) {}
+
+  paintCards(row, choices, registry);
+
+  // Refresh focus scope — called any time cards or qol buttons are rebuilt.
+  const refreshFocusScope = () => {
+    if (_modalFocusScope) { popFocusScope(_modalFocusScope); _modalFocusScope = null; }
+    const cards = Array.from(row.querySelectorAll('.kk-card'));
+    const qolBtns = Array.from(qolRow.querySelectorAll('button'));
+    _modalFocusScope = pushFocusScope([...cards, ...qolBtns], { layout: 'auto' });
+  };
+  row._kkRefreshFocus = refreshFocusScope;
+  refreshFocusScope();
+
+  _modalKeyHandler = (e) => {
+    // FOREST-V2-A12 (#116) — ESC cancels banish mode without spending.
+    if (_banishMode && (e.code === 'Escape' || e.key === 'Escape')) {
+      _banishMode = false; _banishHook = null;
+      const bp = _modal && _modal.querySelector('[data-role="banish-prompt"]');
+      if (bp) bp.style.display = 'none';
+      _modal && _modal.classList.remove('kk-banish-mode');
+      // Re-render the econ row so BANISH label flips back from "(CANCEL)".
+      try { rebuildEcon(); } catch (_) {}
+      return;
+    }
+    if (e.code === 'Digit1' || e.key === '1') pickChoice(state.levelUpChoices, 0);
+    else if (e.code === 'Digit2' || e.key === '2') pickChoice(state.levelUpChoices, 1);
+    else if (e.code === 'Digit3' || e.key === '3') pickChoice(state.levelUpChoices, 2);
+    else if (e.code === 'KeyQ') doReroll();
+    else if (e.code === 'KeyE') doSkip();
+  };
+  window.addEventListener('keydown', _modalKeyHandler);
+}
+
+function paintCards(row, choices, registry) {
+  row.innerHTML = '';
+  choices.forEach((choice, i) => {
+    const entry = (registry && registry[choice.id]) || {};
+    // Filler/evolution choices carry their own name/desc/icon on the choice object.
+    const icon = choice.icon || entry.icon || '★';
+    const name = choice.name || entry.name || choice.id || 'Unknown';
+    const desc = choice.desc || entry.desc || (choice.kind === 'passive' ? 'Passive bonus' : 'Weapon');
+    const lvl = choice.level || 1;
+
+    const card = document.createElement('button');
+    card.className = 'kk-card';
+    card.type = 'button';
+    if (choice.kind === 'evolution') {
+      // Make evolution cards visually distinct — gold border, "EVOLVE" tag
+      card.style.borderColor = C.amber;
+      card.style.boxShadow = `0 0 18px ${C.amber}, 0 0 32px ${C.amber}`;
+    } else if (choice.kind === 'passive') {
+      // Passives get a cyan accent so they read as a distinct slot type.
+      card.style.borderColor = C.cyan;
+      card.style.boxShadow = `0 1px 0 rgba(255,255,255,0.04) inset, 0 12px 26px rgba(0,0,0,0.55), 0 0 18px rgba(127,255,228,0.18)`;
+    } else if (choice.kind === 'active') {
+      // Active abilities read as a distinct slot (amber, like a key cast).
+      card.style.borderColor = C.amber;
+      card.style.boxShadow = `0 1px 0 rgba(255,255,255,0.04) inset, 0 12px 26px rgba(0,0,0,0.55), 0 0 18px rgba(255,210,127,0.20)`;
+    }
+    // Prefer a generated pixel-art icon; fall back to the emoji glyph.
+    const artKey = cardIconKey(choice);
+    const iconHtml = ICON_ART.has(artKey)
+      ? `<img class="kk-card-img" src="assets/icons/${artKey}.webp" alt="">`
+      : icon;
+    const levelLine =
+      choice.kind === 'evolution' ? `<div class="kk-card-level" style="color:${C.amber}">★ EVOLUTION ★</div>` :
+      choice.kind === 'passive'   ? `<div class="kk-card-level" style="color:${C.cyan}">PASSIVE · LV ${lvl}</div>` :
+      choice.kind === 'active'    ? `<div class="kk-card-level" style="color:${C.amber}">⚡ ACTIVE · LV ${lvl}</div>` :
+                                    `<div class="kk-card-level">Lv ${lvl}</div>`;
+    card.innerHTML = `
+      <div class="kk-card-num">[${i + 1}]</div>
+      <div class="kk-card-icon">${iconHtml}</div>
+      <div class="kk-card-name">${escapeHtml(name)}</div>
+      ${levelLine}
+      <div class="kk-card-desc">${escapeHtml(desc)}</div>
+    `;
+    card.addEventListener('click', () => pickChoice(choices, i));
+    // Rich tooltip with current → next stats so the player understands the pick.
+    bindTooltip(card, () => buildChoiceTooltip(choice));
+    row.appendChild(card);
+  });
+}
+
+// Build a tooltip-card content object for any level-up choice (weapon, passive,
+// evolution, or filler). Lives near paintCards so changes stay co-located.
+function buildChoiceTooltip(choice) {
+  if (!choice) return null;
+  if (choice.kind === 'evolution') {
+    return {
+      title: choice.name || 'Evolution',
+      icon: choice.icon || '★',
+      body: (choice.desc || '') + '\n\nEvolutions are permanent: this transforms the base weapon into its ultimate form for the rest of the run.',
+      tags: ['Evolution', 'AoE'],
+      accent: '#ffd27f',
+    };
+  }
+  if (choice.kind === 'passive') {
+    // Passives stack from level 1; compare to current level if owned.
+    const owned = (state.passives || []).find(p => p.id === choice.id);
+    const prev = owned ? owned.level : 0;
+    const b = passiveBlurb(choice.id, choice.level);
+    if (!b) return { title: choice.name || 'Passive', body: choice.desc || '' };
+    return {
+      title: b.name + (prev ? ` · Lv ${prev}→${choice.level}` : ` · Lv ${choice.level}`),
+      icon: b.icon,
+      body: b.flavor + '\n\n' + b.body,
+      tags: b.tags,
+      stats: passiveStatRows(choice.id, choice.level, prev || undefined),
+      accent: '#7fffe4',
+    };
+  }
+  if (choice.kind === 'filler') {
+    const b = fillerBlurb(choice.id);
+    return {
+      title: choice.name || 'Bonus',
+      icon: choice.icon || '★',
+      body: (b ? b.flavor : (choice.desc || '')),
+      tags: b ? b.tags : ['Utility'],
+      accent: '#7ee08a',
+    };
+  }
+  // weapon (default)
+  const owned = state.weapons && state.weapons.find(w => w.id === choice.id);
+  const prevLevel = owned ? owned.level : 0;
+  const wb = weaponBlurb(choice.id, choice.level);
+  if (!wb) {
+    return { title: choice.name || choice.id, body: choice.desc || '' };
+  }
+  return {
+    title: wb.name + (prevLevel ? ` · Lv ${prevLevel}→${choice.level}` : ` · NEW · Lv ${choice.level}`),
+    icon: wb.icon,
+    body: wb.flavor + '\n\n' + wb.body,
+    tags: wb.tags,
+    stats: weaponStatRows(choice.id, choice.level, prevLevel || undefined),
+    accent: '#7fffe4',
+  };
+}
+
+function repaintCards(choices) {
+  if (!_modal) return;
+  const row = _modal.querySelector('[data-role="cards"]');
+  if (row) paintCards(row, choices, _registry || {});
+}
+
+function pickChoice(choices, idx) {
+  const c = choices[idx];
+  if (!c) return;
+  // FOREST-V2-A12 (#116) — banish-mode interception. If the player armed
+  // BANISH, route the card click to the banish handler instead of applying
+  // the choice. Keypress paths (Digit1/2/3) are also gated by `_banishMode`
+  // inside the modal key handler so this stays the single dispatch point.
+  if (_banishMode && typeof _banishHook === 'function') {
+    _banishHook(choices, idx);
+    return;
+  }
+  import('./xp.js').then(m => {
+    if (m && typeof m.applyLevelUpChoice === 'function') m.applyLevelUpChoice(c);
+  });
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, ch => ({
+    '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'
+  }[ch]));
+}
+
+// ──────────────────────────────────────────────────────────────────────────
+// Iter 34 — Phase E (progression redesign): avatar unlock chain.
+// ──────────────────────────────────────────────────────────────────────────
+
+/**
+ * Convert an AVATAR_UNLOCK_COSTS row into a short hint string for the
+ * carousel info panel. Examples: "150 Embers", "Defeat the first mini-boss",
+ * "Catacomb clear", "300 Embers + 100 Mastery (any avatar)".
+ */
+function formatAvatarLockHint(avatar) {
+  const cost = AVATAR_UNLOCK_COSTS[avatar.id];
+  if (!cost) return 'Locked.';
+  const parts = [];
+  if (cost.embers != null) parts.push(`${cost.embers} Embers`);
+  if (cost.mastery && cost.mastery.any != null) parts.push(`${cost.mastery.any} Mastery (any avatar)`);
+  if (cost.mastery && cost.mastery[avatar.id] != null) parts.push(`${cost.mastery[avatar.id]} Mastery on ${avatar.name}`);
+  if (cost.flag) {
+    parts.push({
+      firstMiniBossKill:    'Defeat your first mini-boss',
+      survive5MinRun:       'Survive 5 minutes in one run',
+      catacombClear:        'Clear a Catacomb dungeon',
+      finalBossWin:         'Defeat a final boss',
+      casinoJackpot:        'Hit a casino jackpot',
+      allBossesHypermode:   'Defeat every final boss on Hyper Mode',
+    }[cost.flag] || `Condition: ${cost.flag}`);
+  }
+  return parts.length ? `Unlock: ${parts.join(' + ')}.` : 'Locked.';
+}
+
+let _avatarUnlockModal = null;
+
+function hideAvatarUnlockModal() {
+  if (_avatarUnlockModal && _avatarUnlockModal.parentNode) {
+    _avatarUnlockModal.parentNode.removeChild(_avatarUnlockModal);
+  }
+  _avatarUnlockModal = null;
+}
+
+/**
+ * Modal: shows the avatar portrait, lock condition, and an Unlock button if
+ * the spend is currently affordable. Closes on click outside / Esc / Cancel.
+ */
+function showAvatarUnlockModal(avatar) {
+  hideAvatarUnlockModal();
+  const cost = AVATAR_UNLOCK_COSTS[avatar.id] || {};
+  const affordable = isAvatarUnlockable(avatar.id) && cost.embers != null;
+  const meta = getMeta();
+  const overlay = document.createElement('div');
+  overlay.style.cssText = `
+    position:fixed; inset:0; z-index:9000;
+    display:flex; align-items:center; justify-content:center;
+    background:rgba(0,0,0,0.55); backdrop-filter:blur(4px);
+    pointer-events:auto;
+  `;
+  const card = document.createElement('div');
+  card.style.cssText = `
+    min-width:320px; max-width:480px;
+    max-height:90%; overflow-y:auto; overflow-x:hidden;
+    padding:24px 28px;
+    background:linear-gradient(180deg, rgba(22,32,26,0.96), rgba(8,14,12,0.98));
+    border:1px solid rgba(255,210,127,0.55);
+    border-radius:14px;
+    box-shadow:0 24px 60px rgba(0,0,0,0.7);
+    color:#f5efe1;
+    font-family:'Crimson Text',Georgia,serif;
+  `;
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:22px;letter-spacing:0.18em;color:#ffd27f;text-align:center;';
+  title.textContent = `${avatar.icon || '◇'}  ${avatar.name}`;
+  const hint = document.createElement('div');
+  hint.style.cssText = 'margin-top:12px;text-align:center;opacity:0.85;font-size:14px;line-height:1.5;';
+  hint.textContent = formatAvatarLockHint(avatar);
+  const bal = document.createElement('div');
+  bal.style.cssText = 'margin-top:8px;text-align:center;opacity:0.7;font-size:12px;letter-spacing:0.18em;text-transform:uppercase;';
+  bal.textContent = `You hold: ${meta.embers || 0} Embers`;
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'margin-top:18px;display:flex;gap:10px;justify-content:center;';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.textContent = 'Close';
+  cancelBtn.style.cssText = `
+    padding:8px 18px;border-radius:999px;cursor:pointer;
+    background:rgba(20,28,22,0.85);border:1px solid rgba(245,239,225,0.35);
+    color:#f5efe1;font-family:'Crimson Text',Georgia,serif;font-size:14px;
+  `;
+  cancelBtn.addEventListener('click', hideAvatarUnlockModal);
+  btnRow.appendChild(cancelBtn);
+  if (cost.embers != null) {
+    const unlockBtn = document.createElement('button');
+    unlockBtn.type = 'button';
+    unlockBtn.disabled = !affordable;
+    unlockBtn.textContent = affordable ? `Unlock for ${cost.embers} Embers` : `Need ${cost.embers - (meta.embers || 0)} more`;
+    unlockBtn.style.cssText = `
+      padding:8px 18px;border-radius:999px;cursor:${affordable ? 'pointer' : 'not-allowed'};
+      background:${affordable ? 'linear-gradient(180deg,#ffd27f,#c89858)' : 'rgba(60,40,30,0.55)'};
+      border:1px solid rgba(255,210,127,0.65);
+      color:${affordable ? '#1a1410' : 'rgba(245,239,225,0.55)'};
+      font-family:'Crimson Text',Georgia,serif;font-size:14px;font-weight:600;
+    `;
+    if (affordable) {
+      unlockBtn.addEventListener('click', () => {
+        if (spendEmbersForAvatar(avatar.id)) {
+          hideAvatarUnlockModal();
+          if (_charCarousel && _charCarousel.refreshUnlocks) {
+            try { _charCarousel.refreshUnlocks(); } catch (_) {}
+          }
+          showBanner(`${avatar.icon || '◇'} ${avatar.name} unlocked!`, 2.5, '#ffd27f');
+        }
+      });
+    }
+    btnRow.appendChild(unlockBtn);
+  }
+  card.appendChild(title);
+  card.appendChild(hint);
+  card.appendChild(bal);
+  card.appendChild(btnRow);
+  overlay.appendChild(card);
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) hideAvatarUnlockModal(); });
+  const onEsc = (e) => { if (e.key === 'Escape') { hideAvatarUnlockModal(); window.removeEventListener('keydown', onEsc); } };
+  window.addEventListener('keydown', onEsc);
+  document.body.appendChild(overlay);
+  _avatarUnlockModal = overlay;
+}
+
+export function hideLevelUpModal() {
+  if (_modalKeyHandler) {
+    window.removeEventListener('keydown', _modalKeyHandler);
+    _modalKeyHandler = null;
+  }
+  if (_modalFocusScope) { popFocusScope(_modalFocusScope); _modalFocusScope = null; }
+  if (_modal && _modal.parentNode) _modal.parentNode.removeChild(_modal);
+  _modal = null;
+  // FOREST-V2-A12 (#116) — clear banish-mode flag + hook so a re-opened
+  // modal (cascade level-up) doesn't inherit a stale interception state.
+  _banishMode = false;
+  _banishHook = null;
+  hideTooltip();
+}
+
+export function showDeathScreen() {
+  if (_deathScreen) return;
+
+  // The game-over branch freezes cinematic ticks, so an intro/evolution that
+  // was active on the lethal frame would otherwise retain centre-HUD
+  // ownership forever and visually compete with the results highlights below.
+  // Release presentation ownership synchronously before presenting rewards;
+  // the normal run teardown still disposes each cinematic's 3D resources.
+  _clearSharedBanner();
+  if (state.run) {
+    state.run._bossIntroActive = false;
+    state.run._evolveCinematicActive = false;
+  }
+  const bossBanner = document.getElementById('kk-boss-intro-banner');
+  if (bossBanner) {
+    bossBanner.classList.remove('kk-bi-show');
+    bossBanner.style.opacity = '0';
+  }
+  const evolveBanner = document.getElementById('kk-evolve-cin-banner');
+  if (evolveBanner) {
+    evolveBanner.classList.remove('kk-ec-show');
+    evolveBanner.style.opacity = '0';
+  }
+
+  // Defensive: clear any active tooltip before drawing the death modal. Stuck
+  // tooltips sit at z:9999 and visually mask the death-screen buttons.
+  try { hideTooltip(); } catch (_) {}
+
+  // Run-history log: snapshot the run into meta.runHistory[]. Runs first so the
+  // history entry reflects the live state (weapons, evolutions, kills) before
+  // teardown touches anything. Capture the return value so the SHARE button
+  // and preview thumbnail render against the same canonical entry shape.
+  // Bullet-hell runs must NOT inflate survivors progression. Every meta write
+  // below (runHistory, daily, mastery/kills/unlock commit) is gated behind
+  // !isBh; the display then runs off a zeroed summary stub, and bh gets its own
+  // lightweight best-wave persist. Wave comes from index.js's live bh state,
+  // exposed as window.__kkBh (mode HUD shows Math.max(1, wave) — mirror that).
+  const isBh = state.mode === 'bullethell';
+  let bhWave = 0;
+  if (isBh) { try { bhWave = Math.max(1, (window.__kkBh && window.__kkBh.wave) | 0); } catch (_) {} }
+
+  let latestRunEntry = null;
+  if (!isBh) { try { latestRunEntry = recordRunResult(state, state.victory ? 'victory' : 'death'); } catch (_) {} }
+  if (!latestRunEntry) latestRunEntry = _runEntryFromState();
+
+  // Daily-run leaderboard commit must run BEFORE commitRunResults so the daily
+  // sigil grant is included in this run's sigilsEarned tally.
+  let dailySummary = null;
+  let dailyBest = false;
+  if (!isBh && state.modes && state.modes.daily) {
+    dailySummary = commitDailyRun({ kills: state.run.kills, timeSurvived: state.time.game });
+    if (dailySummary.newKillsBest || dailySummary.newTimeBest) {
+      dailyBest = true;
+      grantSigils(3, 'daily');
+    }
+  }
+
+  // Commit run to persistent meta and pull rewards/highlights.
+  // Punch List #6: pass `daily` so commitRunResults can apply the 2.5×
+  // coin multiplier + unlock the cosmetic Daily Survivor badge on first win.
+  // Gate is the live state.modes.daily (applyMetaUpgrades' source of truth).
+  const summary = isBh
+    // Bullet-hell: no survivors meta commit. Zeroed stub keeps the shared
+    // death-screen render (coins/embers/sigils + BEST pills) crash-free.
+    ? { coinsEarned: 0, embersEarned: 0, sigilsEarned: 0, isBestTime: false, isBestKills: false }
+    : commitRunResults({
+        timeSurvived: state.time.game,
+        kills: state.run.kills,
+        dmgDealt: state.run.dmgDealt,
+        level: state.hero.level,
+        victory: state.victory,
+        stageId: state.run.stage ? state.run.stage.id : null,
+        greedMul: state.run.passive_greedMul || 0,
+        daily: !!(state.modes && state.modes.daily),
+      });
+  const meta = getMeta();
+  // Lightweight bh-only persist — best wave reached. loadMeta spreads parsed
+  // JSON over DEFAULT, so this unknown key round-trips; saveMeta writes the
+  // whole blob. Does NOT touch survivors progression.
+  let bhBest = false;
+  if (isBh && bhWave > (meta.bhBestWave || 0)) {
+    meta.bhBestWave = bhWave;
+    bhBest = true;
+    try { saveMeta(); } catch (_) {}
+  }
+  // Persistent, compact post-run highlights replace the old stack of delayed
+  // centre banners. Results stay visible until the player leaves, multiple
+  // unlocks cannot stomp one another, and combat text remains quiet.
+  const runHighlights = [];
+  if (dailyBest) runHighlights.push('NEW DAILY BEST · +3 SIGILS');
+  if (summary.unlockedHyper) runHighlights.push('HYPER MODE UNLOCKED');
+  if (summary.unlockedEndless) runHighlights.push('ENDLESS MODE UNLOCKED');
+  if (summary.unlockedCinder) runHighlights.push('CINDER CAVERNS UNLOCKED');
+  if (summary.unlockedCave) runHighlights.push('STONEWRIGHT CAVERNS UNLOCKED');
+  if (summary.unlockedKakiLand) runHighlights.push('KAKI LAND · FINAL CHAPTER UNLOCKED');
+  if (summary.unlockedClockwork) runHighlights.push('CLOCKWORK CHARACTER UNLOCKED');
+  if (summary.dailyBadgeUnlocked) runHighlights.push('DAILY SURVIVOR BADGE UNLOCKED');
+  // recordAvatarRun returns Math.floor(kills/25) plus boss bonuses. Short runs
+  // that earned zero remain silent.
+  if (summary.masteryGained && summary.masteryGained > 0) {
+    const av = AVATARS.find(a => a.id === summary.avatarId);
+    const label = av ? av.name : summary.avatarId;
+    runHighlights.push(`+${summary.masteryGained} MASTERY · ${label}`);
+  }
+  // MaoMao — first completed Hunt reveals the physical town rescue trail.
+  if (summary.maomaoEncounterUnlocked) {
+    runHighlights.push('MAOMAO RESCUE TRAIL · DAYCARE');
+  }
+
+  _deathScreen = document.createElement('div');
+  _deathScreen.className = 'kk-death';
+  const isVictory = state.victory === true;
+  if (isVictory) {
+    _deathScreen.classList.add('kk-victory-screen');
+    _deathScreen.setAttribute('aria-label', 'Victory results');
+  }
+
+  const title = document.createElement('div');
+  title.className = 'kk-death-title';
+  title.textContent = isVictory ? 'THE CREW DID IT!' : 'DOWN FOR A CATNAP';
+  if (isVictory) title.style.color = C.amber;
+
+  // "So close" retry hook — the highest-leverage line on a 10-minute arc:
+  // a death with the boss at 8% must not read like a death at 0:40.
+  let _soClose = null;
+  if (!state.victory) {
+    const fb = state.enemies && state.enemies.active
+      ? state.enemies.active.find(e => e && e.isFinalBoss) : null;
+    if (fb && fb.hpMax > 0) {
+      const pct = Math.max(1, Math.round((fb.hp / fb.hpMax) * 100));
+      _soClose = `THE UNSTITCHED SEAM HAD ${pct}% HP LEFT — ALMOST MENDED`;
+    } else if (state.time.game >= 540 && state.time.game < 600) {
+      const s = Math.ceil(600 - state.time.game);
+      _soClose = `THE FINAL BOSS WAS ${s}s AWAY`;
+    }
+  }
+
+  const bestT = summary.isBestTime ? ' <span style="color:'+C.amber+'">★ BEST</span>' : '';
+  const bestK = summary.isBestKills ? ' <span style="color:'+C.amber+'">★ BEST</span>' : '';
+
+  const stats = document.createElement('div');
+  stats.className = 'kk-death-stats';
+  stats.style.cssText = `
+    display: grid;
+    grid-template-columns: 1fr auto;
+    column-gap: 36px; row-gap: 6px;
+    align-items: baseline;
+  `;
+  const statRow = (label, value, extra = '') => `
+    <div style="font-family:${F.body}; letter-spacing:0.20em; text-transform:uppercase; font-size:calc(var(--kk-font-scale, 1) * 12px); color:rgba(245,239,225,0.72);">${label}</div>
+    <div style="font-family:${F.mono}; font-size:calc(var(--kk-font-scale, 1) * 15px); color:${C.amber}; text-align:right;">${value}${extra}</div>
+  `;
+  // Custom-colored row for sigil earnings — magenta/epic shade, matches `#c87bff`.
+  const sigilRow = (label, value) => `
+    <div style="font-family:${F.body}; letter-spacing:0.20em; text-transform:uppercase; font-size:calc(var(--kk-font-scale, 1) * 12px); color:rgba(245,239,225,0.72);">${label}</div>
+    <div style="font-family:${F.mono}; font-size:calc(var(--kk-font-scale, 1) * 15px); color:#c87bff; text-align:right;">${value}</div>
+  `;
+  // Punch List #6 — annotate the Coins row with a 2.5× pill on daily wins
+  // so the player can see *why* their payout doubled. Cyan to match the
+  // badge banner; small font-size so it doesn't visually compete with the
+  // "BEST" gold pills above.
+  const dailyCoinExtra = summary.dailyWin
+    ? ` <span style="color:${C.cyan}; font-size:calc(var(--kk-font-scale, 1) * 11px); letter-spacing:0.10em;">× DAILY 2.5×</span>`
+    : '';
+  const bhWaveRow = isBh
+    ? statRow('Wave Reached', bhWave, bhBest ? ' <span style="color:' + C.amber + '">★ BEST</span>' : '')
+    : '';
+  stats.innerHTML = [
+    bhWaveRow,
+    statRow('Time Survived',  fmtTime(state.time.game), bestT),
+    statRow('Level Reached',  state.hero.level),
+    statRow('Kills',          state.run.kills, bestK),
+    statRow('Damage Dealt',   Math.floor(state.run.dmgDealt).toLocaleString()),
+    `<div style="grid-column:1/-1; height:1px; background:${C.edge}; margin:6px 0;"></div>`,
+    statRow('Coins Earned',   `+${summary.coinsEarned}`, dailyCoinExtra),
+    statRow('Embers Earned',  `+${summary.embersEarned || 0} 🔥`),
+    sigilRow('Sigils Earned', `✦ +${summary.sigilsEarned || 0}`),
+    statRow('Total Coins',    meta.coins.toLocaleString()),
+    statRow('Total Embers',   `${(meta.embers || 0).toLocaleString()} 🔥`),
+    statRow('Runs',           meta.runs),
+    statRow('Achievements',   `${achievementCount()} / ${ACHIEVEMENTS.length}`),
+  ].join('');
+
+  let runHighlightsPanel = null;
+  if (runHighlights.length > 0) {
+    runHighlightsPanel = document.createElement('section');
+    runHighlightsPanel.id = 'kk-run-highlights';
+    runHighlightsPanel.setAttribute('aria-label', 'New this run');
+    runHighlightsPanel.style.cssText = `
+      margin: 8px 0 2px; padding: 12px 16px;
+      width: min(580px, 90vw); box-sizing: border-box;
+      background: linear-gradient(180deg, rgba(45,29,48,0.88), rgba(18,13,25,0.92));
+      border: 1px solid rgba(200,123,255,0.58); border-radius: 9px;
+      box-shadow: 0 10px 24px rgba(0,0,0,0.28);
+    `;
+    const heading = document.createElement('div');
+    heading.style.cssText = `font-family:${F.display}; font-size:calc(var(--kk-font-scale,1)*11px);
+      color:#deb0ff; letter-spacing:0.32em; text-align:center; text-transform:uppercase; margin-bottom:8px;`;
+    heading.textContent = 'New This Run';
+    const grid = document.createElement('div');
+    grid.style.cssText = 'display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:6px 10px;';
+    for (const text of runHighlights) {
+      const item = document.createElement('div');
+      item.className = 'kk-run-highlight';
+      item.style.cssText = `font-family:${F.body};font-size:calc(var(--kk-font-scale,1)*12px);
+        line-height:1.3;color:${C.text};letter-spacing:.055em;padding:6px 8px;
+        background:rgba(255,255,255,.055);border-left:2px solid #c87bff;border-radius:4px;`;
+      item.textContent = text;
+      grid.appendChild(item);
+    }
+    runHighlightsPanel.appendChild(heading);
+    runHighlightsPanel.appendChild(grid);
+  }
+
+  // Next-unlock carrot — the "one more run?" hook, now on the screen players
+  // actually see every run (the outlast-only endRunSummary had this; kk-death
+  // didn't). Reads live meta: prefers the nearest embers-gated locked cat (with
+  // a progress bar toward the goal), falls back to a flag-gated hint. Skipped in
+  // bullet-hell (no survivors progression there) and when everything's unlocked.
+  let nextUnlock = null;
+  if (!isBh) {
+    const embers = Math.max(0, meta.embers || 0);
+    let emberBest = null;
+    for (const av of AVATARS) {
+      const cost = AVATAR_UNLOCK_COSTS[av.id];
+      if (!cost || cost.embers == null || cost.embers <= 0 || isAvatarUnlocked(av.id)) continue;
+      if (!emberBest || cost.embers < emberBest.cost) emberBest = { av, cost: cost.embers };
+    }
+    let flagAv = null;
+    if (!emberBest) {
+      flagAv = AVATARS.find(av => {
+        const c = AVATAR_UNLOCK_COSTS[av.id];
+        return c && c.flag && !isAvatarUnlocked(av.id);
+      }) || null;
+    }
+    if (emberBest || flagAv) {
+      nextUnlock = document.createElement('div');
+      nextUnlock.style.cssText = `margin: 8px 0 2px; min-width: min(460px, 90vw); max-width: 580px; text-align: center;
+        background: rgba(8,14,12,0.55); border: 1px solid ${C.edge}; border-radius: 8px; padding: 12px 20px;`;
+      const head = document.createElement('div');
+      head.style.cssText = `font-family:${F.display}; font-size:calc(var(--kk-font-scale,1)*11px); color:${C.amber}; letter-spacing:0.36em; text-transform:uppercase; margin-bottom:8px;`;
+      head.textContent = 'Next Unlock';
+      nextUnlock.appendChild(head);
+      const line = document.createElement('div');
+      line.style.cssText = `font-family:${F.body}; font-size:calc(var(--kk-font-scale,1)*14px); font-weight:700; letter-spacing:0.04em; color:${C.text};`;
+      if (emberBest) {
+        const { av, cost } = emberBest;
+        const need = cost - embers;
+        const pct = Math.max(0, Math.min(1, embers / cost));
+        const nm = `${av.icon ? av.icon + ' ' : ''}${(av.name || av.id).toUpperCase()}`;
+        line.innerHTML = need <= 0
+          ? `<span style="color:${C.amber}">★ Ready! Unlock ${escapeHtml(nm)} in character select</span>`
+          : `🔒 <span style="color:${C.amber}">${need}</span> more Ember${need === 1 ? '' : 's'} → ${escapeHtml(nm)}`;
+        nextUnlock.appendChild(line);
+        const bar = document.createElement('div');
+        bar.style.cssText = `margin-top:8px; background:rgba(255,255,255,0.06); height:10px; border-radius:5px; position:relative; overflow:hidden;`;
+        bar.innerHTML = `<span style="position:absolute; left:0; top:0; bottom:0; width:${(pct * 100).toFixed(1)}%; background:linear-gradient(90deg, ${C.cyan}, ${C.amber}); border-radius:5px;"></span>`;
+        nextUnlock.appendChild(bar);
+        const cnt = document.createElement('div');
+        cnt.style.cssText = `font-family:${F.mono}; font-size:calc(var(--kk-font-scale,1)*11px); color:rgba(245,239,225,0.7); margin-top:4px;`;
+        cnt.textContent = `${embers} / ${cost} 🔥`;
+        nextUnlock.appendChild(cnt);
+      } else {
+        const nm = `${flagAv.icon ? flagAv.icon + ' ' : ''}${(flagAv.name || flagAv.id).toUpperCase()}`;
+        const cond = formatAvatarLockHint(flagAv).replace(/^Unlock:\s*/, '').replace(/\.$/, '');
+        line.innerHTML = `🔒 ${escapeHtml(cond)} → ${escapeHtml(nm)}`;
+        nextUnlock.appendChild(line);
+      }
+    }
+  }
+
+  // Stash the run summary so the town arrival toast can re-surface earnings.
+  window._kkLastRunSummary = {
+    coinsEarned:  summary.coinsEarned,
+    embersEarned: summary.embersEarned || 0,
+    kills:        state.run.kills,
+    time:         state.time.game,
+    victory:      !!state.victory,
+    unlockedHyper: !!summary.unlockedHyper,
+    unlockedEndless: !!summary.unlockedEndless,
+    unlockedCinder: !!summary.unlockedCinder,
+    unlockedCave: !!summary.unlockedCave,
+    unlockedKakiLand: !!summary.unlockedKakiLand,
+    unlockedClockwork: !!summary.unlockedClockwork,
+    highlights: runHighlights.slice(),
+  };
+
+  // Button row (RETRY in-place reset, plus hint)
+  const btnRow = document.createElement('div');
+  btnRow.className = 'kk-end-actions';
+  btnRow.style.cssText = 'display:flex; gap:18px; margin-top:8px;';
+  const retryBtn = document.createElement('button');
+  retryBtn.type = 'button';
+  retryBtn.textContent = isVictory ? '↻ Play Again · R' : 'Retry ▸ R';
+  const retryAccent = isVictory ? C.amber : C.cyan;
+  retryBtn.style.cssText = `padding: 14px 44px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(20,28,22,0.95), rgba(8,14,12,0.95));
+    border: 1px solid ${retryAccent};
+    border-radius: 8px;
+    color: ${retryAccent};
+    font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 18px); font-weight: 700;
+    letter-spacing: 0.32em;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, 0 12px 28px rgba(0,0,0,0.5);`;
+  btnRow.appendChild(retryBtn);
+
+  // Return-to-Town button — closes the run/town/upgrade loop without reload.
+  const townBtn = document.createElement('button');
+  townBtn.type = 'button';
+  townBtn.textContent = isVictory ? '♥ Celebrate in Town · Enter' : '🏘 Return to Town';
+  if (isVictory) townBtn.classList.add('kk-victory-primary');
+  townBtn.style.cssText = `padding: 14px 28px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(28,20,16,0.95), rgba(14,10,8,0.95));
+    border: 1px solid #c9b07a;
+    border-radius: 8px;
+    color: #c9b07a;
+    font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 16px); font-weight: 700;
+    letter-spacing: 0.24em;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, 0 12px 28px rgba(0,0,0,0.5);`;
+  btnRow.appendChild(townBtn);
+
+  // Return-to-Main-Menu button — full exit from the run+town cycle, drops
+  // to the start screen so the player can rebind character/stage/options.
+  const menuBtn = document.createElement('button');
+  menuBtn.type = 'button';
+  menuBtn.className = 'kk-btn-secondary';
+  menuBtn.textContent = '↩ Main Menu';
+  menuBtn.style.cssText = `padding: 14px 24px;`;
+  btnRow.appendChild(menuBtn);
+
+  const hint = document.createElement('div');
+  hint.className = 'kk-death-hint';
+  hint.textContent = isVictory
+    ? 'Enter · Town    R · Play Again    M or Esc · Main Menu'
+    : 'R · Retry    T · Town    M or Esc · Main Menu';
+
+  // Per-source damage breakdown — drives "one more run" by exposing which
+  // weapon was actually carrying the run.
+  const breakdown = document.createElement('div');
+  breakdown.style.cssText = `
+    margin: 6px 0 4px 0;
+    font-family: ${F.body};
+    color: ${C.text};
+    min-width: min(460px, 90vw); max-width: 580px;
+    background: rgba(8,14,12,0.55);
+    border: 1px solid ${C.edge}; border-radius: 8px;
+    padding: 16px 22px;
+  `;
+  const dmgByWeapon = state.run.dmgByWeapon || {};
+  const sources = Object.entries(dmgByWeapon)
+    .filter(([, v]) => v > 0)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 8);
+  const totalDmg = Math.max(1, state.run.dmgDealt);
+  const elapsed = Math.max(1, state.time.game);
+  if (sources.length > 0) {
+    const head = document.createElement('div');
+    head.style.cssText = `
+      font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 11px);
+      color: ${C.amber}; letter-spacing: 0.36em; text-transform: uppercase;
+      margin-bottom: 10px;
+    `;
+    head.textContent = 'Damage by Source';
+    breakdown.appendChild(head);
+    for (const [src, amt] of sources) {
+      const pct = (amt / totalDmg * 100).toFixed(0);
+      const dps = (amt / elapsed).toFixed(1);
+      const row = document.createElement('div');
+      row.style.cssText = `
+        display: grid;
+        grid-template-columns: 110px 1fr 60px 46px 60px;
+        gap: 14px; align-items: center;
+        padding: 3px 0;
+        font-size: calc(var(--kk-font-scale, 1) * 12px);
+      `;
+      const label = src.replace(/_/g, ' ');
+      const pctRatio = amt / totalDmg;
+      row.innerHTML = `
+        <span style="font-family:${F.body}; font-weight:600; letter-spacing:0.08em; text-transform:uppercase; color:${C.text};">${escapeHtml(label)}</span>
+        <span style="background:rgba(255,255,255,0.05); height:8px; border-radius:4px; position:relative; overflow:hidden;">
+          <span style="position:absolute; left:0; top:0; bottom:0; width:${(pctRatio * 100).toFixed(1)}%; background:linear-gradient(90deg, ${C.cyan}, ${C.amber}); border-radius:4px;"></span>
+        </span>
+        <span style="font-family:${F.mono}; text-align:right; color:${C.text};">${Math.floor(amt).toLocaleString()}</span>
+        <span style="font-family:${F.mono}; text-align:right; color:${C.amber};">${pct}%</span>
+        <span style="font-family:${F.mono}; text-align:right; color:rgba(245,239,225,0.7);">${dps}/s</span>
+      `;
+      breakdown.appendChild(row);
+    }
+  }
+
+  // Relic drop panel — appears only on victory (boss dropped a relic).
+  let relicPanel = null;
+  if (state.victory && state.run.relicDrop) {
+    const drop = state.run.relicDrop;
+    relicPanel = document.createElement('div');
+    relicPanel.style.cssText = `
+      margin: 4px 0; padding: 16px 22px;
+      min-width: min(460px, 90vw); max-width: 580px;
+      background: linear-gradient(180deg, rgba(20,28,22,0.94), rgba(8,14,12,0.96));
+      border: 1px solid ${drop.tierColor};
+      border-radius: 10px;
+      box-shadow:
+        0 1px 0 rgba(255,255,255,0.05) inset,
+        0 14px 32px rgba(0,0,0,0.6),
+        0 0 24px ${drop.tierColor}33;
+      animation: kk-fade-in 0.42s ease-out;
+    `;
+    const affixLines = drop.affixes.map(a =>
+      `<div style="font-family:${F.body};font-size:calc(var(--kk-font-scale, 1) * 13px);color:${C.text};letter-spacing:0.06em;margin-top:3px;">▸ ${escapeHtml(a.fmt)}</div>`
+    ).join('');
+    relicPanel.innerHTML = `
+      <div style="font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 10px);color:${drop.tierColor};letter-spacing:0.36em;text-transform:uppercase;margin-bottom:2px;">★ Relic Dropped</div>
+      <div style="font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 20px);font-weight:700;color:${C.text};letter-spacing:0.10em;">${escapeHtml(drop.name)}</div>
+      <div style="font-family:${F.body};font-size:calc(var(--kk-font-scale, 1) * 11px);color:${drop.tierColor};letter-spacing:0.28em;text-transform:uppercase;margin-top:2px;">${escapeHtml(drop.tier)}</div>
+      <div style="margin-top:8px;">${affixLines}</div>
+      <div style="margin-top:10px; font-family:${F.body}; font-size:calc(var(--kk-font-scale, 1) * 11px); color:rgba(245,239,225,0.62); letter-spacing:0.04em;">Auto-equipped for next run · manage in Grimoire.</div>
+    `;
+  }
+
+  // ── Iter-9: SHARE panel ──
+  // Big amber SHARE button next to RETRY, plus a 200×105 preview thumbnail of
+  // the rendered share card so the player sees what's going on the wire
+  // BEFORE they download. The preview is the same renderShareCard() canvas at
+  // a smaller display size — no second render pass, no PNG round-trip.
+  // Adds the button into the existing btnRow so layout matches RETRY width
+  // and the focus scope picks it up automatically.
+  const sharePanel = document.createElement('div');
+  sharePanel.style.cssText = `
+    display: flex; gap: 18px; align-items: center; justify-content: center;
+    margin: 4px 0 2px 0;
+  `;
+  const previewWrap = document.createElement('div');
+  previewWrap.style.cssText = `
+    width: 200px; height: 105px;
+    border: 1px solid ${C.amber};
+    border-radius: 6px;
+    background: linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86));
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 22px rgba(0,0,0,0.55), 0 0 18px rgba(255,210,127,0.18);
+    display: flex; align-items: center; justify-content: center;
+    overflow: hidden;
+  `;
+  // Best-effort preview render. If shareCard.js (9b) hasn't merged, swallow
+  // the error and leave the empty thumbnail frame — the SHARE button itself
+  // still attempts the download and will fail loudly if needed.
+  try {
+    const previewCanvas = renderShareCard(latestRunEntry);
+    if (previewCanvas) {
+      previewCanvas.style.cssText = 'width: 100%; height: 100%; display:block; image-rendering: -webkit-optimize-contrast;';
+      previewWrap.appendChild(previewCanvas);
+    }
+  } catch (e) {
+    // Friendly fallback label so the area doesn't read as broken.
+    previewWrap.innerHTML = `<div style="font-family:${F.body}; font-size:calc(var(--kk-font-scale, 1) * 11px); letter-spacing:0.18em; color:rgba(245,239,225,0.55); text-transform:uppercase;">preview</div>`;
+  }
+  // SHARE button — sized to read at first glance, accent-matched to victory
+  // (amber) or death (cyan) like RETRY so the row reads as one composition.
+  const shareBtn = document.createElement('button');
+  shareBtn.type = 'button';
+  shareBtn.textContent = '📷 SHARE';
+  const shareAccent = state.victory ? C.amber : C.cyan;
+  shareBtn.style.cssText = `padding: 14px 26px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(28,20,16,0.95), rgba(14,10,8,0.95));
+    border: 1px solid ${shareAccent};
+    border-radius: 8px;
+    color: ${shareAccent};
+    font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 16px); font-weight: 700;
+    letter-spacing: 0.28em;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, 0 12px 28px rgba(0,0,0,0.5), 0 0 16px ${shareAccent}33;`;
+  shareBtn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    if (shareBtn.disabled) return;
+    shareBtn.disabled = true;
+    const prev = shareBtn.textContent;
+    shareBtn.textContent = '…rendering';
+    try {
+      await downloadShareCard(latestRunEntry);
+      _kkShowMicroToast('Share card saved', C.amber);
+      shareBtn.textContent = '✓ SAVED';
+      setTimeout(() => { shareBtn.textContent = prev; shareBtn.disabled = false; }, 1400);
+    } catch (err) {
+      shareBtn.textContent = prev;
+      shareBtn.disabled = false;
+      _kkShowMicroToast('Share failed', C.red);
+    }
+  });
+  sharePanel.appendChild(previewWrap);
+  sharePanel.appendChild(shareBtn);
+
+  if (isVictory) {
+    const shell = document.createElement('section');
+    shell.className = 'kk-victory-shell';
+
+    const windowBar = document.createElement('div');
+    windowBar.className = 'kk-victory-windowbar';
+    const windowName = document.createElement('span');
+    windowName.textContent = 'KAKI_CREW.EXE  /  VICTORY';
+    const controls = document.createElement('span');
+    controls.className = 'kk-victory-window-controls';
+    controls.setAttribute('aria-hidden', 'true');
+    controls.innerHTML = '<i></i><i></i><i></i>';
+    windowBar.appendChild(windowName);
+    windowBar.appendChild(controls);
+    shell.appendChild(windowBar);
+
+    const kicker = document.createElement('div');
+    kicker.className = 'kk-victory-kicker';
+    kicker.textContent = '★ Level Clear ★';
+    shell.appendChild(kicker);
+    shell.appendChild(title);
+
+    const stageName = (state.run && state.run.stage && state.run.stage.name)
+      || (state.run && state.run.stage && state.run.stage.id)
+      || 'the nightmare';
+    const avatarId = (state.run && state.run.avatar) || getMeta().selectedAvatar || 'kitty';
+    const avatarDef = AVATARS.find((avatar) => avatar.id === avatarId);
+    const avatarName = avatarDef ? avatarDef.name : 'Your hero';
+    const subtitle = document.createElement('div');
+    subtitle.className = 'kk-victory-subtitle';
+    subtitle.textContent = `${avatarName} + friends cleared ${stageName}. Everybody made it home.`;
+    shell.appendChild(subtitle);
+
+    const marquee = document.createElement('div');
+    marquee.className = 'kk-victory-marquee';
+    const marqueeText = document.createElement('span');
+    marqueeText.textContent = '★ HEROES SAFE ★ LOOT SECURED ★ FRIENDSHIP MAXED ★ SNACK TIME ★ ';
+    marquee.appendChild(marqueeText);
+    shell.appendChild(marquee);
+
+    const quickStats = document.createElement('div');
+    quickStats.className = 'kk-victory-quickstats';
+    const quickRows = [
+      ['Run Time', fmtTime(state.time.game)],
+      ['Kills', Math.floor(state.run.kills).toLocaleString()],
+      ['Level', state.hero.level],
+      ['Coins', `+${summary.coinsEarned || 0}`],
+      ['Embers', `+${summary.embersEarned || 0}`],
+      ['Sigils', `+${summary.sigilsEarned || 0}`],
+    ];
+    for (const [label, value] of quickRows) {
+      const cell = document.createElement('div');
+      cell.className = 'kk-victory-stat';
+      const statLabel = document.createElement('span');
+      statLabel.className = 'kk-victory-stat-label';
+      statLabel.textContent = label;
+      const statValue = document.createElement('span');
+      statValue.className = 'kk-victory-stat-value';
+      statValue.textContent = String(value);
+      cell.appendChild(statLabel);
+      cell.appendChild(statValue);
+      quickStats.appendChild(cell);
+    }
+    shell.appendChild(quickStats);
+
+    if (runHighlightsPanel) shell.appendChild(runHighlightsPanel);
+    if (relicPanel && state.run.relicDrop) {
+      const relicChip = document.createElement('div');
+      relicChip.className = 'kk-victory-relic-chip';
+      const relicLabel = document.createElement('strong');
+      relicLabel.textContent = '★ Relic found: ';
+      relicChip.appendChild(relicLabel);
+      relicChip.appendChild(document.createTextNode(`${state.run.relicDrop.name} · auto-equipped`));
+      shell.appendChild(relicChip);
+    }
+
+    const details = document.createElement('details');
+    details.className = 'kk-victory-details';
+    const detailsSummary = document.createElement('summary');
+    detailsSummary.textContent = 'Run report, unlocks & share';
+    details.appendChild(detailsSummary);
+    details.appendChild(stats);
+    if (nextUnlock) details.appendChild(nextUnlock);
+    if (relicPanel) details.appendChild(relicPanel);
+    details.appendChild(breakdown);
+    details.appendChild(sharePanel);
+    shell.appendChild(details);
+
+    shell.appendChild(btnRow);
+    shell.appendChild(hint);
+    const webnote = document.createElement('div');
+    webnote.className = 'kk-victory-webnote';
+    webnote.textContent = 'best viewed with friends · 800×600 forever';
+    shell.appendChild(webnote);
+    _deathScreen.appendChild(shell);
+  } else {
+    _deathScreen.appendChild(title);
+    if (_soClose) {
+      const sc = document.createElement('div');
+      sc.style.cssText = `font-family:${F.body}; letter-spacing:0.26em; text-transform:uppercase;
+        font-size:calc(var(--kk-font-scale, 1) * 13px); color:${C.amber}; margin:-14px 0 16px;`;
+      sc.textContent = _soClose;
+      _deathScreen.appendChild(sc);
+    }
+    _deathScreen.appendChild(stats);
+    if (runHighlightsPanel) _deathScreen.appendChild(runHighlightsPanel);
+    if (nextUnlock) _deathScreen.appendChild(nextUnlock);
+    _deathScreen.appendChild(breakdown);
+    if (relicPanel) _deathScreen.appendChild(relicPanel);
+    _deathScreen.appendChild(sharePanel);
+    _deathScreen.appendChild(btnRow);
+    _deathScreen.appendChild(hint);
+  }
+  // Mount full-screen menus on <body>, NOT #ui-root: #ui-root lives inside the
+  // aspect-capped #kk-stage (overflow:hidden + load-bearing transform), which
+  // on a portrait phone is a thin letterboxed strip — a fixed,inset:0 child
+  // resolves to that strip and gets clipped. document.body is the same
+  // full-viewport escape hatch the HUD (forestHud/input) already uses.
+  document.body.appendChild(_deathScreen);
+  _deathFocusScope = pushFocusScope(
+    isVictory ? [townBtn, retryBtn, menuBtn] : [retryBtn, shareBtn, townBtn, menuBtn],
+    { layout: 'list', scrollInitial: !isVictory },
+  );
+
+  const restart = () => {
+    // Tear down listeners + the modal first, then trigger the in-place reset
+    if (_deathKeyHandler) window.removeEventListener('keydown', _deathKeyHandler);
+    _deathKeyHandler = null;
+    if (_deathFocusScope) { popFocusScope(_deathFocusScope); _deathFocusScope = null; }
+    if (_deathScreen && _deathScreen.parentNode) _deathScreen.parentNode.removeChild(_deathScreen);
+    _deathScreen = null;
+    if (typeof window.kkRestart === 'function') window.kkRestart();
+    else location.reload();
+  };
+  retryBtn.addEventListener('click', (e) => { e.stopPropagation(); restart(); });
+
+  const goTown = () => {
+    if (_deathKeyHandler) window.removeEventListener('keydown', _deathKeyHandler);
+    _deathKeyHandler = null;
+    if (_deathFocusScope) { popFocusScope(_deathFocusScope); _deathFocusScope = null; }
+    if (_deathScreen && _deathScreen.parentNode) _deathScreen.parentNode.removeChild(_deathScreen);
+    _deathScreen = null;
+    if (typeof window.kkReturnToTown === 'function') window.kkReturnToTown();
+    else if (typeof window.kkRestart === 'function') window.kkRestart();
+    else location.reload();
+  };
+  townBtn.addEventListener('click', (e) => { e.stopPropagation(); goTown(); });
+
+  const goMenu = () => {
+    if (_deathKeyHandler) window.removeEventListener('keydown', _deathKeyHandler);
+    _deathKeyHandler = null;
+    if (_deathFocusScope) { popFocusScope(_deathFocusScope); _deathFocusScope = null; }
+    if (_deathScreen && _deathScreen.parentNode) _deathScreen.parentNode.removeChild(_deathScreen);
+    _deathScreen = null;
+    if (typeof window.kkReturnToMenu === 'function') window.kkReturnToMenu();
+    else location.reload();
+  };
+  menuBtn.addEventListener('click', (e) => { e.stopPropagation(); goMenu(); });
+
+  _deathKeyHandler = (e) => {
+    // Let a focused button/summary own Enter and Space; otherwise the global
+    // shortcut would both click the control and launch a second navigation.
+    const tag = e && e.target && e.target.tagName;
+    if ((tag === 'BUTTON' || tag === 'SUMMARY')
+        && (e.code === 'Enter' || e.code === 'Space' || e.key === 'Enter' || e.key === ' ')) return;
+    if (e.code === 'KeyR' || e.key === 'r' || e.key === 'R') restart();
+    else if (e.code === 'Enter' || e.code === 'Space') {
+      if (isVictory) goTown(); else restart();
+    }
+    else if (e.code === 'KeyT' || e.key === 't' || e.key === 'T') goTown();
+    else if (e.code === 'KeyM' || e.key === 'm' || e.key === 'M') goMenu();
+    // Escape: defaults to Main Menu — full reset is the safest catch-all from
+    // a death modal, town is one button-press away from there.
+    else if (e.code === 'Escape' || e.key === 'Escape') goMenu();
+  };
+  window.addEventListener('keydown', _deathKeyHandler);
+}
+
+export function showStartScreen(text) {
+  // Iter 21a — defensive tooltip hide on modal entry.
+  try { hideTooltip(); } catch (_) {}
+  if (_startScreen) {
+    // Update subtitle in place
+    const sub = _startScreen.querySelector('.kk-start-sub');
+    if (sub) sub.textContent = text || '';
+    // Iter 32d — every showStartScreen returns the player to the main menu
+    // (death + return-to-menu reuses the same _startScreen DOM, so without
+    // this reset they'd land on whatever view they were in last).
+    _setStartView('menu');
+    // Lazy-mount carousel: first call fires before preloadAll resolves, so the
+    // cache is empty. Once 'hero' is in the cache, mount on the next call.
+    if (!_charCarousel && GLTF_CACHE && GLTF_CACHE.hero && _startCharRowRef) {
+      try {
+        // Wipe loading placeholder
+        _startCharRowRef.innerHTML = '';
+        _charCarousel = createCharCarousel(_startCharRowRef, {
+          items: AVATARS,
+          initialId: getMeta().selectedAvatar || 'kitty',
+          isUnlocked: (a) => isAvatarUnlocked(a.id),
+          formatLockHint: (a) => formatAvatarLockHint(a),
+          getMastery: (id) => getMastery(id),
+          onLockedActivate: (a) => showAvatarUnlockModal(a),
+          onSelect: (id) => {
+            setOption('selectedAvatar', id);
+            getMeta().selectedAvatar = id;
+            _refreshStartFocus();
+          },
+        });
+        _refreshStartFocus();
+      } catch (e) { console.warn('[carousel.lateMount]', e); }
+    }
+    return;
+  }
+  // Ensure root exists even if initUI hasn't run (called early in boot)
+  if (!_root) {
+    injectCSS();
+    _root = document.getElementById('ui-root');
+    if (!_root) return;
+  }
+
+  _startScreen = document.createElement('div');
+  _startScreen.className = 'kk-start';
+
+  // Ornamental flourish above title — vector flourish in warm gold, sells the
+  // "real game" feel without needing an external asset.
+  const ornamentTop = document.createElement('div');
+  ornamentTop.innerHTML = `
+    <svg width="320" height="22" viewBox="0 0 320 22" xmlns="http://www.w3.org/2000/svg" style="display:block; filter:drop-shadow(0 2px 6px rgba(0,0,0,0.5));">
+      <g fill="none" stroke="${C.amber}" stroke-width="1.2" stroke-linecap="round" opacity="0.85">
+        <line x1="20"  y1="11" x2="130" y2="11"/>
+        <line x1="190" y1="11" x2="300" y2="11"/>
+        <path d="M130 11 Q 140 4, 150 11 T 170 11" />
+        <circle cx="160" cy="11" r="2.4" fill="${C.amber}" stroke="none"/>
+        <circle cx="20"  cy="11" r="1.6" fill="${C.amber}" stroke="none"/>
+        <circle cx="300" cy="11" r="1.6" fill="${C.amber}" stroke="none"/>
+      </g>
+    </svg>
+  `;
+  ornamentTop.style.cssText = 'margin-bottom: 4px;';
+
+  const title = document.createElement('div');
+  title.className = 'kk-start-title';
+  title.textContent = 'Kaki Survivors';
+
+  // Mirror flourish under the title
+  const ornamentBot = document.createElement('div');
+  ornamentBot.innerHTML = ornamentTop.innerHTML;
+  ornamentBot.style.cssText = 'margin-top: 2px; margin-bottom: 6px; transform: rotate(180deg);';
+
+  const sub = document.createElement('div');
+  sub.className = 'kk-start-sub';
+  sub.textContent = text || '';
+
+  const meta = getMeta();
+  const metaLine = document.createElement('div');
+  metaLine.style.cssText = `margin-top: 8px; font-family: ${F.body}; font-size: calc(var(--kk-font-scale, 1) * 13px); letter-spacing: 0.24em; text-transform: uppercase; color: rgba(245,239,225,0.78);`;
+  metaLine.innerHTML = meta.runs > 0
+    ? `<span style="color:${C.amber}">${meta.coins.toLocaleString()}</span> coins  ·  best <span style="color:${C.amber}">${fmtTime(meta.bestTime)}</span>  ·  <span style="color:${C.amber}">${meta.runs}</span> runs`
+    : '<span style="opacity:0.7;">— first run —</span>';
+
+  // Character picker — Iter 31: 3D carousel hosting real GLB models.
+  // The legacy card-grid path is replaced; charCarousel.js renders its own
+  // info panel + arrow buttons + pip strip into this host.
+  const charRow = document.createElement('div');
+  charRow.style.cssText = 'display:flex; flex-direction:column; align-items:center; gap:4px; margin-top:6px; pointer-events:auto; width:100%; max-width:90vw;';
+  // Decode an unlock token into a human hint. `null` = always unlocked.
+  // Forms supported (per iter-7 contract):
+  //   'sigils:N'                  → "Earn N sigils to unlock"
+  //   'flag:unlockedClockwork'    → flag-specific hint string
+  //   '<achievement_id>'          → "Unlock: <id>" (legacy / current pattern)
+  function formatUnlockHint(unlock) {
+    if (unlock === null || unlock == null) return '';
+    if (typeof unlock !== 'string') return `Unlock: ${String(unlock)}`;
+    if (unlock.startsWith('sigils:')) {
+      const n = parseInt(unlock.slice(7), 10);
+      return Number.isFinite(n) ? `Earn ${n} sigils to unlock` : 'Earn sigils to unlock';
+    }
+    if (unlock.startsWith('flag:')) {
+      const flag = unlock.slice(5);
+      if (flag === 'unlockedClockwork') return 'Clear Boss Rush in Paper Woods to unlock.';
+      return `Unlock: ${flag}`;
+    }
+    return `Unlock: ${unlock}`;
+  }
+  function paintChars() {
+    // Iter 32: carousel = avatar; chip row = archetype. Preset-apply hits
+    // here to sync both. Carousel takes selectedAvatar; archRow repaints.
+    if (_charCarousel && meta && meta.selectedAvatar) {
+      try { _charCarousel.setSelection(meta.selectedAvatar); } catch (_) {}
+    }
+    try { paintArchetypes(); } catch (_) {}
+  }
+  // Iter 32: carousel = AVATAR picker (2 entries). Archetype picker is the
+  // chip row built immediately below. Carousel mounts only after preloadAll
+  // resolves (cache populated) — the lazy-mount path in the
+  // _startScreen-exists guard handles the first showStartScreen call.
+  if (_charCarousel) { try { _charCarousel.destroy(); } catch (_) {} _charCarousel = null; }
+  if (GLTF_CACHE && GLTF_CACHE.hero) {
+    _charCarousel = createCharCarousel(charRow, {
+      items: AVATARS,
+      initialId: meta.selectedAvatar || 'kitty',
+      isUnlocked: (a) => isAvatarUnlocked(a.id),
+      formatLockHint: (a) => formatAvatarLockHint(a),
+      getMastery: (id) => getMastery(id),
+      onLockedActivate: (a) => showAvatarUnlockModal(a),
+      onSelect: (id) => {
+        setOption('selectedAvatar', id);
+        meta.selectedAvatar = id;
+        _refreshStartFocus();
+      },
+    });
+  } else {
+    // Loading placeholder until preload finishes
+    const ph = document.createElement('div');
+    ph.style.cssText = 'padding:28px;opacity:0.7;font-family:"Crimson Text",Georgia,serif;letter-spacing:0.12em;';
+    ph.textContent = 'Loading characters…';
+    charRow.appendChild(ph);
+  }
+
+  // ── Archetype chip row — gameplay profile (starter weapon + stats + signature)
+  const archRow = document.createElement('div');
+  archRow.style.cssText = `
+    display:flex; gap:6px; margin-top:6px; pointer-events:auto;
+    flex-wrap:wrap; justify-content:center; max-width:760px;
+  `;
+  // Same guard as carousel wrap — main.js installs window click→start.
+  archRow.addEventListener('click', (e) => { e.stopPropagation(); });
+  function paintArchetypes() {
+    archRow.innerHTML = '';
+    const archTitle = document.createElement('div');
+    archTitle.style.cssText = `
+      width: 100%; text-align: center;
+      font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 12px);
+      letter-spacing: 0.28em; color: rgba(245,239,225,0.55);
+      margin-bottom: 4px; text-transform: uppercase;
+    `;
+    archTitle.textContent = '— starter archetype —';
+    archRow.appendChild(archTitle);
+
+    for (const ch of CHARACTERS) {
+      const unlocked = isCharacterUnlocked(ch, meta);
+      const selected = ch.id === meta.selectedChar;
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.disabled = !unlocked;
+      const accent = selected ? C.amber : (unlocked ? C.cyan : 'rgba(120,120,120,0.5)');
+      chip.style.cssText = `
+        padding: 8px 14px;
+        background: ${selected ? 'rgba(255,210,127,0.14)' : 'linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86))'};
+        border: 1px solid ${accent};
+        border-radius: 999px;
+        color: ${selected ? C.amber : (unlocked ? C.text : 'rgba(120,120,120,0.7)')};
+        font-family: ${F.body}; font-size: calc(var(--kk-font-scale, 1) * 12.5px);
+        letter-spacing: 0.16em; cursor: ${unlocked ? 'pointer' : 'not-allowed'};
+        display: inline-flex; align-items: center; gap: 6px;
+        transition: transform 0.15s ease, border-color 0.15s ease;
+      `;
+      const lockGlyph = unlocked ? '' : '🔒 ';
+      chip.innerHTML = `${unlocked ? (ch.icon || '◇') : ''}${lockGlyph}<span>${escapeHtml(ch.name)}</span>`;
+      if (unlocked) {
+        chip.addEventListener('click', (e) => {
+          e.stopPropagation();
+          setOption('selectedChar', ch.id);
+          meta.selectedChar = ch.id;
+          paintArchetypes();
+          _refreshStartFocus();
+        });
+        chip.addEventListener('mouseenter', () => { chip.style.transform = 'translateY(-1px)'; });
+        chip.addEventListener('mouseleave', () => { chip.style.transform = 'translateY(0)'; });
+      }
+      bindTooltip(chip, () => {
+        const b = characterBlurb(ch.id);
+        const statRows = [
+          { label: 'Starter', value: ch.starter },
+          { label: 'Max HP',  value: String(ch.hpMax) },
+        ];
+        if (ch.statMul) {
+          if (ch.statMul.dmg && ch.statMul.dmg !== 1)              statRows.push({ label: 'DMG',  value: `×${ch.statMul.dmg.toFixed(2)}` });
+          if (ch.statMul.moveSpeed && ch.statMul.moveSpeed !== 1)  statRows.push({ label: 'Move', value: `×${ch.statMul.moveSpeed.toFixed(2)}` });
+          if (ch.statMul.magnet && ch.statMul.magnet !== 1)        statRows.push({ label: 'Magnet', value: `×${ch.statMul.magnet.toFixed(2)}` });
+          if (ch.statMul.projSpeed && ch.statMul.projSpeed !== 1)  statRows.push({ label: 'Proj Spd', value: `×${ch.statMul.projSpeed.toFixed(2)}` });
+        }
+        if (ch.signatureName) statRows.unshift({ label: 'Signature', value: String(ch.signatureName) });
+        const bodyParts = [];
+        if (unlocked) {
+          bodyParts.push(b ? b.flavor : ch.desc);
+          if (ch.signatureDesc) bodyParts.push(`◆ ${ch.signatureName}: ${ch.signatureDesc}`);
+          bodyParts.push(`Starter weapon: ${ch.starter} (auto-equipped at run start).`);
+        } else {
+          bodyParts.push(formatUnlockHint(ch.unlock));
+        }
+        return {
+          title: unlocked ? ch.name : `${ch.name} (Locked)`,
+          icon: unlocked ? ch.icon : '🔒',
+          body: bodyParts.join('\n\n'),
+          tags: unlocked ? (b ? b.tags : ['Archetype']) : ['Locked'],
+          stats: unlocked ? statRows : undefined,
+          accent: selected ? '#ffd27f' : '#7fffe4',
+        };
+      });
+      archRow.appendChild(chip);
+    }
+  }
+  paintArchetypes();
+
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display: flex; gap: 12px; margin-top: 22px; pointer-events: auto; flex-wrap: wrap; justify-content: center;';
+
+  const ghostBtn = (label, accent) => `
+    padding: 10px 22px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86));
+    border: 1px solid ${C.edge};
+    border-radius: 8px;
+    color: ${accent};
+    font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 13px); font-weight: 700;
+    letter-spacing: 0.28em;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 20px rgba(0,0,0,0.5);
+  `;
+
+  const shopBtn = document.createElement('button');
+  shopBtn.type = 'button';
+  shopBtn.textContent = 'Shop';
+  shopBtn.style.cssText = ghostBtn('Shop', C.amber);
+  shopBtn.addEventListener('mouseenter', () => { try { sfx.uiHover(); } catch (_) {} });
+  shopBtn.addEventListener('click', (e) => { e.stopPropagation(); showShop(); });
+
+  const grimBtn = document.createElement('button');
+  grimBtn.type = 'button';
+  grimBtn.textContent = 'Grimoire';
+  grimBtn.style.cssText = ghostBtn('Grimoire', C.magenta);
+  grimBtn.addEventListener('mouseenter', () => { try { sfx.uiHover(); } catch (_) {} });
+  grimBtn.addEventListener('click', (e) => { e.stopPropagation(); showGrimoire(); });
+
+  const codexBtn = document.createElement('button');
+  codexBtn.type = 'button';
+  codexBtn.textContent = 'Codex';
+  codexBtn.style.cssText = ghostBtn('Codex', C.cyan);
+  codexBtn.addEventListener('mouseenter', () => { try { sfx.uiHover(); } catch (_) {} });
+  codexBtn.addEventListener('click', (e) => { e.stopPropagation(); showCodex(); });
+
+  const historyBtn = document.createElement('button');
+  historyBtn.type = 'button';
+  historyBtn.textContent = 'History';
+  historyBtn.style.cssText = ghostBtn('History', C.amber);
+  historyBtn.addEventListener('mouseenter', () => { try { sfx.uiHover(); } catch (_) {} });
+  historyBtn.addEventListener('click', (e) => { e.stopPropagation(); showRunHistory(); });
+
+  const optsBtn = document.createElement('button');
+  optsBtn.type = 'button';
+  optsBtn.textContent = 'Options';
+  optsBtn.style.cssText = ghostBtn('Options', C.cyan);
+  optsBtn.addEventListener('mouseenter', () => { try { sfx.uiHover(); } catch (_) {} });
+  optsBtn.addEventListener('click', (e) => { e.stopPropagation(); showOptions(); });
+
+  // ── Credits + How To Play ──
+  // Credits opens an in-game modal (showCredits, defined later in this file).
+  // How To Play opens the static `how-to-play.html` page in a new tab so the
+  // game-side focus scope stays intact and players can scroll the reference.
+  const creditsBtn = document.createElement('button');
+  creditsBtn.type = 'button';
+  creditsBtn.textContent = 'Credits';
+  creditsBtn.setAttribute('aria-label', 'View credits');
+  creditsBtn.style.cssText = ghostBtn('Credits', C.amber);
+  creditsBtn.addEventListener('mouseenter', () => { try { sfx.uiHover(); } catch (_) {} });
+  creditsBtn.addEventListener('click', (e) => { e.stopPropagation(); showCredits(); });
+
+  const howToBtn = document.createElement('button');
+  howToBtn.type = 'button';
+  howToBtn.textContent = 'How To Play';
+  howToBtn.setAttribute('aria-label', 'Open How To Play in a new tab');
+  howToBtn.style.cssText = ghostBtn('How To Play', C.cyan);
+  howToBtn.addEventListener('mouseenter', () => { try { sfx.uiHover(); } catch (_) {} });
+  howToBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    try { sfx.uiClick(); } catch (_) {}
+    try { window.open('how-to-play.html', '_blank', 'noopener'); } catch (_) {}
+  });
+
+  // ── Daily / Weekly toggle pair ──
+  // Mutually exclusive with each other and with BossRush; toggling one ON
+  // untoggles the other two so the run-mode pipeline stays deterministic.
+  // Each card carries a small 📋 icon that copies the seed-share string to
+  // the clipboard for instant sharing (iter-9 retention hook #1).
+  const purple = '#c87bff';
+  const _untoggleOther = (mode) => {
+    if (mode !== 'daily')   setOption('optDaily',    false);
+    if (mode !== 'weekly')  setOption('optWeekly',   false);
+    if (mode !== 'bossRush')setOption('optBossRush', false);
+  };
+
+  // Inline 📋 share-pill — appears in the bottom-right corner of each card.
+  // Stops propagation so clicking it doesn't toggle the parent card mode.
+  const _shareIconHTML = `<span class="kk-share-pip" style="
+    position:absolute; right:6px; bottom:6px;
+    width:22px; height:22px;
+    display:flex; align-items:center; justify-content:center;
+    border-radius:5px;
+    border:1px solid rgba(245,239,225,0.28);
+    background: rgba(8,14,12,0.66);
+    font-size:calc(var(--kk-font-scale, 1) * 11px);
+    color:rgba(245,239,225,0.85);
+    cursor:pointer;
+    transition: transform 0.12s ease, border-color 0.12s ease;
+  " title="Copy seed">📋</span>`;
+
+  // Daily challenge toggle — fixed character + modifier, no shop bonuses.
+  const dailyBtn = document.createElement('button');
+  dailyBtn.type = 'button';
+  dailyBtn.style.position = 'relative';
+  const paintDaily = () => {
+    const m = getMeta();
+    const cfg = dailyChallengeConfig(CHARACTERS.map(c => c.id));
+    const on = !!m.optDaily;
+    const todayIsRecord = m.dailyRun && m.dailyRun.date === cfg.date;
+    const best = todayIsRecord
+      ? `BEST ${m.dailyRun.bestKills}K · ${fmtTime(m.dailyRun.bestTime)}`
+      : 'NO RUNS YET';
+    // Punch List #6 — cosmetic "Daily Survivor" badge pip. Granted on first
+    // daily win in commitRunResults (gated to victory only — losses get
+    // nothing). Pure cosmetic; tiny shield row inside the card so the player
+    // sees their cumulative daily-win status without obstructing the toggle.
+    // Cyan accent (C.cyan = #7fffe4) matches the death-screen banner above.
+    const earnedBadge = hasBadge(DAILY_SURVIVOR_BADGE_ID);
+    const badgeRow = earnedBadge
+      ? `<div style="font-family:${F.body}; font-size:calc(var(--kk-font-scale, 1) * 9.5px); margin-top:2px; letter-spacing:0.14em; text-transform:uppercase; color:${C.cyan}; text-shadow:0 0 6px rgba(127,255,228,0.55);">🛡 Daily Survivor</div>`
+      : '';
+    dailyBtn.innerHTML = `
+      <div style="font-family:${F.display}; font-size:calc(var(--kk-font-scale, 1) * 13px); font-weight:700; letter-spacing:0.28em;">Daily ${on ? '★' : ''}</div>
+      <div style="font-family:${F.body}; font-size:calc(var(--kk-font-scale, 1) * 9.5px); opacity:0.82; margin-top:3px; letter-spacing:0.12em; text-transform:uppercase;">${escapeHtml(cfg.date)} · ${escapeHtml(cfg.modifier)}</div>
+      <div style="font-family:${F.mono}; font-size:calc(var(--kk-font-scale, 1) * 10px); opacity:0.85; margin-top:2px;">${best}</div>
+      ${badgeRow}
+      ${_shareIconHTML}
+    `;
+    dailyBtn.style.cssText = `padding: 10px 26px 10px 18px; cursor: pointer; position:relative;
+      background: ${on ? 'linear-gradient(180deg, rgba(200,123,255,0.22), rgba(110,60,180,0.18))' : 'linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86))'};
+      border: 1px solid ${on ? purple : C.edge};
+      border-radius: 8px;
+      color: ${purple};
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 20px rgba(0,0,0,0.5);
+      line-height: 1.15; text-align:center;`;
+    // Wire the share-pip after innerHTML reset.
+    const pip = dailyBtn.querySelector('.kk-share-pip');
+    if (pip) {
+      pip.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const cfg2 = dailyChallengeConfig(CHARACTERS.map(c => c.id));
+        const m2 = getMeta();
+        const entry = {
+          stage:     'forest',
+          character: cfg2.character || 'kitty',
+          mode:      'daily',
+          kills:     (m2.dailyRun && m2.dailyRun.bestKills) || 0,
+          timeSurvived: (m2.dailyRun && m2.dailyRun.bestTime) || 0,
+          seed:      cfg2.seed || cfg2.date || '',
+        };
+        const text = typeof formatSeedShareString === 'function'
+          ? formatSeedShareString(entry)
+          : `${entry.seed} · ${entry.kills}k · ${fmtTime(entry.timeSurvived)} · ${entry.character}`;
+        copyTextToClipboard(text).then((ok) => {
+          _kkShowMicroToast(ok ? 'Seed copied' : 'Copy failed', ok ? C.green : C.red);
+        });
+      });
+    }
+  };
+  paintDaily();
+  dailyBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const m = getMeta();
+    const next = !m.optDaily;
+    if (next) _untoggleOther('daily');
+    setOption('optDaily', next);
+    paintDaily();
+    if (typeof paintWeekly === 'function') paintWeekly();
+  });
+
+  // Weekly mutator toggle — same shape as Daily, magenta accent, ISO-week
+  // keyed mutator pulled from weeklyMutatorConfig(). Personal best read from
+  // meta.weeklyBest (initialized by 9a's commitWeeklyRun).
+  const weeklyBtn = document.createElement('button');
+  weeklyBtn.type = 'button';
+  weeklyBtn.style.position = 'relative';
+  let _weeklyCfgCache = null;
+  const _weeklyCfg = () => {
+    if (_weeklyCfgCache) return _weeklyCfgCache;
+    try {
+      _weeklyCfgCache = typeof weeklyMutatorConfig === 'function'
+        ? weeklyMutatorConfig() : null;
+    } catch (_) { _weeklyCfgCache = null; }
+    return _weeklyCfgCache;
+  };
+  function paintWeekly() {
+    const m = getMeta();
+    const cfg = _weeklyCfg();
+    const on = !!m.optWeekly;
+    const label = cfg ? (cfg.mutatorLabel || cfg.mutatorId || 'MUTATOR') : 'MUTATOR PENDING';
+    const wk = cfg ? (cfg.weekKey || '') : '';
+    const best = (m.weeklyBest && m.weeklyBest.kills)
+      ? `BEST ${m.weeklyBest.kills}K · ${fmtTime(m.weeklyBest.time || 0)}`
+      : 'NO RUNS YET';
+    weeklyBtn.innerHTML = `
+      <div style="font-family:${F.display}; font-size:calc(var(--kk-font-scale, 1) * 13px); font-weight:700; letter-spacing:0.28em;">Weekly ${on ? '★' : ''}</div>
+      <div style="font-family:${F.body}; font-size:calc(var(--kk-font-scale, 1) * 9.5px); opacity:0.82; margin-top:3px; letter-spacing:0.12em; text-transform:uppercase;">${escapeHtml(wk)} · ${escapeHtml(label)}</div>
+      <div style="font-family:${F.mono}; font-size:calc(var(--kk-font-scale, 1) * 10px); opacity:0.85; margin-top:2px;">${best}</div>
+      ${_shareIconHTML}
+    `;
+    weeklyBtn.style.cssText = `padding: 10px 26px 10px 18px; cursor: pointer; position:relative;
+      background: ${on ? 'linear-gradient(180deg, rgba(255,122,216,0.22), rgba(160,60,140,0.18))' : 'linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86))'};
+      border: 1px solid ${on ? C.magenta : C.edge};
+      border-radius: 8px;
+      color: ${C.magenta};
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 20px rgba(0,0,0,0.5);
+      line-height: 1.15; text-align:center;`;
+    const pip = weeklyBtn.querySelector('.kk-share-pip');
+    if (pip) {
+      pip.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        const cfg2 = _weeklyCfg();
+        const m2 = getMeta();
+        const wb = m2.weeklyBest || {};
+        const entry = {
+          stage:     wb.stage     || 'forest',
+          character: wb.character || 'kitty',
+          mode:      'weekly',
+          kills:     wb.kills || 0,
+          timeSurvived: wb.time || 0,
+          seed:      (cfg2 && cfg2.seed) || (cfg2 && cfg2.weekKey) || '',
+        };
+        const text = typeof formatSeedShareString === 'function'
+          ? formatSeedShareString(entry)
+          : `${entry.seed} · ${entry.kills}k · ${fmtTime(entry.timeSurvived)} · ${entry.character}`;
+        copyTextToClipboard(text).then((ok) => {
+          _kkShowMicroToast(ok ? 'Seed copied' : 'Copy failed', ok ? C.green : C.red);
+        });
+      });
+    }
+  }
+  paintWeekly();
+  weeklyBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    const m = getMeta();
+    const next = !m.optWeekly;
+    if (next) _untoggleOther('weekly');
+    setOption('optWeekly', next);
+    paintWeekly();
+    paintDaily();
+  });
+  // Hover tooltip — surfaces mutator label + flavor + personal best.
+  bindTooltip(weeklyBtn, () => {
+    const cfg = _weeklyCfg();
+    const m = getMeta();
+    const wb = m.weeklyBest || {};
+    const bestLine = wb.kills
+      ? `Personal best: ${wb.kills} kills · ${fmtTime(wb.time || 0)} · ${String(wb.character || '?').toUpperCase()}`
+      : 'No weekly runs yet.';
+    const flavor = (cfg && cfg.mutatorLabel) ? cfg.mutatorLabel : 'Pending — weekly mutator not yet rolled.';
+    const body = [
+      `Mutator: ${cfg && cfg.mutatorId ? cfg.mutatorId : '—'}`,
+      flavor,
+      bestLine,
+      'Mutually exclusive with Daily and Boss Rush.',
+    ].join('\n\n');
+    return {
+      title: 'Weekly Challenge',
+      icon: '🌑',
+      body,
+      tags: ['Mutator', 'Leaderboard'],
+      accent: C.magenta,
+    };
+  });
+
+  // ── Hall of Records ──
+  // Surfaces local leaderboard.topRunsAcrossAll(20) as a single-screen table.
+  // Seed column is click-to-replay — sets selectedChar/selectedStage and shows
+  // a green "Loaded seed X" toast, then hides the modal.
+  const recordsBtn = document.createElement('button');
+  recordsBtn.type = 'button';
+  recordsBtn.textContent = 'Records';
+  recordsBtn.style.cssText = ghostBtn('Records', C.magenta);
+  recordsBtn.addEventListener('mouseenter', () => { try { sfx.uiHover(); } catch (_) {} });
+  recordsBtn.addEventListener('click', (e) => { e.stopPropagation(); showHallOfRecords(); });
+
+  const townBtn = document.createElement('button');
+  townBtn.type = 'button';
+  townBtn.textContent = '🏘 Town';
+  townBtn.style.cssText = ghostBtn('Town', '#c9b07a');
+  townBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    if (typeof window.kkEnterTown === 'function') window.kkEnterTown();
+  });
+
+  btnRow.appendChild(townBtn);
+  btnRow.appendChild(shopBtn);
+  btnRow.appendChild(grimBtn);
+  btnRow.appendChild(codexBtn);
+  btnRow.appendChild(historyBtn);
+  btnRow.appendChild(recordsBtn);
+  btnRow.appendChild(howToBtn);
+  btnRow.appendChild(creditsBtn);
+  btnRow.appendChild(optsBtn);
+
+  // Iter 32d — Daily/Weekly are run-mode toggles. Move them off the main
+  // menu and onto a dedicated row inside the select panel (player only
+  // tunes a run after clicking Play).
+  const modeRow = document.createElement('div');
+  modeRow.style.cssText = 'display:flex; gap:10px; margin-top:10px; pointer-events:auto; flex-wrap:wrap; justify-content:center;';
+  modeRow.addEventListener('click', (e) => { e.stopPropagation(); });
+  modeRow.appendChild(dailyBtn);
+  modeRow.appendChild(weeklyBtn);
+
+  // URL-replay header — appended first so it floats above the title when
+  // state.replaySeed is set by 9b's boot-time URL parser. Pure display tag;
+  // mode toggles happen in main.js. Defensive read (state.replaySeed may not
+  // exist yet during 9b merge windows).
+  const replay = (state && state.replaySeed) || null;
+  if (replay && (replay.seed || replay.kills != null || replay.time != null)) {
+    const replayHeader = document.createElement('div');
+    replayHeader.style.cssText = `
+      margin: 0 auto 18px auto;
+      padding: 8px 18px;
+      background: linear-gradient(180deg, rgba(127,255,228,0.14), rgba(60,140,120,0.08));
+      border: 1px solid ${C.cyan};
+      border-radius: 8px;
+      font-family: ${F.body};
+      font-size: calc(var(--kk-font-scale, 1) * 11.5px); letter-spacing: 0.18em; text-transform: uppercase;
+      color: ${C.cyan};
+      box-shadow: 0 0 14px rgba(127,255,228,0.22), 0 6px 18px rgba(0,0,0,0.4);
+      max-width: 80vw;
+    `;
+    const seedTxt = escapeHtml(String(replay.seed || '—'));
+    const killTxt = (replay.kills != null) ? `· kills ${replay.kills | 0}` : '';
+    const timeTxt = (replay.time != null) ? `· ${fmtTime(replay.time | 0)}` : '';
+    const charTxt = replay.character ? `· ${escapeHtml(String(replay.character).toUpperCase())}` : '';
+    const stageTxt = replay.stage ? `· ${escapeHtml(String(replay.stage).toUpperCase())}` : '';
+    replayHeader.innerHTML = `Replaying ${seedTxt} ${killTxt} ${timeTxt} ${charTxt} ${stageTxt}`.trim();
+    _startScreen.appendChild(replayHeader);
+  }
+
+  _startScreen.appendChild(ornamentTop);
+  _startScreen.appendChild(title);
+  _startScreen.appendChild(ornamentBot);
+  _startScreen.appendChild(sub);
+  _startScreen.appendChild(metaLine);
+
+  // Iter 32d — two-view container. Menu shows first (Play + meta buttons).
+  // Click Play → Select panel (avatar carousel, archetype, stage, preset, Start Run).
+  _menuPanel = document.createElement('div');
+  _menuPanel.style.cssText = `
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
+    margin-top: 6px; pointer-events: auto; width: 100%; max-width: 760px;
+  `;
+  _selectPanel = document.createElement('div');
+  _selectPanel.style.cssText = `
+    display: none; flex-direction: column; align-items: center; gap: 4px;
+    margin-top: 6px; pointer-events: auto; width: 100%; max-width: 760px;
+  `;
+  _startScreen.appendChild(_menuPanel);
+  _startScreen.appendChild(_selectPanel);
+
+  // Equipped relic chip — small inline badge under the meta line.
+  const relic = equippedRelic();
+  if (relic) {
+    const chip = document.createElement('div');
+    const affixSummary = relic.affixes.map(a => escapeHtml(a.fmt)).join(' · ');
+    chip.style.cssText = `
+      margin-top: 10px; padding: 8px 16px;
+      background: linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86));
+      border: 1px solid ${relic.tierColor};
+      border-radius: 999px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 18px rgba(0,0,0,0.5);
+      font-family: ${F.body}; font-size: calc(var(--kk-font-scale, 1) * 11.5px); color: ${C.text};
+      letter-spacing: 0.06em;
+      display: inline-flex; align-items: center; gap: 8px;
+    `;
+    chip.innerHTML = `
+      <span style="font-family:${F.display}; font-size:calc(var(--kk-font-scale, 1) * 10px); letter-spacing:0.32em; color:${relic.tierColor}; text-transform:uppercase;">${escapeHtml(relic.tier)} Relic</span>
+      <span style="opacity:0.78;">${affixSummary}</span>
+    `;
+    _startScreen.appendChild(chip);
+  }
+  // Stage picker row — small inline chips. Shown when at least one stage
+  // beyond the default exists; gated stages display locked until their flag
+  // is satisfied (currently `unlockedHyper` = first victory).
+  // Hoisted so `paintPresets` can re-paint stages when a preset is applied.
+  let paintStages = null;
+  if (STAGES.length > 1) {
+    const stageRow = document.createElement('div');
+    stageRow.style.cssText = `display:flex; gap:10px; margin-top:18px; pointer-events:auto;
+      flex-wrap:wrap; justify-content:center; max-width:90vw;`;
+    paintStages = function () {
+      stageRow.innerHTML = '';
+      const meta2 = getMeta();
+      for (const st of STAGES) {
+        const locked = !isStageUnlocked(st, meta2);
+        const selected = (meta2.selectedStage || 'forest') === st.id;
+        const border = selected ? C.amber : (locked ? 'rgba(80,80,80,0.4)' : C.edge);
+        const chip = document.createElement('div');
+        chip.style.cssText = `
+          padding: 10px 16px;
+          background: linear-gradient(180deg, rgba(20,28,22,0.86), rgba(8,14,12,0.92));
+          border: 1px solid ${border};
+          border-radius: 10px;
+          color: ${locked ? 'rgba(120,120,120,0.65)' : C.text};
+          cursor: ${locked ? 'default' : 'pointer'};
+          font-family: ${F.body};
+          min-width: 220px; max-width: 260px;
+          box-shadow: ${selected
+            ? `0 0 0 1px ${C.amber} inset, 0 12px 26px rgba(0,0,0,0.55)`
+            : `0 1px 0 rgba(255,255,255,0.04) inset, 0 10px 22px rgba(0,0,0,0.5)`};
+          transition: transform 0.16s ease, border-color 0.16s ease;
+        `;
+        chip.innerHTML = `
+          <div style="font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 13px);font-weight:700;letter-spacing:0.14em;color:${selected ? C.amber : C.text};">${escapeHtml(st.name)}</div>
+          <div style="font-size:calc(var(--kk-font-scale, 1) * 11px);line-height:1.45;opacity:${locked ? 0.55 : 0.78};margin-top:3px;">${locked ? (st.id === 'cinder' ? 'Unlocks after a Paper Woods victory.' : 'Unlocks after first victory.') : escapeHtml(st.desc)}</div>
+        `;
+        if (!locked) {
+          chip.onclick = (e) => {
+            e.stopPropagation();
+            setOption('selectedStage', st.id);
+            // Immediate preview: retint the world behind the start screen so
+            // the player sees the picked stage's atmosphere before pressing Start.
+            if (state.envGroup && state.envGroup.userData && state.envGroup.userData.applyStageTint) {
+              state.envGroup.userData.applyStageTint(st);
+            }
+            // Swap arena decor in the start-screen preview too, so the
+            // player sees the trees / crystals / cracks for the picked stage
+            // before pressing Start.
+            if (state.scene) {
+              try { loadArenaDecor(st.id, state.scene); } catch (_) {}
+            }
+            paintStages();
+            _refreshStartFocus();
+          };
+        }
+        stageRow.appendChild(chip);
+      }
+    }
+    paintStages();
+    _selectPanel.appendChild(stageRow);
+    _startStageRowRef = stageRow;
+  }
+
+  // ── Presets row ────────────────────────────────────────────────────────────
+  // Convenience: save up to 6 character+stage combos. Stage + character only —
+  // not weapons or run modifiers (deliberately out of scope).
+  const PRESET_CAP = 6;
+  const PRESET_C = '#c87bff';
+  const presetRow = document.createElement('div');
+  presetRow.style.cssText = `display:flex; flex-direction:column; gap:6px;
+    margin-top:18px; pointer-events:auto; align-items:center; max-width:90vw;`;
+
+  // Empty-state subtitle — only shown when there are no user presets saved.
+  const presetSubtitle = document.createElement('div');
+  presetSubtitle.style.cssText = `font-family:${F.body}; font-size:calc(var(--kk-font-scale, 1) * 10.5px);
+    letter-spacing:0.28em; text-transform:uppercase;
+    color: rgba(245,239,225,0.55);`;
+  presetSubtitle.textContent = 'Save your favorite character + stage combo.';
+
+  const presetChips = document.createElement('div');
+  presetChips.style.cssText = `display:flex; flex-wrap:wrap; gap:8px;
+    justify-content:center; pointer-events:auto;`;
+
+  // Inline name-prompt panel — re-used for save flow. Hidden by default.
+  const presetPrompt = document.createElement('div');
+  presetPrompt.style.cssText = `display:none; margin-top:6px; gap:6px;
+    flex-wrap:wrap; justify-content:center; align-items:center;`;
+
+  function _charIcon(charId) {
+    const c = CHARACTERS.find(x => x.id === charId);
+    return c ? c.icon : '❓';
+  }
+  function _stageName(stageId) {
+    const s = STAGES.find(x => x.id === stageId);
+    return s ? s.name : stageId;
+  }
+
+  function showSavePrompt() {
+    presetPrompt.innerHTML = '';
+    // Pop the start-screen focus scope while the prompt is open. The focus
+    // module installs a capture-phase keydown listener, so Enter/Escape would
+    // otherwise be swallowed before the <input> sees them. We re-push by
+    // calling _refreshStartFocus() in closePrompt().
+    if (_startFocusScope) { popFocusScope(_startFocusScope); _startFocusScope = null; }
+    const input = document.createElement('input');
+    input.type = 'text';
+    input.maxLength = 32;
+    input.placeholder = 'Preset name…';
+    input.style.cssText = `padding:8px 12px; font-family:${F.body}; font-size:calc(var(--kk-font-scale, 1) * 12px);
+      background: rgba(8,14,12,0.65); color:${C.text};
+      border: 1px solid ${C.edge}; border-radius:6px;
+      letter-spacing:0.06em; min-width:180px; outline:none;`;
+    input.addEventListener('focus', () => { input.style.borderColor = PRESET_C; });
+    input.addEventListener('blur', () => { input.style.borderColor = C.edge; });
+
+    const saveBtn = document.createElement('button');
+    saveBtn.type = 'button';
+    saveBtn.textContent = 'Save';
+    saveBtn.setAttribute('data-focusable', '1');
+    saveBtn.style.cssText = `padding:8px 14px; cursor:pointer;
+      background: linear-gradient(180deg, rgba(200,123,255,0.22), rgba(110,60,180,0.18));
+      border: 1px solid ${PRESET_C}; border-radius:6px;
+      color:${PRESET_C}; font-family:${F.display}; font-size:calc(var(--kk-font-scale, 1) * 11px);
+      letter-spacing:0.22em; font-weight:700;`;
+
+    const cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.setAttribute('data-focusable', '1');
+    cancelBtn.style.cssText = `padding:8px 14px; cursor:pointer;
+      background: rgba(20,28,22,0.78);
+      border: 1px solid ${C.edge}; border-radius:6px;
+      color:rgba(245,239,225,0.7); font-family:${F.display}; font-size:calc(var(--kk-font-scale, 1) * 11px);
+      letter-spacing:0.22em;`;
+
+    const commit = () => {
+      const m2 = getMeta();
+      if (listPresets().length >= PRESET_CAP) { closePrompt(); return; }
+      addPreset({
+        name: input.value,
+        character: m2.selectedChar,
+        stage: m2.selectedStage || 'forest',
+      });
+      closePrompt();
+      paintPresets();
+      _refreshStartFocus();
+    };
+    const closePrompt = () => {
+      presetPrompt.style.display = 'none';
+      presetPrompt.innerHTML = '';
+      paintPresets();
+      _refreshStartFocus();
+    };
+
+    saveBtn.addEventListener('click', (e) => { e.stopPropagation(); commit(); });
+    cancelBtn.addEventListener('click', (e) => { e.stopPropagation(); closePrompt(); });
+    input.addEventListener('keydown', (e) => {
+      e.stopPropagation();
+      if (e.key === 'Enter') { e.preventDefault(); commit(); }
+      else if (e.key === 'Escape') { e.preventDefault(); closePrompt(); }
+    });
+
+    presetPrompt.appendChild(input);
+    presetPrompt.appendChild(saveBtn);
+    presetPrompt.appendChild(cancelBtn);
+    presetPrompt.style.display = 'flex';
+    // Defer focus until DOM committed so the input actually receives it.
+    setTimeout(() => { try { input.focus(); input.select && input.select(); } catch (_) {} }, 0);
+  }
+
+  function confirmRemove(presetId, presetName) {
+    if (typeof window.confirm === 'function') {
+      if (!window.confirm(`Delete preset "${presetName}"?`)) return;
+    }
+    removePreset(presetId);
+    paintPresets();
+    _refreshStartFocus();
+  }
+
+  function paintPresets() {
+    presetChips.innerHTML = '';
+    const presets = listPresets();
+    const full = presets.length >= PRESET_CAP;
+    // Up to 6 displayed (cap also enforces 6 max — same number).
+    const shown = presets.slice(0, PRESET_CAP);
+
+    // Empty-state subtitle: only shown when no user presets yet.
+    presetSubtitle.style.display = presets.length === 0 ? 'block' : 'none';
+
+    for (const p of shown) {
+      const chip = document.createElement('div');
+      chip.setAttribute('data-focusable', '1');
+      chip.tabIndex = 0;
+      chip.style.cssText = `
+        position: relative;
+        padding: 8px 28px 8px 14px;
+        background: linear-gradient(180deg, rgba(20,28,22,0.86), rgba(8,14,12,0.92));
+        border: 1px solid ${C.edge};
+        border-radius: 999px;
+        box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 18px rgba(0,0,0,0.5);
+        color: ${C.text};
+        cursor: pointer;
+        font-family: ${F.body};
+        display: inline-flex; align-items: center; gap: 8px;
+        transition: transform 0.14s ease, border-color 0.14s ease;
+        max-width: 220px;
+      `;
+      const charIcon = _charIcon(p.character);
+      const stageLabel = _stageName(p.stage);
+      // Truncate stage labels that would overflow the chip.
+      const stageShort = stageLabel.length > 14 ? stageLabel.slice(0, 13) + '…' : stageLabel;
+      chip.innerHTML = `
+        <span style="font-size:calc(var(--kk-font-scale, 1) * 16px); line-height:1;">${charIcon}</span>
+        <span style="display:inline-flex; flex-direction:column; line-height:1.2; min-width:0;">
+          <span style="font-family:${F.display}; font-size:calc(var(--kk-font-scale, 1) * 11px); letter-spacing:0.14em; font-weight:700; color:${C.text}; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; max-width:160px;">${escapeHtml(p.name)}</span>
+          <span style="font-family:${F.body}; font-size:calc(var(--kk-font-scale, 1) * 9.5px); letter-spacing:0.18em; text-transform:uppercase; color:rgba(245,239,225,0.6);">${escapeHtml(stageShort)}</span>
+        </span>
+      `;
+
+      // Dedicated remove (✕) button — keyboard-reachable and trivial to hit.
+      const closeBtn = document.createElement('button');
+      closeBtn.type = 'button';
+      closeBtn.textContent = '✕';
+      closeBtn.title = 'Delete preset';
+      closeBtn.style.cssText = `
+        position: absolute; top: 50%; right: 6px; transform: translateY(-50%);
+        width: 18px; height: 18px; padding: 0;
+        background: transparent; border: none;
+        color: rgba(245,239,225,0.45); cursor: pointer;
+        font-family: ${F.mono}; font-size: calc(var(--kk-font-scale, 1) * 12px); line-height: 1;
+      `;
+      closeBtn.addEventListener('mouseenter', () => { closeBtn.style.color = C.red; });
+      closeBtn.addEventListener('mouseleave', () => { closeBtn.style.color = 'rgba(245,239,225,0.45)'; });
+      closeBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        confirmRemove(p.id, p.name);
+      });
+      chip.appendChild(closeBtn);
+
+      chip.addEventListener('mouseenter', () => {
+        chip.style.transform = 'translateY(-2px)';
+        chip.style.borderColor = PRESET_C;
+      });
+      chip.addEventListener('mouseleave', () => {
+        chip.style.transform = 'translateY(0)';
+        chip.style.borderColor = C.edge;
+      });
+
+      // Long-press to delete (mobile/touch friendly) — 600ms hold.
+      let _lp = null;
+      chip.addEventListener('mousedown', (e) => {
+        if (e.button !== 0) return;
+        _lp = setTimeout(() => { _lp = null; confirmRemove(p.id, p.name); }, 600);
+      });
+      const cancelLP = () => { if (_lp) { clearTimeout(_lp); _lp = null; } };
+      chip.addEventListener('mouseup', cancelLP);
+      chip.addEventListener('mouseleave', cancelLP);
+
+      // Right-click also deletes.
+      chip.addEventListener('contextmenu', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        confirmRemove(p.id, p.name);
+      });
+
+      chip.addEventListener('click', (e) => {
+        if (_lp) return; // long-press fired
+        e.stopPropagation();
+        // applyPreset mutates the singleton meta object in place (same ref as
+        // our `meta` capture), so paintChars/paintStages re-read the new
+        // selection automatically — no manual sync needed.
+        applyPreset(p.id);
+        paintChars();
+        if (typeof paintStages === 'function') paintStages();
+        paintPresets();
+        _refreshStartFocus();
+      });
+      chip.addEventListener('keydown', (e) => {
+        if (e.key === 'Delete' || e.key === 'Backspace') {
+          e.preventDefault();
+          e.stopPropagation();
+          confirmRemove(p.id, p.name);
+        }
+      });
+
+      presetChips.appendChild(chip);
+    }
+
+    // "+ Save Current" chip (or disabled cap chip).
+    const saveChip = document.createElement('div');
+    saveChip.setAttribute('data-focusable', '1');
+    saveChip.tabIndex = 0;
+    const disabled = full;
+    saveChip.style.cssText = `
+      padding: 8px 16px;
+      background: ${disabled
+        ? 'rgba(20,28,22,0.5)'
+        : 'linear-gradient(180deg, rgba(200,123,255,0.18), rgba(110,60,180,0.14))'};
+      border: 1px dashed ${disabled ? 'rgba(120,120,120,0.4)' : PRESET_C};
+      border-radius: 999px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 18px rgba(0,0,0,0.5);
+      color: ${disabled ? 'rgba(120,120,120,0.6)' : PRESET_C};
+      cursor: ${disabled ? 'not-allowed' : 'pointer'};
+      font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 11px);
+      letter-spacing: 0.20em; font-weight: 700;
+      display: inline-flex; align-items: center; gap: 6px;
+      transition: transform 0.14s ease, border-color 0.14s ease;
+    `;
+    saveChip.textContent = disabled ? `Slots Full (${PRESET_CAP})` : '+ Save Current';
+    if (!disabled) {
+      saveChip.addEventListener('mouseenter', () => {
+        saveChip.style.transform = 'translateY(-2px)';
+        saveChip.style.borderColor = '#e8a3ff';
+      });
+      saveChip.addEventListener('mouseleave', () => {
+        saveChip.style.transform = 'translateY(0)';
+        saveChip.style.borderColor = PRESET_C;
+      });
+      saveChip.addEventListener('click', (e) => {
+        e.stopPropagation();
+        showSavePrompt();
+      });
+      saveChip.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') {
+          e.preventDefault();
+          e.stopPropagation();
+          showSavePrompt();
+        }
+      });
+    }
+    presetChips.appendChild(saveChip);
+  }
+  paintPresets();
+
+  presetRow.appendChild(presetSubtitle);
+  presetRow.appendChild(presetChips);
+  presetRow.appendChild(presetPrompt);
+  _selectPanel.appendChild(presetRow);
+  _startPresetRowRef = presetRow;
+
+  _selectPanel.appendChild(charRow);
+  // Iter 34 — Phase C: archetype chip row deleted. Gameplay derives from the
+  // avatar carousel selection via AVATARS[].baseArchetype. The `archRow` DOM
+  // element is still constructed above for now (so `paintArchetypes()` calls
+  // elsewhere don't crash); it just isn't mounted into the start panel. Phase
+  // F prunes the dead construction once CHARACTERS is removed.
+  _selectPanel.appendChild(modeRow);
+
+  // ── Select panel footer: Start Run + Back to Menu ──
+  const selectFooter = document.createElement('div');
+  selectFooter.style.cssText = 'display:flex; gap:12px; margin-top:10px; pointer-events:auto; flex-wrap:wrap; justify-content:center;';
+  selectFooter.addEventListener('click', (e) => { e.stopPropagation(); });
+
+  const startRunBtn = document.createElement('button');
+  startRunBtn.type = 'button';
+  startRunBtn.textContent = '▶  PLAY';
+  startRunBtn.className = 'kk-btn-primary';
+  startRunBtn.style.cssText = `
+    padding: 12px 34px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(255,210,127,0.22), rgba(180,130,40,0.26));
+    border: 1px solid ${C.amber};
+    border-radius: 10px;
+    color: ${C.amber};
+    font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 18px); font-weight: 800;
+    letter-spacing: 0.28em;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 12px 24px rgba(0,0,0,0.55), 0 0 22px rgba(255,210,127,0.22);
+  `;
+  startRunBtn.addEventListener('mouseenter', () => { try { sfx.uiHover(); } catch (_) {} });
+  startRunBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    try { sfx.uiClick(); } catch (_) {}
+    if (typeof window !== 'undefined' && typeof window.kkStartRun === 'function') window.kkStartRun();
+  });
+
+  const backBtn = document.createElement('button');
+  backBtn.type = 'button';
+  backBtn.textContent = '‹  BACK';
+  backBtn.style.cssText = `
+    padding: 14px 26px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86));
+    border: 1px solid ${C.edge};
+    border-radius: 10px;
+    color: ${C.text};
+    font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 13px); font-weight: 700;
+    letter-spacing: 0.28em;
+  `;
+  backBtn.addEventListener('mouseenter', () => { try { sfx.uiHover(); } catch (_) {} });
+  backBtn.addEventListener('click', (e) => { e.stopPropagation(); _setStartView('menu'); });
+
+  // Bullet-hell mode entry — separate loop from the survivors run (manual
+  // fire, dodge patterns, item pickups instead of level-up choices).
+  const bulletHellBtn = document.createElement('button');
+  bulletHellBtn.type = 'button';
+  bulletHellBtn.textContent = '⭘  BULLET HELL';
+  bulletHellBtn.style.cssText = `
+    padding: 12px 26px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(255,94,138,0.20), rgba(120,30,60,0.28));
+    border: 1px solid #ff5e8a;
+    border-radius: 10px;
+    color: #ff9ab8;
+    font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 14px); font-weight: 800;
+    letter-spacing: 0.28em;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 12px 24px rgba(0,0,0,0.55), 0 0 22px rgba(255,94,138,0.18);
+  `;
+  bulletHellBtn.addEventListener('mouseenter', () => { try { sfx.uiHover(); } catch (_) {} });
+  bulletHellBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    try { sfx.uiClick(); } catch (_) {}
+    if (typeof window !== 'undefined' && typeof window.kkStartBulletHell === 'function') window.kkStartBulletHell();
+  });
+
+  selectFooter.appendChild(backBtn);
+  selectFooter.appendChild(bulletHellBtn);
+  selectFooter.appendChild(startRunBtn);
+  _selectPanel.appendChild(selectFooter);
+
+  // ── Menu panel: big Play button + existing btnRow (meta buttons + mode toggles) ──
+  const playBtn = document.createElement('button');
+  playBtn.type = 'button';
+  playBtn.textContent = '▶  PLAY';
+  playBtn.style.cssText = `
+    padding: 18px 60px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(255,210,127,0.22), rgba(180,130,40,0.26));
+    border: 1px solid ${C.amber};
+    border-radius: 12px;
+    color: ${C.amber};
+    font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 22px); font-weight: 800;
+    letter-spacing: 0.32em;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 14px 28px rgba(0,0,0,0.6), 0 0 24px rgba(255,210,127,0.22);
+  `;
+  playBtn.addEventListener('mouseenter', () => { try { sfx.uiHover(); } catch (_) {} });
+  playBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    try { sfx.uiClick(); } catch (_) {}
+    _setStartView('select');
+  });
+  _menuPanel.appendChild(playBtn);
+  _menuPanel.appendChild(btnRow);
+
+  _startCharRowRef = charRow;
+  _startBtnRowRef = btnRow;
+  _startView = 'menu';
+  _menuPanel.style.display = 'flex';
+  _selectPanel.style.display = 'none';
+  _root.appendChild(_startScreen);
+  _refreshStartFocus();
+  // Surface the build version in the bottom-right corner. Attached to body so
+  // it survives modal stacks AND doesn't fight the start-screen flex layout.
+  _setVersionLabelVisible(true);
+}
+
+export function hideStartScreen() {
+  if (_startFocusScope) { popFocusScope(_startFocusScope); _startFocusScope = null; }
+  if (_charCarousel) { try { _charCarousel.destroy(); } catch (_) {} _charCarousel = null; }
+  _menuPanel = null;
+  _selectPanel = null;
+  _startView = 'menu';
+  _startStageRowRef = null;
+  _startCharRowRef = null;
+  _startBtnRowRef = null;
+  _startPresetRowRef = null;
+  // Clear any active tooltip BEFORE removing the start-screen DOM. Character
+  // cards register tooltips bound to themselves; if the player clicks/Space's
+  // through while hovering, removing _startScreen orphans the card and no
+  // mouseleave fires — leaving the tooltip stuck at opacity:1 over gameplay.
+  try { hideTooltip(); } catch (_) {}
+  if (_startScreen && _startScreen.parentNode) {
+    _startScreen.parentNode.removeChild(_startScreen);
+  }
+  _startScreen = null;
+  // Hide the version pill in-run — it's only contextually useful on the menu /
+  // start screen, where the player might want to share a bug report with build.
+  _setVersionLabelVisible(false);
+}
+
+// ── Slot machine helpers ─────────────────────────────────────────────────────
+function _outcomeText(outcome) {
+  if (outcome.tier === 'jackpot') return '777 JACKPOT! MAX UPGRADES';
+  // Owned-upgrade clarity: weapon rewards that level an owned weapon (or
+  // re-route to one) read as "NAME +N → Lv M" instead of a bare symbol name.
+  let body = null;
+  if (outcome.symbol.kind === 'weapon') {
+    const n = outcome.count || 1;
+    const p = previewWeaponGrant(outcome.symbol.id, n);
+    if (p && !p.isNew) {
+      // effReps: overflow reps re-route per rep in applyOutcome — never
+      // promise "+3" when only +1 lands on this weapon. Redirects get the
+      // rolled symbol's icon as a prefix so the re-route is legible.
+      const reps = p.effReps != null ? p.effReps : n;
+      const pre = p.redirected ? `${outcome.symbol.icon}→` : '';
+      body = `${pre}${p.name.toUpperCase()} +${reps} → Lv ${p.toLevel}`;
+      if (reps < n) body += ' +overflow';
+    } else if (!p) {
+      // Every weapon maxed — applyOutcome converts reps to +damage fillers.
+      body = `${outcome.symbol.name} x${n} → +DMG (all weapons maxed)`;
+    }
+  }
+  if (outcome.tier === 'triple')  return `TRIPLE ${outcome.symbol.icon} — ${body || `${outcome.symbol.name} x3`}`;
+  if (outcome.tier === 'double')  return `PAIR ${outcome.symbol.icon} — ${body || `${outcome.symbol.name} x2`}`;
+  return `${outcome.symbol.icon} — ${body || outcome.symbol.name}`;
+}
+
+function _outcomeStyle(tier) {
+  if (tier === 'jackpot') return { color: '#ffe14a', size: 36 };
+  if (tier === 'triple')  return { color: '#ffe14a', size: 28 };
+  if (tier === 'double')  return { color: C.cyan,    size: 24 };
+  return { color: C.cyan, size: 22 };
+}
+
+// Note: outcome is NOT applied until the player chooses (Take / Gamble).
+// continueBtn.onclick is set by caller to commit current `_pendingOutcome`.
+function _showOutcome(outcome, result, continueBtn, gambleBtn) {
+  const ts = _outcomeStyle(outcome.tier);
+  result.style.color = ts.color;
+  result.style.textShadow = `0 0 12px ${ts.color}, 0 0 28px ${ts.color}`;
+  result.style.fontSize = ts.size + 'px';
+  result.textContent = _outcomeText(outcome);
+  continueBtn.style.display = 'inline-block';
+  if (outcome.tier === 'jackpot') {
+    state.fx.shake = Math.max(state.fx.shake, 1.0);
+    state.fx.bloomBoost = 1.0;
+    try { _showJackpotSunburst(); } catch (_) {}
+  } else if (outcome.tier === 'triple') {
+    state.fx.shake = Math.max(state.fx.shake, 0.6);
+    state.fx.bloomBoost = 0.7;
+  }
+}
+
+// Classic double-or-nothing: 50/50. Win → apply 2× outcome. Lose → apply nothing.
+function _doGamble(pendingRef, result, continueBtn, gambleBtn) {
+  gambleBtn.style.display = 'none';
+  gambleBtn.onclick = null;
+  const prev = pendingRef.outcome;
+  const win = Math.random() < 0.5;
+  if (win) {
+    // Replace the pending outcome with a doubled version
+    const doubled = {
+      tier: prev.tier === 'single' ? 'double'
+          : prev.tier === 'double' ? 'triple'
+          : prev.tier === 'triple' ? 'jackpot'
+          : prev.tier,
+      symbol: prev.symbol,
+      count: Math.min(3, (prev.count || 1) * 2),
+    };
+    pendingRef.outcome = doubled;
+    const ts = _outcomeStyle(doubled.tier);
+    result.style.color = ts.color;
+    result.style.textShadow = `0 0 12px ${ts.color}, 0 0 28px ${ts.color}`;
+    result.style.fontSize = ts.size + 'px';
+    result.textContent = `🎲 DOUBLED! ${_outcomeText(doubled)}`;
+    state.fx.shake = Math.max(state.fx.shake, 0.7);
+    state.fx.bloomBoost = 0.9;
+  } else {
+    pendingRef.outcome = null;  // nothing applied on commit
+    result.textContent = '💀 BUSTED — Nothing for you.';
+    result.style.color = '#ff5566';
+    result.style.textShadow = '0 0 12px #ff5566, 0 0 28px #ff5566';
+    result.style.fontSize = '22px';
+    state.fx.shake = Math.max(state.fx.shake, 0.35);
+  }
+}
+
+// ── Slot machine modal ───────────────────────────────────────────────────────
+let _slotModal = null;
+let _slotKeyHandler = null;
+let _slotPausedByUs = false;
+const _promoCapture = typeof window !== 'undefined' && window.__promoCapture === true;
+
+// A reel face: pixel-art icon if the symbol id has art (reuses the level-up card
+// icons + the slot-only 'jackpot'/'dash'), else the emoji glyph.
+function _slotFace(sym) {
+  return ICON_ART.has(sym.id)
+    ? `<img class="kk-slot-img" src="assets/icons/${sym.id}.webp" alt="">`
+    : `<span class="kk-slot-emoji">${sym.icon}</span>`;
+}
+// Cozy pixel sunburst behind the reels on a jackpot (the "sunburst in our style").
+function _showJackpotSunburst() {
+  if (!_slotModal) return;
+  const sun = document.createElement('div');
+  sun.className = 'kk-slot-sun';   // pure-CSS gold conic rays (see retheme block)
+  _slotModal.insertBefore(sun, _slotModal.firstChild);
+}
+
+export function isSlotOpen() { return !!_slotModal; }
+
+export function showSlotMachine() {
+  // Iter 21a — defensive tooltip hide on modal entry.
+  try { hideTooltip(); } catch (_) {}
+  if (_slotModal) return;
+  // Pause OWNERSHIP (mirrors forestChests): only unpause on close if WE set
+  // the pause. Without this, closing the slot modal while another mandatory
+  // modal holds the pause resumes live gameplay underneath it.
+  _slotPausedByUs = !state.time.paused;
+  state.time.paused = true;
+
+  _slotModal = document.createElement('div');
+  _slotModal.style.cssText = `
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 34%, rgba(216,182,231,0.20), transparent 62%),
+      radial-gradient(ellipse at center, rgba(58,36,52,0.42), rgba(34,20,30,0.78) 82%),
+      rgba(40,26,34,0.62);
+    backdrop-filter: blur(5px);
+    -webkit-backdrop-filter: blur(5px);
+    display: flex; flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    justify-content: safe center;
+    overflow-y: auto; overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    pointer-events: auto;
+    font-family: ${F.body};
+    z-index: 105;
+    padding: clamp(16px, 4vh, 40px) 16px;
+  `;
+
+  const title = document.createElement('div');
+  title.textContent = 'Treasure';
+  title.style.cssText = `font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 52px); font-weight: 900;
+    letter-spacing: 0.20em; color: ${C.amber};
+    text-shadow: 0 2px 18px rgba(0,0,0,0.6), 0 0 28px rgba(255,210,127,0.22);
+    margin-bottom: 6px;`;
+
+  const slotSub = document.createElement('div');
+  slotSub.style.cssText = `font-family: ${F.body}; font-size: calc(var(--kk-font-scale, 1) * 11px); letter-spacing: 0.34em;
+    color: rgba(245,239,225,0.62); text-transform: uppercase; margin-bottom: 22px;`;
+  slotSub.textContent = 'Spin the reels of fortune';
+
+  // Reel cabinet
+  const reelRow = document.createElement('div');
+  reelRow.style.cssText = `display: flex; gap: 14px; margin-bottom: 22px; position: relative; z-index: 2;
+    background: linear-gradient(180deg, rgba(74,48,30,0.96), rgba(52,33,20,0.97));
+    border: 3px solid #8a5a34; border-radius: 16px;
+    box-shadow:
+      0 0 0 2px rgba(255,236,206,0.22) inset,
+      0 0 0 4px rgba(60,38,22,0.92),
+      0 18px 34px rgba(28,15,9,0.55);
+    padding: 22px 26px;`;
+
+  const reels = [];
+  for (let i = 0; i < 3; i++) {
+    const r = document.createElement('div');
+    r.style.cssText = `width: 116px; height: 138px;
+      background: radial-gradient(circle at 50% 40%, #fff6ec, #f2d9c4);
+      border: 3px solid #8a5a34;
+      border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      font-size: calc(var(--kk-font-scale, 1) * 64px); line-height: 1;
+      box-shadow: inset 0 0 0 2px rgba(255,247,236,0.65), inset 0 2px 8px rgba(120,80,50,0.28);
+      overflow: hidden;`;
+    r.innerHTML = '<span class="kk-slot-emoji">❓</span>';
+    reels.push(r);
+    reelRow.appendChild(r);
+  }
+  // Preload the reel-face images so the fast spin doesn't flicker.
+  for (const s of SLOT_SYMBOLS) { if (ICON_ART.has(s.id)) { const im = new Image(); im.src = `assets/icons/${s.id}.webp`; } }
+
+  const result = document.createElement('div');
+  result.style.cssText = `min-height: 56px; font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 24px); font-weight: 700;
+    letter-spacing: 0.22em; color: ${C.text};
+    margin-bottom: 18px; text-align: center;`;
+  result.textContent = 'Rolling…';
+
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display: flex; gap: 14px;';
+
+  const slotBtnStyle = (accent) => `padding: 12px 28px; cursor: pointer;
+    background: linear-gradient(180deg, #ffcf8a, #e79c4e);
+    border: 2px solid ${accent};
+    border-radius: 10px;
+    color: #3a2312;
+    font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 14px); font-weight: 700;
+    letter-spacing: 0.28em;
+    box-shadow: 0 0 0 2px rgba(255,247,232,0.42) inset, 0 6px 16px rgba(28,15,9,0.4);
+    display: none;`;
+
+  const gambleBtn = document.createElement('button');
+  gambleBtn.type = 'button';
+  gambleBtn.textContent = 'Double or Nothing · G';
+  gambleBtn.style.cssText = slotBtnStyle(C.amber);
+
+  const continueBtn = document.createElement('button');
+  continueBtn.type = 'button';
+  continueBtn.textContent = 'Take It · Space';
+  continueBtn.style.cssText = slotBtnStyle(C.magenta);
+  // pending outcome ref — mutated by gamble if used
+  const pending = { outcome: null };
+  continueBtn.addEventListener('click', () => {
+    if (pending.outcome) applyOutcome(pending.outcome);
+    _closeSlot();
+  });
+
+  btnRow.appendChild(gambleBtn);
+  btnRow.appendChild(continueBtn);
+
+  _slotModal.appendChild(title);
+  _slotModal.appendChild(slotSub);
+  _slotModal.appendChild(reelRow);
+  _slotModal.appendChild(result);
+  _slotModal.appendChild(btnRow);
+  _root.appendChild(_slotModal);
+
+  // ── Spin animation ──
+  // iter 33r — was 1100/1750/2500ms (~2.7s total), too long with chest cadence
+  // bumped down. Cut to 500/800/1100ms (~1.3s total). Skip button + Space
+  // during spin snap reels to final state immediately.
+  // Software-WebGL promo capture can advance the browser clock unevenly. A
+  // shorter capture-only spin keeps the authored reel art on screen for the
+  // edit without changing the live player's treasure cadence.
+  const stops = _promoCapture ? [260, 420, 580] : [500, 800, 1100];
+  const finalRolls = [rollReel(), rollReel(), rollReel()];
+
+  let elapsed = 0;
+  let lastTick = performance.now();
+  let _skipped = false;
+
+  function symbolForFrame(reelIdx, t) {
+    const stop = stops[reelIdx];
+    if (t >= stop) return finalRolls[reelIdx];
+    // Cycle speed slows as we approach stop time
+    const tRem = stop - t;
+    const speed = Math.max(30, 220 - tRem * 0.3);
+    const idx = Math.floor(t / speed) % SLOT_SYMBOLS.length;
+    return SLOT_SYMBOLS[idx];
+  }
+
+  function _finalizeSpin() {
+    for (let i = 0; i < 3; i++) {
+      reels[i].innerHTML = _slotFace(finalRolls[i]);
+      reels[i].dataset.locked = '1';
+      reels[i].style.borderColor = '#ffcf8a';
+      reels[i].style.boxShadow = `0 0 16px rgba(255,207,138,0.75), inset 0 0 0 2px rgba(255,247,236,0.65)`;
+    }
+    skipBtn.style.display = 'none';
+    const outcome = resolveOutcome(finalRolls);
+    pending.outcome = outcome;
+    _showOutcome(outcome, result, continueBtn, gambleBtn);
+    if (outcome.tier !== 'jackpot') {
+      gambleBtn.style.display = 'inline-block';
+      gambleBtn.onclick = () => _doGamble(pending, result, continueBtn, gambleBtn);
+    }
+  }
+
+  function animLoop() {
+    if (_skipped) return;
+    const now = performance.now();
+    const dt = now - lastTick;
+    lastTick = now;
+    elapsed += dt;
+
+    for (let i = 0; i < 3; i++) reels[i].innerHTML = _slotFace(symbolForFrame(i, elapsed));
+
+    // Lock indicator: when a reel stops, flash its border (honey)
+    for (let i = 0; i < 3; i++) {
+      if (elapsed >= stops[i] && reels[i].dataset.locked !== '1') {
+        reels[i].dataset.locked = '1';
+        reels[i].style.borderColor = '#ffcf8a';
+        reels[i].style.boxShadow = `0 0 16px rgba(255,207,138,0.75), inset 0 0 0 2px rgba(255,247,236,0.65)`;
+      }
+    }
+
+    if (elapsed < stops[2] + 150) {
+      _slotRAF = requestAnimationFrame(animLoop);
+      return;
+    }
+    _finalizeSpin();
+  }
+  let _slotRAF = requestAnimationFrame(animLoop);
+  _slotModal.__rafId = () => _slotRAF;
+
+  // iter 33r — Skip button (visible during spin). Click or press Space/Enter
+  // mid-spin to snap reels to final state immediately.
+  const skipBtn = document.createElement('button');
+  skipBtn.type = 'button';
+  skipBtn.textContent = 'Skip · Space';
+  skipBtn.style.cssText = `padding: 10px 22px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(74,48,30,0.95), rgba(52,33,20,0.96));
+    border: 2px solid rgba(255,214,163,0.5); border-radius: 10px;
+    color: #ffe9c8;
+    font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 12px); font-weight: 700;
+    letter-spacing: 0.28em;
+    box-shadow: 0 0 0 2px rgba(255,236,206,0.14) inset, 0 6px 16px rgba(28,15,9,0.4);
+    margin-bottom: 12px;`;
+  skipBtn.addEventListener('click', () => {
+    if (_skipped) return;
+    _skipped = true;
+    if (_slotRAF) cancelAnimationFrame(_slotRAF);
+    _finalizeSpin();
+  });
+  // Insert skip ABOVE the result line so layout is stable.
+  _slotModal.insertBefore(skipBtn, result);
+
+  _slotKeyHandler = (e) => {
+    // During spin, Space/Enter skips to final state.
+    if (!pending.outcome && !_skipped) {
+      if (e.code === 'Space' || e.code === 'Enter') {
+        e.preventDefault();
+        _skipped = true;
+        if (_slotRAF) cancelAnimationFrame(_slotRAF);
+        _finalizeSpin();
+        return;
+      }
+      return;
+    }
+    if (continueBtn.style.display === 'none') return;
+    if (e.code === 'Enter' || e.code === 'Space') {
+      if (pending.outcome) applyOutcome(pending.outcome);
+      _closeSlot();
+    } else if (e.code === 'KeyG' && gambleBtn.style.display !== 'none') {
+      _doGamble(pending, result, continueBtn, gambleBtn);
+    } else if (e.code === 'Escape') {
+      if (pending.outcome) applyOutcome(pending.outcome);
+      _closeSlot();
+    }
+  };
+  window.addEventListener('keydown', _slotKeyHandler);
+}
+
+function _closeSlot() {
+  if (!_slotModal) return;
+  if (_slotKeyHandler) window.removeEventListener('keydown', _slotKeyHandler);
+  _slotKeyHandler = null;
+  if (_slotModal.parentNode) _slotModal.parentNode.removeChild(_slotModal);
+  _slotModal = null;
+  if (_slotPausedByUs && !state.gameOver && state.started) state.time.paused = false;
+  _slotPausedByUs = false;
+}
+
+// ── Casino — Seedy Tent modals (iter 22B) ────────────────────────────────────
+// Three modals: showCasinoMenu (entry hub) → showCasinoSlots / showBossRushWager.
+// All share an Esc-to-close handler and the dark-amber gambling aesthetic.
+// State + RNG live in casino.js; this layer is presentation + input only.
+let _casinoModal = null;
+let _casinoKey = null;
+
+function _closeCasino() {
+  if (!_casinoModal) return;
+  if (_casinoKey) window.removeEventListener('keydown', _casinoKey);
+  _casinoKey = null;
+  if (_casinoModal.parentNode) _casinoModal.parentNode.removeChild(_casinoModal);
+  _casinoModal = null;
+  try { sfx.modalClose(); } catch (_) {}
+}
+
+// Shared dark-tent backdrop CSS — matches the lantern-red palette.
+const _CASINO_BG = `
+  position: fixed; inset: 0;
+  background:
+    radial-gradient(ellipse at 50% 30%, rgba(255,80,80,0.10), transparent 60%),
+    radial-gradient(ellipse at center, rgba(0,0,0,0.6), rgba(0,0,0,0.92) 80%);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  display: flex; flex-direction: column;
+  align-items: center; justify-content: flex-start;
+  pointer-events: auto;
+  z-index: 122;
+  overflow-y: auto;
+  padding: 48px 20px;
+`;
+
+// Tiny color/balance helpers used across all three casino modals.
+const CASINO_RED = '#ff5e5e';
+function _embers() { return getMeta().embers || 0; }
+function _emberLine(label) {
+  const m = getMeta();
+  const won = (m.casinoLifetimeWon || 0);
+  const wagered = (m.casinoLifetimeWagered || 0);
+  return `
+    <div style="font-family:${F.display}; font-size:calc(var(--kk-font-scale,1) * 18px); color:#ffae6a;
+                margin-bottom: 22px; letter-spacing:0.18em;
+                display:flex; gap:24px; flex-wrap:wrap; justify-content:center; align-items:baseline;">
+      <span style="display:inline-flex;align-items:baseline;gap:10px;">
+        <span style="font-family:${F.body};font-size:calc(var(--kk-font-scale,1) * 13px);letter-spacing:0.32em;color:rgba(245,239,225,0.62);text-transform:uppercase;">${label || 'Embers'}</span>
+        <span style="font-family:${F.mono};">${_embers().toLocaleString()}</span> 🔥
+      </span>
+      <span style="display:inline-flex;align-items:baseline;gap:10px;font-size:calc(var(--kk-font-scale,1) * 13px);color:rgba(245,239,225,0.5);">
+        <span style="letter-spacing:0.32em;text-transform:uppercase;">Lifetime</span>
+        <span style="font-family:${F.mono};">+${won.toLocaleString()} / −${wagered.toLocaleString()}</span>
+      </span>
+    </div>`;
+}
+
+/**
+ * Casino entry hub — two big buttons (Slots, Boss Rush Wager) + a status line
+ * if a wager is already pending (which blocks starting another one).
+ */
+// Iter 33e — Casino dashboard. Tabbed hub with three sections:
+//   Games  — Slots (Embers) and Parlay (Sigils 50/50 doubler)
+//   Buffs  — Permanent + Temporary powerups paid in Sigils
+//   House  — Casino unlocks paid in Sigils
+// Always available, no gating.
+let _casinoTab = 'games';
+export function showCasinoMenu(initialTab) {
+  try { hideTooltip(); } catch (_) {}
+  if (_casinoModal) return;
+  if (initialTab === 'games' || initialTab === 'buffs' || initialTab === 'house') {
+    _casinoTab = initialTab;
+  }
+  try { sfx.modalOpen(); } catch (_) {}
+  _casinoModal = document.createElement('div');
+  markModalDialog(_casinoModal, 'The Seedy Tent');
+  _casinoModal.style.cssText = _CASINO_BG;
+
+  // Read through the canonical meta API; the old `kk_meta` direct lookup used
+  // a legacy key and could paint zero balances over a populated save.
+  const meta = getMeta();
+  const sigils = meta.sigils || 0;
+  const embers = meta.embers || 0;
+
+  const header = document.createElement('div');
+  header.innerHTML = `
+    <div style="font-family:${F.display}; font-size:calc(var(--kk-font-scale,1) * 32px); font-weight:900;
+                letter-spacing:0.22em; color:${CASINO_RED};
+                text-shadow: 0 2px 18px rgba(0,0,0,0.7), 0 0 30px rgba(255,80,80,0.25);
+                margin-bottom: 4px; text-align:center;">The Seedy Tent</div>
+    <div style="font-family:${F.body}; font-size:calc(var(--kk-font-scale,1) * 11px); letter-spacing:0.34em;
+                color:rgba(245,239,225,0.55); text-transform:uppercase; margin-bottom: 14px; text-align:center;">
+      Pull the lever. Cash the sigils. The wheel remembers.
+    </div>
+    <div style="display:flex; gap:18px; justify-content:center; margin-bottom:18px; font-family:${F.display}; letter-spacing:0.22em;">
+      <div style="color:#ffd27f; font-size:calc(var(--kk-font-scale,1) * 14px);">🔥 ${embers.toLocaleString()} Embers</div>
+      <div style="color:#c9a4ff; font-size:calc(var(--kk-font-scale,1) * 14px);">✦ ${sigils.toLocaleString()} Sigils</div>
+    </div>
+  `;
+  _casinoModal.appendChild(header);
+
+  const tabRow = document.createElement('div');
+  tabRow.style.cssText = 'display:flex; gap:8px; margin-bottom:16px;';
+  const tabs = [
+    { id: 'games', label: 'Games' },
+    { id: 'buffs', label: 'Buffs' },
+    { id: 'house', label: 'House' },
+  ];
+  const body = document.createElement('div');
+  body.style.cssText = 'max-width: 760px; width: 100%; min-height: 280px; display:flex; flex-direction:column; gap:10px;';
+
+  const renderTab = () => {
+    body.innerHTML = '';
+    if (_casinoTab === 'games') {
+      body.appendChild(_buildGamesTab());
+    } else if (_casinoTab === 'buffs') {
+      body.appendChild(_buildBuffsTab());
+    } else {
+      body.appendChild(_buildHouseTab());
+    }
+    for (const tb of tabRow.children) {
+      const active = tb.dataset.tabid === _casinoTab;
+      tb.style.background = active ? `linear-gradient(180deg, rgba(60,28,28,0.96), rgba(28,12,12,0.96))` : `linear-gradient(180deg, rgba(20,12,12,0.78), rgba(10,6,6,0.86))`;
+      tb.style.color = active ? '#ffd27f' : 'rgba(245,239,225,0.55)';
+      tb.style.borderColor = active ? CASINO_RED : C.edge;
+    }
+  };
+
+  for (const t of tabs) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.dataset.tabid = t.id;
+    b.textContent = t.label;
+    b.style.cssText = `padding:9px 22px; cursor:pointer; border-radius:8px; border:1px solid ${C.edge};
+      font-family:${F.display}; letter-spacing:0.26em; font-size:calc(var(--kk-font-scale,1) * 13px);
+      background:linear-gradient(180deg, rgba(20,12,12,0.78), rgba(10,6,6,0.86)); color:rgba(245,239,225,0.55);`;
+    b.onclick = () => { try { sfx.uiClick(); } catch (_) {} _casinoTab = t.id; renderTab(); };
+    tabRow.appendChild(b);
+  }
+  _casinoModal.appendChild(tabRow);
+  _casinoModal.appendChild(body);
+  renderTab();
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = 'Leave · Esc';
+  close.style.cssText = `padding: 10px 26px; cursor: pointer; margin-top:16px;
+    background: linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86));
+    border: 1px solid ${C.edge}; border-radius: 8px;
+    color: ${C.magenta}; font-family: ${F.display}; font-size: calc(var(--kk-font-scale,1) * 13px); font-weight: 700;
+    letter-spacing: 0.28em;`;
+  close.onclick = _closeCasino;
+  _casinoModal.appendChild(close);
+  _root.appendChild(_casinoModal);
+
+  _casinoKey = (e) => { if (e.code === 'Escape') _closeCasino(); };
+  window.addEventListener('keydown', _casinoKey);
+}
+
+function _buildGamesTab() {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:grid; grid-template-columns: 1fr 1fr; gap:14px;';
+  const mkCard = (icon, name, sub, accent, onclick) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.style.cssText = `padding:18px 16px; cursor:pointer;
+      background: linear-gradient(180deg, rgba(28,16,16,0.94), rgba(14,8,8,0.96));
+      border: 1px solid ${accent}; border-radius: 12px; color:${accent};
+      font-family:${F.display}; letter-spacing:0.22em;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 14px 28px rgba(0,0,0,0.6);`;
+    b.innerHTML = `
+      <div style="font-size:calc(var(--kk-font-scale,1) * 30px); margin-bottom:5px;">${icon}</div>
+      <div style="font-size:calc(var(--kk-font-scale,1) * 16px); font-weight:700;">${name}</div>
+      <div style="font-size:calc(var(--kk-font-scale,1) * 11px); opacity:0.7; margin-top:6px;">${sub}</div>`;
+    b.onclick = () => { try { sfx.uiClick(); } catch (_) {} onclick(); };
+    return b;
+  };
+  wrap.appendChild(mkCard('🎰', 'Slots', '3-reel · pays Embers', '#ffd27f', () => { _closeCasino(); showCasinoSlots(); }));
+  wrap.appendChild(mkCard('🪙', 'Parlay', '50/50 · sigil doubler', '#c9a4ff', () => { _closeCasino(); showCasinoParlay(); }));
+  return wrap;
+}
+
+function _buildBuffsTab() {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex; flex-direction:column; gap:14px;';
+  // Lazy-import catalogs each render so the data is always fresh
+  import('./casino.js').then(({ CASINO_PERM_BUFFS, CASINO_RUN_BUFFS, permLevel, buyPerm, buyRunBuff }) => {
+    wrap.innerHTML = '';
+    const sec = (title, color) => {
+      const h = document.createElement('div');
+      h.style.cssText = `font-family:${F.display}; letter-spacing:0.32em; color:${color}; font-size:calc(var(--kk-font-scale,1) * 13px); margin:6px 0 4px;`;
+      h.textContent = title;
+      return h;
+    };
+    wrap.appendChild(sec('PERMANENT — Spent Sigils, kept forever', '#ffd27f'));
+    for (const def of CASINO_PERM_BUFFS) {
+      const lvl = permLevel(def.id);
+      const cost = def.cost * (lvl + 1);
+      wrap.appendChild(_buffRow(def, `${def.desc}`, `Lv ${lvl}/${def.max}`, cost, lvl >= def.max, () => {
+        if (buyPerm(def.id)) { try { sfx.uiClick(); } catch (_) {} renderBuffs(); }
+      }));
+    }
+    wrap.appendChild(sec('TEMPORARY — One-shot, applied next run', '#c9a4ff'));
+    for (const def of CASINO_RUN_BUFFS) {
+      wrap.appendChild(_buffRow(def, def.desc, 'Queues', def.cost, false, () => {
+        if (buyRunBuff(def.id)) { try { sfx.uiClick(); } catch (_) {} renderBuffs(); }
+      }));
+    }
+  });
+  const renderBuffs = () => {
+    // Re-render full menu when sigil count or levels change so the header
+    // and all "buy" affordability checks stay current.
+    _closeCasino();
+    showCasinoMenu();
+  };
+  return wrap;
+}
+
+function _buffRow(def, descText, levelText, cost, maxed, onBuy) {
+  const meta = getMeta();
+  const sigils = meta.sigils || 0;
+  const canAfford = sigils >= cost && !maxed;
+  const row = document.createElement('div');
+  row.style.cssText = `display:grid; grid-template-columns: 38px 1fr auto; gap:12px; align-items:center;
+    background: linear-gradient(180deg, rgba(20,12,12,0.86), rgba(10,6,6,0.86));
+    border: 1px solid ${C.edge}; border-radius: 8px; padding: 10px 14px;`;
+  row.innerHTML = `
+    <div style="font-size:calc(var(--kk-font-scale,1) * 24px); text-align:center;">${def.icon}</div>
+    <div>
+      <div style="font-family:${F.display}; letter-spacing:0.22em; color:#f5efe1; font-size:calc(var(--kk-font-scale,1) * 13px);">${def.name}</div>
+      <div style="font-family:${F.body}; font-size:calc(var(--kk-font-scale,1) * 11px); color:rgba(245,239,225,0.6);">${descText} · <span style="color:#c9a4ff;">${levelText}</span></div>
+    </div>`;
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.textContent = maxed ? 'MAX' : `${cost} ✦`;
+  btn.disabled = !canAfford;
+  btn.style.cssText = `padding:8px 16px; cursor:${canAfford ? 'pointer' : 'not-allowed'};
+    background: linear-gradient(180deg, rgba(60,28,28,0.94), rgba(28,12,12,0.96));
+    border: 1px solid ${canAfford ? CASINO_RED : C.edge}; border-radius: 6px;
+    color: ${canAfford ? '#ffd27f' : 'rgba(245,239,225,0.4)'};
+    font-family:${F.display}; letter-spacing:0.22em; font-size:calc(var(--kk-font-scale,1) * 12px);`;
+  btn.onclick = canAfford ? onBuy : null;
+  row.appendChild(btn);
+  return row;
+}
+
+function _buildHouseTab() {
+  const wrap = document.createElement('div');
+  wrap.style.cssText = 'display:flex; flex-direction:column; gap:14px;';
+  import('./casino.js').then(({ CASINO_HOUSE_UPGRADES, houseOwned, buyHouse }) => {
+    wrap.innerHTML = '';
+    const h = document.createElement('div');
+    h.style.cssText = `font-family:${F.display}; letter-spacing:0.32em; color:#ffd27f; font-size:calc(var(--kk-font-scale,1) * 13px); margin:6px 0 4px;`;
+    h.textContent = 'HOUSE — One-time unlocks';
+    wrap.appendChild(h);
+    for (const def of CASINO_HOUSE_UPGRADES) {
+      const owned = houseOwned(def.id);
+      wrap.appendChild(_buffRow(def, def.desc, owned ? 'OWNED' : 'Not owned', def.cost, owned, () => {
+        if (buyHouse(def.id)) { try { sfx.uiClick(); } catch (_) {} _closeCasino(); showCasinoMenu(); }
+      }));
+    }
+    const vipOwned = houseOwned('vip_multipliers');
+    const vaultOwned = houseOwned('vault_decor');
+    const roomState = document.createElement('div');
+    roomState.style.cssText = `font-family:${F.body}; font-size:calc(var(--kk-font-scale,1) * 11px);
+      color:rgba(245,239,225,0.68); margin-top:4px; padding:10px 12px; text-align:center;
+      background:rgba(255,210,127,0.055); border:1px solid rgba(255,210,127,0.18); border-radius:8px;`;
+    roomState.innerHTML = `
+      <div style="font-family:${F.display};font-size:calc(var(--kk-font-scale,1) * 11px);letter-spacing:0.24em;color:#ffd27f;margin-bottom:6px;">THE ROOM REMEMBERS</div>
+      <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap;margin-bottom:6px;">
+        <span style="color:${vipOwned ? '#a6de8f' : 'rgba(245,239,225,0.42)'};">${vipOwned ? '●' : '○'} VIP ropes</span>
+        <span style="color:${vaultOwned ? '#a6de8f' : 'rgba(245,239,225,0.42)'};">${vaultOwned ? '●' : '○'} Vault display</span>
+      </div>
+      House purchases appear physically in the casino; the Vault hoard grows with lifetime winnings.`;
+    wrap.appendChild(roomState);
+  });
+  return wrap;
+}
+
+// Parlay modal — single-track pure 50/50 doubler. Player stakes N sigils
+// (range PARLAY_MIN_BET..PARLAY_MAX_BET capped at current balance). Each flip
+// either doubles the pool or wipes it; the player chooses when to cash out.
+export function showCasinoParlay() {
+  try { hideTooltip(); } catch (_) {}
+  if (_casinoModal) return;
+  try { sfx.modalOpen(); } catch (_) {}
+  _casinoModal = document.createElement('div');
+  markModalDialog(_casinoModal, 'Casino Parlay');
+  _casinoModal.style.cssText = _CASINO_BG;
+  import('./casino.js').then(({ parlayFlip, settleParlay, PARLAY_MIN_BET, PARLAY_MAX_BET }) => {
+    _casinoModal.innerHTML = '';
+    const meta = getMeta();
+    let sigils = meta.sigils || 0;
+    let seed = 0;        // sigils committed at game start
+    let pool = 0;        // current pool (doubles or wipes per flip)
+    let flips = 0;
+    let busted = false;
+
+    const title = document.createElement('div');
+    title.style.cssText = `font-family:${F.display}; font-size:calc(var(--kk-font-scale,1) * 30px); font-weight:900;
+      letter-spacing:0.22em; color:#c9a4ff; margin-bottom:6px; text-align:center;`;
+    title.textContent = 'Parlay';
+    _casinoModal.appendChild(title);
+
+    const sub = document.createElement('div');
+    sub.style.cssText = `font-family:${F.body}; font-size:calc(var(--kk-font-scale,1) * 11px); letter-spacing:0.34em;
+      color:rgba(245,239,225,0.55); text-transform:uppercase; margin-bottom:18px; text-align:center;`;
+    sub.textContent = '50/50 flip · cash out anytime · bust wipes pool';
+    _casinoModal.appendChild(sub);
+
+    const state_ = document.createElement('div');
+    state_.style.cssText = `max-width:520px; width:100%; padding:18px 22px; margin-bottom:14px;
+      background: linear-gradient(180deg, rgba(28,18,40,0.96), rgba(12,8,18,0.96));
+      border:1px solid #c9a4ff; border-radius:12px; text-align:center;
+      font-family:${F.display}; letter-spacing:0.22em;`;
+    _casinoModal.appendChild(state_);
+
+    const controls = document.createElement('div');
+    controls.style.cssText = `display:flex; gap:10px; justify-content:center; margin-bottom:18px;`;
+    _casinoModal.appendChild(controls);
+
+    const refreshUI = () => {
+      const balance = sigils - seed + pool;
+      state_.innerHTML = `
+        <div style="color:#c9a4ff; font-size:calc(var(--kk-font-scale,1) * 12px); margin-bottom:6px;">FLIPS · ${flips}</div>
+        <div style="color:#f5efe1; font-size:calc(var(--kk-font-scale,1) * 24px); margin-bottom:6px;">Pool: ${pool} ✦</div>
+        <div style="color:rgba(245,239,225,0.6); font-size:calc(var(--kk-font-scale,1) * 11px);">Wallet now: ${balance} ✦</div>
+        ${busted ? `<div style="color:${CASINO_RED}; margin-top:8px;">BUST · pool wiped</div>` : ''}
+      `;
+      controls.innerHTML = '';
+      const mkBtn = (label, accent, onclick, disabled = false) => {
+        const b = document.createElement('button');
+        b.type = 'button'; b.textContent = label;
+        b.disabled = disabled;
+        b.style.cssText = `padding:10px 22px; cursor:${disabled ? 'not-allowed' : 'pointer'};
+          background: linear-gradient(180deg, rgba(40,24,56,0.94), rgba(20,12,28,0.96));
+          border:1px solid ${disabled ? C.edge : accent}; border-radius:8px;
+          color:${disabled ? 'rgba(245,239,225,0.4)' : accent}; font-family:${F.display}; letter-spacing:0.24em; font-size:calc(var(--kk-font-scale,1) * 13px);`;
+        b.onclick = disabled ? null : onclick;
+        return b;
+      };
+      if (pool === 0 && !busted) {
+        // Pick a seed
+        for (const v of [5, 10, 25, 50, 100]) {
+          const can = v >= PARLAY_MIN_BET && v <= PARLAY_MAX_BET && sigils >= v;
+          controls.appendChild(mkBtn(`Stake ${v} ✦`, '#c9a4ff', () => {
+            seed = v; pool = v; flips = 0; busted = false; refreshUI();
+          }, !can));
+        }
+      } else if (busted) {
+        controls.appendChild(mkBtn('Try Again', '#c9a4ff', () => {
+          settleParlay(seed, 0);
+          sigils = sigils - seed;
+          seed = 0; pool = 0; flips = 0; busted = false; refreshUI();
+        }));
+      } else {
+        controls.appendChild(mkBtn(`Flip · risk ${pool} ✦`, CASINO_RED, () => {
+          const win = parlayFlip();
+          flips += 1;
+          if (win) { pool *= 2; }
+          else { busted = true; }
+          refreshUI();
+        }));
+        controls.appendChild(mkBtn(`Cash out · take ${pool} ✦`, '#9bff9b', () => {
+          settleParlay(seed, pool);
+          sigils = sigils - seed + pool;
+          seed = 0; pool = 0; flips = 0; refreshUI();
+        }));
+      }
+    };
+    refreshUI();
+
+    const backBtn = document.createElement('button');
+    backBtn.type = 'button';
+    backBtn.textContent = '← Back to Casino';
+    backBtn.style.cssText = `padding:10px 24px; cursor:pointer;
+      background: linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86));
+      border: 1px solid ${C.edge}; border-radius: 8px; color: ${C.magenta};
+      font-family: ${F.display}; font-size: calc(var(--kk-font-scale,1) * 13px); letter-spacing: 0.28em;`;
+    backBtn.onclick = () => {
+      if (pool > 0 && !busted) settleParlay(seed, pool);
+      _closeCasino(); showCasinoMenu();
+    };
+    _casinoModal.appendChild(backBtn);
+  });
+  _root.appendChild(_casinoModal);
+  _casinoKey = (e) => { if (e.code === 'Escape') { _closeCasino(); showCasinoMenu(); } };
+  window.addEventListener('keydown', _casinoKey);
+}
+
+/**
+ * Slot machine modal — 3 reels rendered as large emoji glyphs, staggered stop
+ * animation. Bet selector at the bottom. Math.random() RNG via casino.js;
+ * this layer just orchestrates the visuals + delegates resolveSpin().
+ */
+export function showCasinoSlots() {
+  try { hideTooltip(); } catch (_) {}
+  if (_casinoModal) return;
+  try { sfx.modalOpen(); } catch (_) {}
+  _casinoModal = document.createElement('div');
+  markModalDialog(_casinoModal, 'Casino Slots');
+  _casinoModal.style.cssText = _CASINO_BG;
+
+  const title = document.createElement('div');
+  title.style.cssText = `font-family:${F.display}; font-size:calc(var(--kk-font-scale,1) * 32px); font-weight:900;
+    letter-spacing:0.22em; color:${C.amber};
+    text-shadow: 0 2px 16px rgba(0,0,0,0.55), 0 0 24px rgba(255,210,127,0.22);
+    margin-bottom: 4px; text-align:center;`;
+  title.textContent = 'Slots';
+  _casinoModal.appendChild(title);
+
+  const sub = document.createElement('div');
+  sub.style.cssText = `font-family:${F.body}; font-size:calc(var(--kk-font-scale,1) * 11px); letter-spacing:0.34em;
+    color:rgba(245,239,225,0.6); text-transform:uppercase; margin-bottom: 22px; text-align:center;`;
+  sub.innerHTML = '★ ★ ★ = 25× · 3-match = 8× · pair = 1.5× · pity rail under 100 🔥 pays 1.2×';
+  _casinoModal.appendChild(sub);
+
+  const emberWrap = document.createElement('div');
+  emberWrap.innerHTML = _emberLine('Balance');
+  _casinoModal.appendChild(emberWrap);
+
+  // Reel cabinet
+  const reelRow = document.createElement('div');
+  reelRow.style.cssText = `display:flex; gap:14px; margin-bottom:18px;
+    background: linear-gradient(180deg, rgba(20,16,12,0.96), rgba(8,6,4,0.98));
+    border: 1px solid ${CASINO_RED};
+    border-radius: 12px;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.05) inset,
+      0 0 0 1px rgba(0,0,0,0.4),
+      0 24px 48px rgba(0,0,0,0.6),
+      0 0 28px rgba(255,80,80,0.12);
+    padding: 22px 26px;`;
+
+  const reelEls = [];
+  for (let i = 0; i < 3; i++) {
+    const r = document.createElement('div');
+    r.style.cssText = `width:118px; height:138px;
+      background: linear-gradient(180deg, rgba(8,8,8,0.92), rgba(4,4,4,0.96));
+      border: 1px solid ${C.edge};
+      border-radius: 8px;
+      display:flex; align-items:center; justify-content:center;
+      font-size: calc(var(--kk-font-scale,1) * 64px); line-height: 1;
+      box-shadow: inset 0 2px 10px rgba(0,0,0,0.7), inset 0 -1px 0 rgba(255,255,255,0.04);
+      transition: border-color 0.18s ease, box-shadow 0.18s ease;`;
+    r.textContent = '❓';
+    reelEls.push(r);
+    reelRow.appendChild(r);
+  }
+  _casinoModal.appendChild(reelRow);
+
+  // Result line
+  const resultEl = document.createElement('div');
+  resultEl.style.cssText = `min-height:42px; font-family:${F.display}; font-size:calc(var(--kk-font-scale,1) * 22px); font-weight:700;
+    letter-spacing:0.22em; color:${C.text};
+    margin-bottom: 14px; text-align:center;`;
+  resultEl.textContent = ' ';
+  _casinoModal.appendChild(resultEl);
+
+  // Bet selector row
+  const betRow = document.createElement('div');
+  betRow.style.cssText = 'display:flex; gap:12px; margin-bottom:18px; flex-wrap:wrap; justify-content:center;';
+  let _selectedBet = 10;
+  let _spinning = false;
+  const betBtns = [];
+  // Bet-row render lives at function scope so the spin-completion handler
+  // can re-paint after the payout shifts the balance. CASINO is captured at
+  // import time and threaded into renderBets via closure.
+  let renderBets = () => {};
+  // Async import + render — keeps the modal building UI immediately and lets
+  // casino.js stay out of the top-level import graph for ui.js (lazy boot).
+  import('./casino.js').then((CASINO) => {
+    renderBets = () => {
+      betRow.innerHTML = '';
+      betBtns.length = 0;
+      for (const bet of CASINO.SLOT_BETS) {
+        const can = _embers() >= bet && !_spinning;
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        const active = _selectedBet === bet;
+        btn.style.cssText = `padding:10px 22px; cursor:${can ? 'pointer' : 'not-allowed'};
+          background: linear-gradient(180deg, ${active ? 'rgba(60,30,10,0.96)' : 'rgba(20,16,12,0.88)'}, rgba(8,6,4,0.95));
+          border: 1px solid ${can ? (active ? C.amber : C.edge) : 'rgba(80,80,80,0.4)'};
+          border-radius: 8px;
+          color: ${can ? (active ? C.amber : C.text) : 'rgba(120,120,120,0.6)'};
+          font-family:${F.display}; font-size:calc(var(--kk-font-scale,1) * 13px); font-weight:700;
+          letter-spacing:0.22em;
+          box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 18px rgba(0,0,0,0.5);
+          opacity: ${can ? 1 : 0.55};`;
+        btn.textContent = `${bet} 🔥`;
+        if (can) {
+          btn.addEventListener('click', () => {
+            try { sfx.uiClick(); } catch (_) {}
+            _selectedBet = bet;
+            renderBets();
+          });
+        }
+        betBtns.push(btn);
+        betRow.appendChild(btn);
+      }
+      // Hint when balance is below the smallest bet — kept inside renderBets
+      // so it survives every re-render call (single source of truth).
+      if (_embers() < CASINO.SLOT_BETS[0]) {
+        const hint = document.createElement('div');
+        hint.style.cssText = `font-family:${F.body}; font-size:calc(var(--kk-font-scale,1) * 12px); letter-spacing:0.20em;
+          text-align:center; color:${CASINO_RED}; margin-top:8px; text-transform:uppercase; width:100%;`;
+        hint.textContent = 'Need more Embers — try a run!';
+        betRow.appendChild(hint);
+      }
+    };
+    renderBets();
+    // Wire spin
+    _wireSpin(CASINO);
+  });
+  _casinoModal.appendChild(betRow);
+
+  // Spin button
+  const spinBtn = document.createElement('button');
+  spinBtn.type = 'button';
+  spinBtn.textContent = 'SPIN · Space';
+  spinBtn.style.cssText = `padding: 14px 36px; cursor:pointer;
+    background: linear-gradient(180deg, rgba(60,16,16,0.96), rgba(28,8,8,0.98));
+    border: 1px solid ${CASINO_RED}; border-radius: 10px;
+    color: ${CASINO_RED}; font-family:${F.display}; font-size:calc(var(--kk-font-scale,1) * 18px); font-weight:900;
+    letter-spacing:0.30em; margin-bottom: 18px;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.05) inset, 0 16px 32px rgba(0,0,0,0.6), 0 0 22px rgba(255,80,80,0.25);`;
+  _casinoModal.appendChild(spinBtn);
+
+  // Footer — back/leave row
+  const footRow = document.createElement('div');
+  footRow.style.cssText = 'display:flex; gap:12px;';
+  const backBtn = document.createElement('button');
+  backBtn.type = 'button';
+  backBtn.textContent = 'Back to Menu';
+  backBtn.style.cssText = `padding: 9px 22px; cursor:pointer;
+    background: linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86));
+    border: 1px solid ${C.edge}; border-radius: 8px;
+    color: ${C.magenta}; font-family:${F.display}; font-size: calc(var(--kk-font-scale,1) * 12px); font-weight:700;
+    letter-spacing:0.26em;`;
+  backBtn.onclick = () => { _closeCasino(); showCasinoMenu(); };
+  footRow.appendChild(backBtn);
+  const leaveBtn = document.createElement('button');
+  leaveBtn.type = 'button';
+  leaveBtn.textContent = 'Leave · Esc';
+  leaveBtn.style.cssText = backBtn.style.cssText;
+  leaveBtn.onclick = _closeCasino;
+  footRow.appendChild(leaveBtn);
+  _casinoModal.appendChild(footRow);
+  _root.appendChild(_casinoModal);
+
+  // ── Spin engine ──
+  // SLOT_SYMBOLS imported lazily by the .then() block above; this closure is
+  // initialized from inside the .then() handler (_wireSpin) so the array is
+  // captured. Each spin: debit bet, animate scrolling glyphs, lock reels in
+  // 0.6s staggers, then resolve via casino.resolveSpin and credit payout.
+  let _rafId = 0;
+  function _wireSpin(CASINO) {
+    const doSpin = () => {
+      if (_spinning) return;
+      if (_embers() < _selectedBet) {
+        try { sfx.uiError(); } catch (_) {}
+        return;
+      }
+      // Debit bet up-front so the displayed balance reflects the stake during
+      // the spin. resolveSpin() credits the payout after.
+      const m = getMeta();
+      m.embers -= _selectedBet;
+      // No saveMeta here — resolveSpin saves once with payout baked in.
+      _spinning = true;
+      // Refresh the bet row to reflect new disabled state.
+      // (cheap — same DOM, just a re-render.)
+      const reels = CASINO.rollThreeReels();
+      const stopAt = [700, 1300, 1900];   // ms — 0.6s offsets
+      const t0 = performance.now();
+      // Sound cue at spin start
+      try { sfx.coinPickup(); } catch (_) {}
+      for (const r of reelEls) {
+        r.style.borderColor = C.edge;
+        r.style.boxShadow = 'inset 0 2px 10px rgba(0,0,0,0.7), inset 0 -1px 0 rgba(255,255,255,0.04)';
+      }
+      resultEl.textContent = 'Spinning…';
+      resultEl.style.color = C.text;
+      const tick = () => {
+        const t = performance.now() - t0;
+        for (let i = 0; i < 3; i++) {
+          if (t >= stopAt[i]) {
+            reelEls[i].textContent = reels[i].icon;
+            // Lock indicator
+            if (reelEls[i].style.borderColor !== C.amber) {
+              reelEls[i].style.borderColor = C.amber;
+              reelEls[i].style.boxShadow = `0 0 18px ${C.amber}, inset 0 0 12px rgba(0,0,0,0.7)`;
+            }
+          } else {
+            // Cycle symbol icons rapidly; slow down as we approach stop.
+            const rem = stopAt[i] - t;
+            const speed = Math.max(45, 360 - rem * 0.22);
+            const idx = Math.floor(t / speed) % CASINO.SLOT_SYMBOLS.length;
+            reelEls[i].textContent = CASINO.SLOT_SYMBOLS[idx].icon;
+          }
+        }
+        if (t < stopAt[2] + 120) {
+          _rafId = requestAnimationFrame(tick);
+          return;
+        }
+        // Settle
+        const out = CASINO.resolveSpin(_selectedBet, reels);
+        _spinning = false;
+        // Show result
+        if (out.tier === 'jackpot') {
+          resultEl.style.color = C.amber;
+          resultEl.textContent = `${out.label}  ·  +${out.payout.toLocaleString()} 🔥`;
+          try { sfx.levelUp(); } catch (_) {}
+        } else if (out.tier === 'triple') {
+          resultEl.style.color = C.amber;
+          resultEl.textContent = `${out.label}  ·  +${out.payout.toLocaleString()} 🔥`;
+          try { sfx.uiClick(); } catch (_) {}
+        } else if (out.tier === 'double') {
+          resultEl.style.color = C.cyan;
+          resultEl.textContent = `${out.label}  ·  +${out.payout.toLocaleString()} 🔥`;
+          try { sfx.uiClick(); } catch (_) {}
+        } else if (out.pity) {
+          resultEl.style.color = '#ffae6a';
+          resultEl.textContent = `pity  ·  +${out.payout.toLocaleString()} 🔥`;
+          try { sfx.uiClick(); } catch (_) {}
+        } else {
+          resultEl.style.color = CASINO_RED;
+          resultEl.textContent = 'no match  ·  −' + _selectedBet.toLocaleString() + ' 🔥';
+          try { sfx.uiCancel(); } catch (_) {}
+        }
+        // Repaint balance line + bet buttons (some bets may now be disabled).
+        emberWrap.innerHTML = _emberLine('Balance');
+        renderBets();
+      };
+      _rafId = requestAnimationFrame(tick);
+    };
+    spinBtn.addEventListener('click', doSpin);
+    // Track for cleanup
+    _casinoModal.__cancelRaf = () => { if (_rafId) cancelAnimationFrame(_rafId); _rafId = 0; };
+  }
+
+  _casinoKey = (e) => {
+    if (e.code === 'Escape') {
+      if (_casinoModal && _casinoModal.__cancelRaf) _casinoModal.__cancelRaf();
+      _closeCasino();
+    } else if (e.code === 'Space' || e.code === 'Enter') {
+      e.preventDefault();
+      spinBtn.click();
+    }
+  };
+  window.addEventListener('keydown', _casinoKey);
+}
+
+/**
+ * Boss Rush Wager modal — pick 1-3 mutator chips, slide the wager (100-1000),
+ * commit. Confirming routes through casino.startBossRushWager() which debits
+ * Embers, flips state.modes.bossRush, and stashes the localStorage record.
+ * After commit we close + nudge the player to the gate; they walk over,
+ * press E, the run starts in Boss Rush mode.
+ */
+export function showBossRushWager() {
+  try { hideTooltip(); } catch (_) {}
+  if (_casinoModal) return;
+  try { sfx.modalOpen(); } catch (_) {}
+  _casinoModal = document.createElement('div');
+  markModalDialog(_casinoModal, 'Boss Rush Wager');
+  _casinoModal.style.cssText = _CASINO_BG;
+
+  const title = document.createElement('div');
+  title.style.cssText = `font-family:${F.display}; font-size:calc(var(--kk-font-scale,1) * 30px); font-weight:900;
+    letter-spacing:0.22em; color:${CASINO_RED};
+    text-shadow: 0 2px 16px rgba(0,0,0,0.6), 0 0 28px rgba(255,80,80,0.25);
+    margin-bottom: 4px; text-align:center;`;
+  title.textContent = 'Boss Rush Wager';
+  _casinoModal.appendChild(title);
+
+  const sub = document.createElement('div');
+  sub.style.cssText = `font-family:${F.body}; font-size:calc(var(--kk-font-scale,1) * 11px); letter-spacing:0.34em;
+    color:rgba(245,239,225,0.6); text-transform:uppercase; margin-bottom: 22px; text-align:center;`;
+  sub.innerHTML = 'Stake 100–1000 🔥 · 1 stack = ×2 · 2 stacks = ×4 · 3 stacks = ×8 · Forfeit on death';
+  _casinoModal.appendChild(sub);
+
+  const emberWrap = document.createElement('div');
+  emberWrap.innerHTML = _emberLine('Balance');
+  _casinoModal.appendChild(emberWrap);
+
+  // Mutator chip row + commit are built after the dynamic import (we need the
+  // BOSS_RUSH_MUTATORS array and the existing-wager guard).
+  import('./casino.js').then((CASINO) => {
+    // Active-wager guard
+    if (CASINO.hasActiveWager()) {
+      const warn = document.createElement('div');
+      warn.style.cssText = `max-width: 560px; width:100%; padding:14px 22px;
+        background: linear-gradient(180deg, rgba(40,16,16,0.94), rgba(20,8,8,0.96));
+        border: 1px solid ${CASINO_RED}; border-radius: 10px;
+        color:#ffae6a; font-family:${F.body}; font-size:calc(var(--kk-font-scale,1) * 13px);
+        text-align:center; margin-bottom: 18px; letter-spacing:0.10em;`;
+      warn.innerHTML = `You have an active wager — complete it first.<br>
+        <span style="opacity:0.7;">Win or lose the next Boss Rush run to settle.</span>`;
+      _casinoModal.insertBefore(warn, emberWrap.nextSibling);
+    }
+
+    const selected = new Set();
+    const chipRow = document.createElement('div');
+    chipRow.style.cssText = 'display:flex; gap:14px; margin-bottom:18px; flex-wrap:wrap; justify-content:center;';
+    function renderChips() {
+      chipRow.innerHTML = '';
+      for (const mut of CASINO.BOSS_RUSH_MUTATORS) {
+        const on = selected.has(mut.id);
+        const chip = document.createElement('button');
+        chip.type = 'button';
+        chip.style.cssText = `padding:12px 18px; cursor:pointer;
+          background: linear-gradient(180deg, ${on ? 'rgba(60,16,16,0.96)' : 'rgba(20,16,12,0.88)'}, rgba(8,6,4,0.95));
+          border: 1px solid ${on ? mut.accent : 'rgba(80,80,80,0.55)'};
+          border-radius: 10px;
+          color: ${on ? mut.accent : C.text};
+          font-family:${F.body};
+          letter-spacing:0.12em;
+          min-width: 168px;
+          box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 10px 22px rgba(0,0,0,0.55) ${on ? `, 0 0 18px ${mut.accent}44` : ''};
+          transition: transform 0.12s ease, border-color 0.12s ease;`;
+        chip.innerHTML = `
+          <div style="font-family:${F.display};font-size:calc(var(--kk-font-scale,1) * 14px);font-weight:700;letter-spacing:0.22em;margin-bottom:4px;">${escapeHtml(mut.label)}</div>
+          <div style="font-size:calc(var(--kk-font-scale,1) * 11.5px); opacity:${on ? 0.95 : 0.75};">${escapeHtml(mut.desc)}</div>
+          <div style="margin-top:6px; font-size:calc(var(--kk-font-scale,1) * 10px); letter-spacing:0.28em; text-transform:uppercase; color:${on ? mut.accent : 'rgba(245,239,225,0.45)'};">${on ? '◆ ARMED' : 'Tap to arm'}</div>
+        `;
+        chip.addEventListener('click', () => {
+          try { sfx.uiClick(); } catch (_) {}
+          if (selected.has(mut.id)) selected.delete(mut.id); else selected.add(mut.id);
+          renderChips();
+          repaintPayout();
+        });
+        chipRow.appendChild(chip);
+      }
+    }
+    renderChips();
+    _casinoModal.appendChild(chipRow);
+
+    // Wager slider
+    const sliderWrap = document.createElement('div');
+    sliderWrap.style.cssText = 'max-width: 560px; width:100%; margin-bottom: 18px;';
+    const sliderLabel = document.createElement('div');
+    sliderLabel.style.cssText = `font-family:${F.display}; font-size:calc(var(--kk-font-scale,1) * 14px); font-weight:700;
+      letter-spacing:0.22em; color:${C.amber}; text-align:center; margin-bottom: 6px;`;
+    const slider = document.createElement('input');
+    slider.type = 'range';
+    slider.min = '100';
+    slider.max = '1000';
+    slider.step = '50';
+    slider.value = '200';
+    slider.style.cssText = 'width: 100%; accent-color: #ffae6a;';
+    const payoutLine = document.createElement('div');
+    payoutLine.style.cssText = `font-family:${F.body}; font-size:calc(var(--kk-font-scale,1) * 12.5px); letter-spacing:0.16em;
+      color:rgba(245,239,225,0.72); text-align:center; margin-top:8px;`;
+    function repaintPayout() {
+      const stacks = selected.size;
+      const mul = CASINO.payoutMulForStacks(stacks);
+      const amt = parseInt(slider.value, 10) || 0;
+      const cap = _embers();
+      // Clamp slider's max to current balance (don't let player offer-stake
+      // more than they have).
+      slider.max = String(Math.max(100, Math.min(1000, cap)));
+      if (parseInt(slider.value, 10) > parseInt(slider.max, 10)) slider.value = slider.max;
+      sliderLabel.textContent = `Stake  ${parseInt(slider.value, 10).toLocaleString()} 🔥`;
+      if (stacks === 0) {
+        payoutLine.innerHTML = `Pick at least one mutator to arm the wager.`;
+        commitBtn.disabled = true;
+        commitBtn.style.opacity = '0.55';
+        commitBtn.style.cursor = 'not-allowed';
+      } else {
+        const payout = amt * mul;
+        payoutLine.innerHTML = `<span style="color:${C.amber};">${stacks} stack${stacks > 1 ? 's' : ''}</span> · payout ×${mul} → <span style="color:${C.amber};">${payout.toLocaleString()} 🔥</span> on victory · forfeit ${amt.toLocaleString()} 🔥 on death`;
+        commitBtn.disabled = cap < amt;
+        commitBtn.style.opacity = cap < amt ? '0.55' : '1';
+        commitBtn.style.cursor = cap < amt ? 'not-allowed' : 'pointer';
+      }
+    }
+    slider.addEventListener('input', repaintPayout);
+
+    sliderWrap.appendChild(sliderLabel);
+    sliderWrap.appendChild(slider);
+    sliderWrap.appendChild(payoutLine);
+    _casinoModal.appendChild(sliderWrap);
+
+    // GO button + footer
+    const commitBtn = document.createElement('button');
+    commitBtn.type = 'button';
+    commitBtn.textContent = '⚔ COMMIT & GO';
+    commitBtn.style.cssText = `padding: 14px 36px; cursor:pointer;
+      background: linear-gradient(180deg, rgba(60,16,16,0.96), rgba(28,8,8,0.98));
+      border: 1px solid ${CASINO_RED}; border-radius: 10px;
+      color: ${CASINO_RED}; font-family:${F.display}; font-size:calc(var(--kk-font-scale,1) * 16px); font-weight:900;
+      letter-spacing:0.28em; margin-bottom: 14px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.05) inset, 0 14px 28px rgba(0,0,0,0.6), 0 0 22px rgba(255,80,80,0.25);`;
+    commitBtn.addEventListener('click', () => {
+      if (commitBtn.disabled) return;
+      const amt = parseInt(slider.value, 10) || 0;
+      const stacks = selected.size;
+      const muts = CASINO.BOSS_RUSH_MUTATORS.filter(m => selected.has(m.id));
+      const res = CASINO.startBossRushWager({ wagerAmount: amt, stacks, mutators: muts });
+      if (!res.ok) {
+        try { sfx.uiError(); } catch (_) {}
+        // Reuse the micro toast for a clear error message.
+        const reasonText = {
+          unlocked: 'Casino not unlocked.',
+          already_active: 'A wager is already pending — complete it first.',
+          bad_amount: 'Wager must be 100–1000 🔥.',
+          bad_stacks: 'Stack count mismatch.',
+          insufficient: 'Not enough Embers.',
+          no_mutators: 'Pick at least one mutator.',
+        }[res.reason] || 'Wager rejected.';
+        _kkShowMicroToast(reasonText, C.red);
+        return;
+      }
+      try { sfx.bossWarn && sfx.bossWarn(); } catch (_) {}
+      _closeCasino();
+      showBanner('⚔ WAGER COMMITTED · WALK TO THE GATE', 3.6, CASINO_RED);
+    });
+    _casinoModal.appendChild(commitBtn);
+
+    repaintPayout();
+  });
+
+  const footRow = document.createElement('div');
+  footRow.style.cssText = 'display:flex; gap:12px;';
+  const backBtn = document.createElement('button');
+  backBtn.type = 'button';
+  backBtn.textContent = 'Back to Menu';
+  backBtn.style.cssText = `padding: 9px 22px; cursor:pointer;
+    background: linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86));
+    border: 1px solid ${C.edge}; border-radius: 8px;
+    color: ${C.magenta}; font-family:${F.display}; font-size: calc(var(--kk-font-scale,1) * 12px); font-weight:700;
+    letter-spacing:0.26em;`;
+  backBtn.onclick = () => { _closeCasino(); showCasinoMenu(); };
+  footRow.appendChild(backBtn);
+  const leaveBtn = document.createElement('button');
+  leaveBtn.type = 'button';
+  leaveBtn.textContent = 'Leave · Esc';
+  leaveBtn.style.cssText = backBtn.style.cssText;
+  leaveBtn.onclick = _closeCasino;
+  footRow.appendChild(leaveBtn);
+  _casinoModal.appendChild(footRow);
+  _root.appendChild(_casinoModal);
+
+  _casinoKey = (e) => { if (e.code === 'Escape') _closeCasino(); };
+  window.addEventListener('keydown', _casinoKey);
+}
+
+// ── Grimoire modal (evolution discoveries) ───────────────────────────────────
+let _grimModal = null;
+export function showGrimoire() {
+  // Iter 21a — defensive tooltip hide on modal entry.
+  try { hideTooltip(); } catch (_) {}
+  if (_grimModal) return;
+  try { sfx.modalOpen(); } catch (_) {}
+  _grimModal = document.createElement('div');
+  markModalDialog(_grimModal, 'Grimoire');
+  _grimModal.style.cssText = `
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(255,122,216,0.07), transparent 60%),
+      radial-gradient(ellipse at center, rgba(0,0,0,0.55), rgba(0,0,0,0.9) 80%);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-start;
+    padding: 48px 20px;
+    pointer-events: auto;
+    font-family: ${F.body};
+    z-index: 120; overflow-y: auto;
+  `;
+  const title = document.createElement('div');
+  title.style.cssText = `font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 44px); font-weight: 900;
+    letter-spacing: 0.20em; color: ${C.magenta};
+    text-shadow: 0 2px 16px rgba(0,0,0,0.55), 0 0 24px rgba(255,122,216,0.22);
+    margin-bottom: 6px;`;
+  title.textContent = 'Grimoire';
+
+  const subtitle = document.createElement('div');
+  subtitle.style.cssText = `font-family: ${F.body}; font-size: calc(var(--kk-font-scale, 1) * 11px); letter-spacing: 0.32em;
+    color: rgba(245,239,225,0.62); text-transform: uppercase; margin-bottom: 26px;`;
+  subtitle.textContent = 'Evolution recipes — discovered through play';
+
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 14px; max-width: 1100px; width: 100%;';
+
+  // Passives section header + grid (populated below alongside evolutions).
+  const passSubtitle = document.createElement('div');
+  passSubtitle.style.cssText = `font-family: ${F.body}; font-size: calc(var(--kk-font-scale, 1) * 11px); letter-spacing: 0.32em;
+    color: rgba(245,239,225,0.62); text-transform: uppercase; margin: 28px 0 14px;`;
+  passSubtitle.textContent = 'Passives — mastery across runs';
+
+  const passGrid = document.createElement('div');
+  passGrid.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px; max-width: 1100px; width: 100%;';
+
+  import('./weapons/index.js').then(({ REGISTRY, EVOLUTIONS, PASSIVES }) => {
+    // Build the passive codex first so it appears right under the evolutions.
+    const meta = getMeta();
+    const seen = (meta && meta.passivesSeen) || {};
+    for (const p of PASSIVES) {
+      const owned = (state.passives || []).find(e => e.id === p.id);
+      const liveLevel = owned ? owned.level : 0;
+      const lifetimeLevel = Math.max(liveLevel, seen[p.id] || 0);
+      const pipColor = lifetimeLevel > 0 ? C.magenta : 'rgba(120,120,120,0.4)';
+      const card = document.createElement('div');
+      card.style.cssText = `
+        background: linear-gradient(180deg, rgba(20,22,28,0.94), rgba(8,10,14,0.96));
+        border: 1px solid ${lifetimeLevel > 0 ? 'rgba(255,122,216,0.45)' : 'rgba(80,80,80,0.4)'};
+        border-radius: 10px;
+        box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 20px rgba(0,0,0,0.5);
+        padding: 12px 14px;
+        display: grid; grid-template-columns: 40px 1fr; gap: 12px; align-items: center;
+      `;
+      // Build pip strip: filled pips = lifetime max level reached.
+      let pips = '';
+      for (let i = 1; i <= p.maxLevel; i++) {
+        const filled = i <= lifetimeLevel;
+        pips += `<span style="display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:3px;background:${filled ? pipColor : 'transparent'};border:1px solid ${filled ? pipColor : 'rgba(120,120,120,0.4)'};"></span>`;
+      }
+      const descText = p.desc(Math.max(1, lifetimeLevel || 1));
+      card.innerHTML = `
+        <div style="font-size:calc(var(--kk-font-scale, 1) * 30px);text-align:center;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5));${lifetimeLevel > 0 ? '' : 'opacity:0.45;'}">${p.icon}</div>
+        <div>
+          <div style="font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 13px);font-weight:700;letter-spacing:0.10em;color:${lifetimeLevel > 0 ? C.magenta : 'rgba(180,180,180,0.7)'};">${escapeHtml(p.name)}</div>
+          <div style="font-size:calc(var(--kk-font-scale, 1) * 11px);color:rgba(245,239,225,0.72);line-height:1.45;margin:3px 0 6px;">${escapeHtml(descText)}</div>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <div>${pips}</div>
+            <div style="font-family:${F.mono};font-size:calc(var(--kk-font-scale, 1) * 10px);color:rgba(245,239,225,0.55);letter-spacing:0.08em;">Lv ${lifetimeLevel}/${p.maxLevel}</div>
+          </div>
+        </div>
+      `;
+      passGrid.appendChild(card);
+    }
+
+    for (const baseId of Object.keys(EVOLUTIONS)) {
+      const evo = EVOLUTIONS[baseId];
+      const base = REGISTRY[baseId] || {};
+      const found = isDiscovered(evo.id);
+      const card = document.createElement('div');
+      card.style.cssText = `
+        background: linear-gradient(180deg, rgba(20,28,22,0.94), rgba(8,14,12,0.96));
+        border: 1px solid ${found ? C.amber : 'rgba(80,80,80,0.4)'};
+        border-radius: 10px;
+        box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 12px 26px rgba(0,0,0,0.55);
+        padding: 16px 18px;
+        display: grid; grid-template-columns: 56px 1fr; gap: 14px; align-items: center;
+      `;
+      if (found) {
+        card.innerHTML = `
+          <div style="font-size:calc(var(--kk-font-scale, 1) * 40px);text-align:center;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.5));">${evo.icon}</div>
+          <div>
+            <div style="font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 15px);font-weight:700;letter-spacing:0.10em;color:${C.amber};">${escapeHtml(evo.name)}</div>
+            <div style="font-size:calc(var(--kk-font-scale, 1) * 11.5px);color:rgba(245,239,225,0.78);line-height:1.5;margin:4px 0 8px;">${escapeHtml(evo.desc)}</div>
+            <div style="font-family:${F.body};font-size:calc(var(--kk-font-scale, 1) * 11px);color:rgba(245,239,225,0.62);letter-spacing:0.08em;">
+              <span style="color:${C.amber};">Recipe</span> · ${base.icon || '★'} ${escapeHtml(base.name || baseId)} (max) + ${evo.requires.count}× ${escapeHtml(evo.requires.filler)}
+            </div>
+          </div>
+        `;
+      } else {
+        card.innerHTML = `
+          <div style="font-size:calc(var(--kk-font-scale, 1) * 40px);text-align:center;color:rgba(120,120,120,0.55);">?</div>
+          <div>
+            <div style="font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 15px);font-weight:700;letter-spacing:0.10em;color:rgba(120,120,120,0.7);">Undiscovered</div>
+            <div style="font-size:calc(var(--kk-font-scale, 1) * 11.5px);color:rgba(120,120,120,0.55);line-height:1.5;margin-top:4px;">Max a base weapon and stack the right passive to reveal this evolution.</div>
+          </div>
+        `;
+      }
+      grid.appendChild(card);
+    }
+  });
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = 'Close · Esc';
+  close.style.cssText = `margin-top: 28px; padding: 10px 26px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86));
+    border: 1px solid ${C.edge}; border-radius: 8px;
+    color: ${C.magenta}; font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 13px); font-weight: 700;
+    letter-spacing: 0.28em;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 20px rgba(0,0,0,0.5);`;
+  close.onclick = hideGrimoire;
+
+  _grimModal.appendChild(title);
+  _grimModal.appendChild(subtitle);
+  _grimModal.appendChild(grid);
+  _grimModal.appendChild(passSubtitle);
+  _grimModal.appendChild(passGrid);
+  _grimModal.appendChild(close);
+  _root.appendChild(_grimModal);
+}
+export function hideGrimoire() {
+  if (!_grimModal) return;
+  try { sfx.modalClose(); } catch (_) {}
+  if (_grimModal.parentNode) _grimModal.parentNode.removeChild(_grimModal);
+  _grimModal = null;
+}
+export function isGrimoireOpen() { return !!_grimModal; }
+
+// ── Shop modal ───────────────────────────────────────────────────────────────
+let _shopModal = null;
+let _shopFocusScope = null;
+export function showShop() {
+  // Iter 21a — defensive tooltip hide on modal entry.
+  try { hideTooltip(); } catch (_) {}
+  if (_shopModal) return;
+  try { sfx.modalOpen(); } catch (_) {}
+  _shopModal = document.createElement('div');
+  markModalDialog(_shopModal, 'Shop');
+  _shopModal.style.cssText = `
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(255,210,127,0.06), transparent 60%),
+      radial-gradient(ellipse at center, rgba(0,0,0,0.55), rgba(0,0,0,0.9) 80%);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-start;
+    pointer-events: auto;
+    font-family: ${F.body};
+    z-index: 120;
+    overflow-y: auto;
+    padding: 48px 20px;
+  `;
+  const title = document.createElement('div');
+  title.style.cssText = `font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 44px); font-weight: 900;
+    letter-spacing: 0.20em; color: ${C.amber};
+    text-shadow: 0 2px 16px rgba(0,0,0,0.55), 0 0 24px rgba(255,210,127,0.18);
+    margin-bottom: 6px;`;
+  title.textContent = 'Shop';
+
+  const subtitle = document.createElement('div');
+  subtitle.style.cssText = `font-family: ${F.body}; font-size: calc(var(--kk-font-scale, 1) * 11px); letter-spacing: 0.32em;
+    color: rgba(245,239,225,0.62); text-transform: uppercase; margin-bottom: 22px;`;
+  subtitle.textContent = 'Spend sigils on a permanent meta tree — carry between runs';
+
+  // Treasury (coins) + Sigil counter side-by-side in the header. Sigils are the
+  // tree-shop currency; coins remain visible for context (legacy shops, codex).
+  const SIGIL_C = '#c87bff';
+  const coinsLine = document.createElement('div');
+  coinsLine.style.cssText = `font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 22px); color: ${C.amber};
+    margin-bottom: 28px; letter-spacing: 0.18em;
+    display: flex; align-items: baseline; gap: 28px; flex-wrap: wrap; justify-content: center;`;
+  function paintCoins() {
+    const m = getMeta();
+    coinsLine.innerHTML = `
+      <span style="display:inline-flex; align-items:baseline; gap:10px;">
+        <span style="font-family:${F.body};font-size:calc(var(--kk-font-scale, 1) * 13px);letter-spacing:0.32em;color:rgba(245,239,225,0.62);text-transform:uppercase;">Treasury</span>
+        <span style="font-family:${F.mono};color:${C.amber};">${m.coins.toLocaleString()}</span>
+      </span>
+      <span style="display:inline-flex; align-items:baseline; gap:10px;">
+        <span style="font-family:${F.body};font-size:calc(var(--kk-font-scale, 1) * 13px);letter-spacing:0.32em;color:rgba(245,239,225,0.62);text-transform:uppercase;">Sigils</span>
+        <span style="font-family:${F.mono};color:${SIGIL_C};">✦ ${sigilCount().toLocaleString()}</span>
+      </span>
+    `;
+  }
+  paintCoins();
+
+  // Three-column branching tree. One column per branch, four tiers stacked.
+  // Tier-to-tier connectors (▼) live between cards inside each column.
+  const grid = document.createElement('div');
+  grid.style.cssText = `
+    display: grid; grid-template-columns: repeat(3, minmax(240px, 1fr));
+    gap: 28px;
+    max-width: 1100px; width: 100%;
+    align-items: start;
+  `;
+
+  // Branch metadata — header chrome only; node data comes from SHOP_TREE.
+  const BRANCH_META = {
+    survival: { name: 'Survival', icon: '🛡', tagline: 'Endure',  accent: C.cyan },
+    power:    { name: 'Power',    icon: '⚔', tagline: 'Strike',  accent: C.amber },
+    greed:    { name: 'Greed',    icon: '💰', tagline: 'Loot',    accent: SIGIL_C },
+  };
+
+  function paintNode(node) {
+    const unlocked = nodeUnlocked(node.id);
+    const owned = nodeOwned(node.id);
+    const sigils = sigilCount();
+    const affordable = sigils >= node.cost;
+    // Three visual states drive the look: owned (amber, ✓), unlocked-purchasable
+    // (cyan, hover lift), unlocked-but-unaffordable (dim cyan), locked (gray).
+    const state =
+      owned ? 'owned' :
+      !unlocked ? 'locked' :
+      affordable ? 'buy' :
+      'poor';
+
+    const borderC =
+      state === 'owned' ? C.amber :
+      state === 'buy'   ? C.cyan :
+      state === 'poor'  ? 'rgba(127,255,228,0.32)' :
+                          'rgba(80,80,80,0.4)';
+    const txtC =
+      state === 'owned' ? C.text :
+      state === 'locked' ? 'rgba(120,120,120,0.65)' :
+                           C.text;
+    const costC =
+      state === 'owned' ? C.amber :
+      state === 'buy'   ? C.cyan :
+      state === 'poor'  ? 'rgba(127,255,228,0.5)' :
+                          'rgba(120,120,120,0.55)';
+    const iconOverlay =
+      state === 'owned'  ? '<div style="position:absolute;top:8px;right:10px;font-size:calc(var(--kk-font-scale, 1) * 18px);color:'+C.amber+';text-shadow:0 1px 4px rgba(0,0,0,0.6);">✓</div>' :
+      state === 'locked' ? '<div style="position:absolute;top:8px;right:10px;font-size:calc(var(--kk-font-scale, 1) * 16px);opacity:0.75;">🔒</div>' :
+      '';
+
+    const card = document.createElement('div');
+    card.style.cssText = `
+      position: relative;
+      background: linear-gradient(180deg, rgba(20,28,22,0.94), rgba(8,14,12,0.96));
+      border: 1px solid ${borderC};
+      border-radius: 10px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 12px 26px rgba(0,0,0,0.55)
+        ${state === 'owned' ? ', 0 0 18px rgba(255,210,127,0.18)' : ''};
+      padding: 14px 16px;
+      display: grid; grid-template-columns: 52px 1fr; gap: 12px; align-items: center;
+      transition: transform 0.14s ease, border-color 0.14s ease, box-shadow 0.14s ease;
+      opacity: ${state === 'locked' ? 0.6 : 1};
+    `;
+
+    // Tier pip row — one bright pip per tier earned on this node. Only owned
+    // nodes light their pips; locked/buy/poor nodes show empty placeholders.
+    const pips = Array.from({ length: 4 }, (_, i) => {
+      const lit = (i + 1 <= node.tier) && state === 'owned';
+      const accent = state === 'owned' ? C.amber : (state === 'buy' ? C.cyan : 'rgba(255,255,255,0.10)');
+      return `<span style="display:inline-block;width:12px;height:4px;border-radius:2px;background:${lit ? accent : 'rgba(255,255,255,0.10)'};"></span>`;
+    }).join('');
+
+    const tierLabel = `T${node.tier}`;
+    const costLine =
+      state === 'owned'  ? 'OWNED' :
+      state === 'locked' ? 'LOCKED' :
+      `✦ ${node.cost}${state === 'poor' ? ` — need ${node.cost - sigils}` : ''}`;
+
+    card.innerHTML = `
+      ${iconOverlay}
+      <div style="font-size:calc(var(--kk-font-scale, 1) * 34px);text-align:center;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.5));opacity:${state === 'locked' ? 0.55 : 1};">${node.icon}</div>
+      <div>
+        <div style="display:flex; align-items:baseline; gap:8px;">
+          <div style="font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 14px);font-weight:700;letter-spacing:0.10em;color:${txtC};">${escapeHtml(node.name)}</div>
+          <div style="font-family:${F.mono};font-size:calc(var(--kk-font-scale, 1) * 10px);letter-spacing:0.18em;color:rgba(245,239,225,0.45);">${tierLabel}</div>
+        </div>
+        <div style="font-size:calc(var(--kk-font-scale, 1) * 11px);color:${state === 'locked' ? 'rgba(120,120,120,0.55)' : 'rgba(245,239,225,0.72)'};line-height:1.45;margin-top:3px;">${escapeHtml(node.desc)}</div>
+        <div style="display:flex;gap:3px;margin-top:7px;">${pips}</div>
+        <div style="font-family:${F.mono};font-size:calc(var(--kk-font-scale, 1) * 11px);color:${costC};margin-top:6px;letter-spacing:0.10em;">
+          ${costLine}
+        </div>
+      </div>
+    `;
+
+    if (state === 'buy') {
+      card.style.cursor = 'pointer';
+      card.addEventListener('mouseenter', () => {
+        card.style.transform = 'translateY(-2px)';
+        card.style.borderColor = C.amber;
+      });
+      card.addEventListener('mouseleave', () => {
+        card.style.transform = 'translateY(0)';
+        card.style.borderColor = borderC;
+      });
+      card.onclick = () => {
+        const r = purchaseTreeNode(node.id);
+        if (r && r.ok) {
+          paintCoins();
+          repaintGrid();
+        }
+      };
+    } else if (state === 'poor') {
+      card.style.cursor = 'not-allowed';
+    } else {
+      card.style.cursor = 'default';
+    }
+
+    // Tooltip surfaces unlock requirements when locked, otherwise standard stats.
+    bindTooltip(card, () => {
+      const branchMeta = BRANCH_META[node.branch];
+      const stats = [
+        { label: 'Branch', value: branchMeta.name },
+        { label: 'Tier',   value: `${node.tier}/4` },
+        { label: 'Cost',   value: state === 'owned' ? 'OWNED' : `${node.cost} sigils` },
+      ];
+      if (state === 'poor') stats.push({ label: 'Need', value: `${node.cost - sigils} more sigils` });
+      let bodyExtra = '';
+      if (state === 'locked') {
+        const reqNames = node.requires.map(rid => {
+          const r = SHOP_TREE.find(n => n.id === rid);
+          return r ? r.name : rid;
+        }).join(', ');
+        bodyExtra = `\n\nLocked. Requires: ${reqNames || 'none'}.`;
+      } else if (state === 'owned') {
+        bodyExtra = '\n\nPurchased — applies to every future run.';
+      } else if (state === 'buy') {
+        bodyExtra = '\n\nPermanent: applies to every future run.';
+      } else if (state === 'poor') {
+        bodyExtra = '\n\nEarn sigils from daily runs, quests, and mini-bosses.';
+      }
+      return {
+        title: node.name,
+        icon: node.icon,
+        body: node.desc + bodyExtra,
+        tags: [branchMeta.name, `Tier ${node.tier}`],
+        stats,
+        accent:
+          state === 'owned'  ? '#ffd27f' :
+          state === 'locked' ? '#888' :
+                               '#7fffe4',
+      };
+    });
+    return card;
+  }
+
+  // Build a branch column: header + 4 stacked nodes + ▼ connectors.
+  function paintColumn(branchId) {
+    const meta = BRANCH_META[branchId];
+    const col = document.createElement('div');
+    col.style.cssText = 'display:flex; flex-direction:column; gap:10px;';
+
+    const header = document.createElement('div');
+    header.style.cssText = `
+      text-align: center;
+      padding: 10px 12px 14px;
+      border-bottom: 1px solid ${C.edge};
+      margin-bottom: 4px;
+    `;
+    header.innerHTML = `
+      <div style="font-size:calc(var(--kk-font-scale, 1) * 28px);filter:drop-shadow(0 3px 6px rgba(0,0,0,0.55));">${meta.icon}</div>
+      <div style="font-family:${F.display}; font-size:calc(var(--kk-font-scale, 1) * 18px); font-weight:700; letter-spacing:0.20em; color:${meta.accent}; margin-top:2px;">${escapeHtml(meta.name)}</div>
+      <div style="font-family:${F.body}; font-size:calc(var(--kk-font-scale, 1) * 10.5px); letter-spacing:0.32em; text-transform:uppercase; color:rgba(245,239,225,0.55); margin-top:3px;">${escapeHtml(meta.tagline)}</div>
+    `;
+    col.appendChild(header);
+
+    const branchNodes = SHOP_TREE
+      .filter(n => n.branch === branchId)
+      .sort((a, b) => a.tier - b.tier);
+    branchNodes.forEach((node, i) => {
+      col.appendChild(paintNode(node));
+      if (i < branchNodes.length - 1) {
+        const conn = document.createElement('div');
+        const lit = nodeOwned(node.id);
+        conn.style.cssText = `text-align:center; font-family:${F.mono}; font-size:calc(var(--kk-font-scale, 1) * 16px); line-height:1;
+          color:${lit ? meta.accent : 'rgba(245,239,225,0.22)'};
+          text-shadow:${lit ? `0 0 8px ${meta.accent}55` : 'none'};
+          margin: -2px 0;`;
+        conn.textContent = '▼';
+        col.appendChild(conn);
+      }
+    });
+    return col;
+  }
+
+  let _closeBtnRef = null;
+  function refreshShopFocus(initialIndex = 0) {
+    if (_shopFocusScope) { popFocusScope(_shopFocusScope); _shopFocusScope = null; }
+    // Collect every node card across the 3 columns in column-major order so
+    // gamepad up/down navigates within a branch column naturally.
+    const cards = [];
+    for (const col of grid.children) {
+      for (const child of col.children) {
+        // Skip the column header (first child) and connectors (▼ divs).
+        // Node cards are the only elements with cursor styling or pointer.
+        if (child.tagName === 'DIV' && child.children.length > 0 && child.style.gridTemplateColumns) {
+          cards.push(child);
+        }
+      }
+    }
+    const els = [...cards];
+    if (_closeBtnRef) els.push(_closeBtnRef);
+    _shopFocusScope = pushFocusScope(els, { layout: 'auto', onCancel: hideShop, initialIndex });
+    // pushFocusScope sets the initial focus synchronously, which fires
+    // kk-focus-change → the tooltip system pops the focused node's detail panel
+    // IMMEDIATELY, landing a big card over the middle of the tree on open (the
+    // "sigil menu overlap"). Cancel that uninvited pop; real gamepad/keyboard
+    // navigation (and mouse hover) still surface the tooltip on demand.
+    try { hideTooltip(); } catch (_) {}
+  }
+  function repaintGrid() {
+    const prevFocusIdx = _shopFocusScope ? _shopFocusScope.focused : 0;
+    grid.innerHTML = '';
+    grid.appendChild(paintColumn('survival'));
+    grid.appendChild(paintColumn('power'));
+    grid.appendChild(paintColumn('greed'));
+    if (_closeBtnRef) refreshShopFocus(prevFocusIdx);
+  }
+  repaintGrid();
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = 'Close · Esc';
+  close.style.cssText = `margin-top: 28px; padding: 10px 26px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86));
+    border: 1px solid ${C.edge}; border-radius: 8px;
+    color: ${C.magenta}; font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 13px); font-weight: 700;
+    letter-spacing: 0.28em;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 20px rgba(0,0,0,0.5);`;
+  close.onclick = hideShop;
+  _closeBtnRef = close;
+
+  _shopModal.appendChild(title);
+  _shopModal.appendChild(subtitle);
+  _shopModal.appendChild(coinsLine);
+  _shopModal.appendChild(grid);
+  _shopModal.appendChild(close);
+  _root.appendChild(_shopModal);
+  refreshShopFocus(0);
+}
+export function hideShop() {
+  if (!_shopModal) return;
+  try { sfx.modalClose(); } catch (_) {}
+  if (_shopFocusScope) { popFocusScope(_shopFocusScope); _shopFocusScope = null; }
+  if (_shopModal.parentNode) _shopModal.parentNode.removeChild(_shopModal);
+  _shopModal = null;
+  hideTooltip();
+}
+
+// ── House upgrade kiosk (Embers currency) ──
+let _houseModal = null;
+export function isHouseOpen() { return !!_houseModal; }
+export function showHouse() {
+  // Iter 21a — defensive tooltip hide on modal entry.
+  try { hideTooltip(); } catch (_) {}
+  if (_houseModal) return;
+  try { sfx.modalOpen(); } catch (_) {}
+  _houseModal = document.createElement('div');
+  markModalDialog(_houseModal, 'Renovations');
+  _houseModal.style.cssText = `
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(255,180,80,0.05), transparent 60%),
+      radial-gradient(ellipse at center, rgba(0,0,0,0.55), rgba(0,0,0,0.9) 80%);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-start;
+    pointer-events: auto;
+    font-family: ${F.body};
+    z-index: 120;
+    overflow-y: auto;
+    padding: 48px 20px;
+  `;
+  const title = document.createElement('div');
+  title.style.cssText = `font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 44px); font-weight: 900;
+    letter-spacing: 0.20em; color: #ffae6a;
+    text-shadow: 0 2px 16px rgba(0,0,0,0.55), 0 0 24px rgba(255,160,90,0.20);
+    margin-bottom: 6px;`;
+  title.textContent = 'The House';
+
+  const subtitle = document.createElement('div');
+  subtitle.style.cssText = `font-family: ${F.body}; font-size: calc(var(--kk-font-scale, 1) * 11px); letter-spacing: 0.32em;
+    color: rgba(245,239,225,0.62); text-transform: uppercase; margin-bottom: 22px;`;
+  subtitle.textContent = 'Long-term renovations — fueled by Embers from past hunts';
+
+  const emberLine = document.createElement('div');
+  emberLine.style.cssText = `font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 22px); color: #ffae6a;
+    margin-bottom: 28px; letter-spacing: 0.18em;
+    display: flex; align-items: baseline; gap: 12px;`;
+  function paintEmbers() {
+    emberLine.innerHTML = `<span style="font-size:calc(var(--kk-font-scale, 1) * 13px);letter-spacing:0.32em;color:rgba(245,239,225,0.62);text-transform:uppercase;">Embers</span> <span style="font-family:${F.mono};">${(getMeta().embers || 0).toLocaleString()}</span> 🔥`;
+  }
+  paintEmbers();
+
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 14px; max-width: 1100px; width: 100%;';
+
+  function paintCard(upg) {
+    const lvl = houseLevel(upg.id);
+    const maxed = lvl >= upg.max;
+    const cost = maxed ? 0 : houseCost(upg, lvl);
+    const can = !maxed && (getMeta().embers || 0) >= cost;
+    const accent = maxed ? '#ffae6a' : (can ? C.cyan : 'rgba(120,120,120,0.5)');
+    const card = document.createElement('div');
+    card.style.cssText = `
+      background: linear-gradient(180deg, rgba(28,20,16,0.94), rgba(14,10,8,0.96));
+      border: 1px solid ${maxed ? '#ffae6a' : (can ? C.edge : 'rgba(80,80,80,0.4)')};
+      border-radius: 10px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 12px 26px rgba(0,0,0,0.55);
+      padding: 16px 18px;
+      display: grid; grid-template-columns: 56px 1fr; gap: 14px; align-items: center;
+      transition: transform 0.14s ease, border-color 0.14s ease;
+    `;
+    const pips = Array.from({ length: upg.max }, (_, i) =>
+      `<span style="display:inline-block;width:14px;height:5px;border-radius:2px;background:${i < lvl ? '#ffae6a' : 'rgba(255,255,255,0.10)'};"></span>`
+    ).join('');
+    card.innerHTML = `
+      <div style="font-size:calc(var(--kk-font-scale, 1) * 38px);text-align:center;filter:drop-shadow(0 3px 6px rgba(0,0,0,0.5));">${upg.icon}</div>
+      <div>
+        <div style="font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 15px);font-weight:700;letter-spacing:0.10em;color:${C.text};">${escapeHtml(upg.name)}</div>
+        <div style="font-size:calc(var(--kk-font-scale, 1) * 11.5px);color:rgba(245,239,225,0.72);line-height:1.45;margin-top:3px;">${escapeHtml(upg.desc)}</div>
+        <div style="display:flex;gap:3px;margin-top:8px;">${pips}</div>
+        <div style="font-family:${F.mono};font-size:calc(var(--kk-font-scale, 1) * 11px);color:${accent};margin-top:6px;letter-spacing:0.08em;">
+          ${maxed ? 'FULLY UPGRADED' : `${cost.toLocaleString()} 🔥`}
+        </div>
+      </div>
+    `;
+    if (!maxed) {
+      card.style.cursor = can ? 'pointer' : 'not-allowed';
+      card.addEventListener('mouseenter', () => {
+        if (can) { card.style.transform = 'translateY(-2px)'; card.style.borderColor = '#ffae6a'; }
+      });
+      card.addEventListener('mouseleave', () => {
+        card.style.transform = 'translateY(0)';
+        card.style.borderColor = can ? C.edge : 'rgba(80,80,80,0.4)';
+      });
+      card.onclick = () => {
+        if (buyHouseUpgrade(upg.id)) {
+          paintEmbers();
+          repaintGrid();
+        }
+      };
+    }
+    return card;
+  }
+  function repaintGrid() {
+    grid.innerHTML = '';
+    for (const upg of HOUSE_UPGRADES) grid.appendChild(paintCard(upg));
+  }
+  repaintGrid();
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = 'Close · Esc';
+  close.style.cssText = `margin-top: 28px; padding: 10px 26px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86));
+    border: 1px solid ${C.edge}; border-radius: 8px;
+    color: ${C.magenta}; font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 13px); font-weight: 700;
+    letter-spacing: 0.28em;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 20px rgba(0,0,0,0.5);`;
+  close.onclick = hideHouse;
+
+  _houseModal.appendChild(title);
+  _houseModal.appendChild(subtitle);
+  _houseModal.appendChild(emberLine);
+  _houseModal.appendChild(grid);
+  _houseModal.appendChild(close);
+  _root.appendChild(_houseModal);
+}
+export function hideHouse() {
+  if (!_houseModal) return;
+  try { sfx.modalClose(); } catch (_) {}
+  if (_houseModal.parentNode) _houseModal.parentNode.removeChild(_houseModal);
+  _houseModal = null;
+}
+
+// ── Quest Board modal (90s CRT in the house interior) ──
+let _questModal = null;
+export function isQuestBoardOpen() { return !!_questModal; }
+export function showQuestBoard() {
+  // Iter 21a — defensive tooltip hide on modal entry.
+  try { hideTooltip(); } catch (_) {}
+  if (_questModal) return;
+  try { sfx.modalOpen(); } catch (_) {}
+  const meta = getMeta();
+  const lain = !!(meta.quests && meta.quests.lainTerminal);
+  _questModal = document.createElement('div');
+  markModalDialog(_questModal, 'Quest Board');
+  _questModal.style.cssText = `
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 25%, ${lain ? 'rgba(80,200,255,0.06)' : 'rgba(42,255,102,0.05)'}, transparent 60%),
+      radial-gradient(ellipse at center, rgba(0,0,0,0.62), rgba(0,0,0,0.92) 80%);
+    backdrop-filter: blur(10px);
+    display: flex; flex-direction: column; align-items: center; justify-content: flex-start;
+    pointer-events: auto;
+    font-family: ${F.body};
+    z-index: 120;
+    overflow-y: auto;
+    padding: 48px 20px;
+  `;
+
+  const title = document.createElement('div');
+  title.style.cssText = `font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 38px); font-weight: 900;
+    letter-spacing: 0.22em; color: ${lain ? '#4fd0ff' : '#2aff66'};
+    text-shadow: 0 2px 16px rgba(0,0,0,0.55), 0 0 24px ${lain ? 'rgba(80,200,255,0.20)' : 'rgba(42,255,102,0.20)'};
+    margin-bottom: 6px;`;
+  title.textContent = lain ? 'NAVI · Quest Terminal' : 'KAKI-DOS · Bounty Board';
+
+  const subtitle = document.createElement('div');
+  subtitle.style.cssText = `font-family: ${F.mono}; font-size: calc(var(--kk-font-scale, 1) * 11px); letter-spacing: 0.32em;
+    color: rgba(245,239,225,0.6); text-transform: uppercase; margin-bottom: 22px;`;
+  subtitle.textContent = `Active ${activeQuests().length} / ${maxActiveQuests()}    Completed lifetime: ${(meta.quests && meta.quests.completedCount) || 0}`;
+
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display: grid; grid-template-columns: 1fr 1fr; gap: 28px; max-width: 1100px; width: 100%;';
+
+  const activeCol = document.createElement('div');
+  const offerCol = document.createElement('div');
+  grid.appendChild(activeCol); grid.appendChild(offerCol);
+
+  function questCard(tpl, q) {
+    const isActive = !!q;
+    const complete = isActive && q.progress >= tpl.goal;
+    const card = document.createElement('div');
+    const accent = complete ? '#ffae6a' : (isActive ? (lain ? '#4fd0ff' : '#2aff66') : C.amber);
+    card.style.cssText = `
+      background: linear-gradient(180deg, rgba(20,28,22,0.94), rgba(8,14,12,0.96));
+      border: 1px solid ${accent};
+      border-radius: 10px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 12px 26px rgba(0,0,0,0.55);
+      padding: 14px 16px;
+      margin-bottom: 12px;
+      display: grid; grid-template-columns: 44px 1fr; gap: 12px; align-items: start;
+    `;
+    let progressBar = '';
+    if (isActive) {
+      const pct = Math.min(100, Math.floor((q.progress / tpl.goal) * 100));
+      progressBar = `
+        <div style="height:6px; background:rgba(255,255,255,0.08); border-radius:3px; margin-top:6px; overflow:hidden;">
+          <div style="height:100%; width:${pct}%; background:${accent};"></div>
+        </div>
+        <div style="font-family:${F.mono}; font-size:calc(var(--kk-font-scale, 1) * 10px); color:${accent}; margin-top:4px; letter-spacing:0.08em;">
+          ${q.progress} / ${tpl.goal}${complete ? '   ·   READY TO CLAIM' : ''}
+        </div>
+      `;
+    }
+    card.innerHTML = `
+      <div style="font-size:calc(var(--kk-font-scale, 1) * 28px); line-height:1; filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5));">${tpl.icon}</div>
+      <div>
+        <div style="font-family:${F.display}; font-size:calc(var(--kk-font-scale, 1) * 13px); font-weight:700; letter-spacing:0.10em; color:${C.text};">${escapeHtml(tpl.name)}</div>
+        <div style="font-size:calc(var(--kk-font-scale, 1) * 11.5px); color:rgba(245,239,225,0.72); line-height:1.45; margin-top:3px;">${escapeHtml(tpl.desc)}</div>
+        <div style="font-family:${F.mono}; font-size:calc(var(--kk-font-scale, 1) * 11px); color:${C.amber}; margin-top:6px; letter-spacing:0.06em;">
+          Reward: ${tpl.coins} coins  ·  ${tpl.embers} 🔥
+        </div>
+        ${progressBar}
+      </div>
+    `;
+    // Buttons
+    const btns = document.createElement('div');
+    btns.style.cssText = 'display:flex; gap:8px; margin-top:10px; grid-column:1/-1;';
+    const mkBtn = (label, color, fn) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.textContent = label;
+      b.style.cssText = `padding:7px 14px; cursor:pointer;
+        background:rgba(20,28,22,0.78); border:1px solid ${color}; border-radius:6px;
+        color:${color}; font-family:${F.display}; font-size:calc(var(--kk-font-scale, 1) * 11px); letter-spacing:0.22em;`;
+      b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+      return b;
+    };
+    if (isActive && complete) {
+      btns.appendChild(mkBtn('Claim', '#ffae6a', () => {
+        const result = claimQuest(tpl.id);
+        if (result) { grantSigils(2, 'quest'); repaint(); }
+      }));
+    }
+    if (isActive && !complete) {
+      // P4H #142 — Abandon destroys in-progress quest counters (irreversible).
+      // mkBtn binds a click listener internally so we attach holdConfirm to
+      // the same node after build; holdConfirm's pass-through path (when
+      // optHoldConfirm is off) re-fires onConfirm, so we must clear the
+      // original handler. Easier: construct the button manually here.
+      const abandonBtn = document.createElement('button');
+      abandonBtn.type = 'button';
+      abandonBtn.textContent = 'Abandon';
+      abandonBtn.style.cssText = `padding:7px 14px; cursor:pointer;
+        background:rgba(20,28,22,0.78); border:1px solid #c87b7b; border-radius:6px;
+        color:#c87b7b; font-family:${F.display}; font-size:calc(var(--kk-font-scale, 1) * 11px); letter-spacing:0.22em;`;
+      holdConfirm(abandonBtn, () => {
+        if (abandonQuest(tpl.id)) repaint();
+      }, { palette: { fill: '#c87b7b', trough: 'rgba(40,12,12,0.55)' } });
+      // Ensure click bubbling doesn't trigger ancestor card handlers.
+      abandonBtn.addEventListener('pointerdown', (e) => e.stopPropagation());
+      btns.appendChild(abandonBtn);
+    }
+    if (!isActive) {
+      const canAccept = activeQuests().length < maxActiveQuests();
+      btns.appendChild(mkBtn(canAccept ? 'Accept' : 'Slot Full', canAccept ? (lain ? '#4fd0ff' : '#2aff66') : 'rgba(120,120,120,0.6)', () => {
+        if (!canAccept) return;
+        if (acceptQuest(tpl.id)) repaint();
+      }));
+    }
+    card.appendChild(btns);
+    return card;
+  }
+
+  function repaint() {
+    activeCol.innerHTML = `<div style="font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 12px);letter-spacing:0.30em;color:${lain ? '#4fd0ff' : '#2aff66'};margin-bottom:10px;text-transform:uppercase;">Active</div>`;
+    const active = activeQuests();
+    if (active.length === 0) {
+      const empty = document.createElement('div');
+      empty.style.cssText = `padding:18px; border:1px dashed ${C.edge}; border-radius:8px; color:rgba(245,239,225,0.5); font-size:calc(var(--kk-font-scale, 1) * 13px); text-align:center;`;
+      empty.textContent = 'No active bounties. Accept one from the offer pool →';
+      activeCol.appendChild(empty);
+    } else {
+      for (const q of active) {
+        const tpl = QUEST_TEMPLATES.find(t => t.id === q.id);
+        if (tpl) activeCol.appendChild(questCard(tpl, q));
+      }
+    }
+    offerCol.innerHTML = `<div style="font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 12px);letter-spacing:0.30em;color:${C.amber};margin-bottom:10px;text-transform:uppercase;">Offer Pool</div>`;
+    const offers = availableQuests();
+    for (const tpl of offers) offerCol.appendChild(questCard(tpl, null));
+    // Update header counter
+    subtitle.textContent = `Active ${activeQuests().length} / ${maxActiveQuests()}    Completed lifetime: ${(getMeta().quests && getMeta().quests.completedCount) || 0}`;
+  }
+  repaint();
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = 'Close · Esc';
+  close.style.cssText = `margin-top: 28px; padding: 10px 26px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86));
+    border: 1px solid ${C.edge}; border-radius: 8px;
+    color: ${C.magenta}; font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 13px); font-weight: 700;
+    letter-spacing: 0.28em;`;
+  close.onclick = hideQuestBoard;
+
+  _questModal.appendChild(title);
+  _questModal.appendChild(subtitle);
+  _questModal.appendChild(grid);
+  _questModal.appendChild(close);
+  _root.appendChild(_questModal);
+}
+export function hideQuestBoard() {
+  if (!_questModal) return;
+  try { sfx.modalClose(); } catch (_) {}
+  if (_questModal.parentNode) _questModal.parentNode.removeChild(_questModal);
+  _questModal = null;
+}
+export function isShopOpen() { return !!_shopModal; }
+
+// ── Options panel (iter 10a — sectioned + accessibility-complete) ────────────
+// Sections: Audio · Display · Controls · Accessibility · Modes · Data.
+// Every control writes via setOption AND applies live so the change is
+// visible immediately (font scale, colorblind palette, etc.).
+let _optionsPanel = null;
+
+// Font-scale bucket classes — applied to wrapper containers (NOT per-element
+// rewrites). Multiplied via calc(var(--kk-font-scale) * Npx) so the player's
+// slider mutates --kk-font-scale at :root (see main.js boot + index.html).
+function _ensureFontScaleStyle() {
+  if (typeof document === 'undefined') return;
+  if (document.getElementById('kk-font-scale-css')) return;
+  const s = document.createElement('style');
+  s.id = 'kk-font-scale-css';
+  s.textContent = `
+    .kk-fs-mono { font-size: calc(var(--kk-font-scale, 1) * 11px); }
+    .kk-fs-sm   { font-size: calc(var(--kk-font-scale, 1) * 13px); }
+    .kk-fs-md   { font-size: calc(var(--kk-font-scale, 1) * 16px); }
+    .kk-fs-lg   { font-size: calc(var(--kk-font-scale, 1) * 22px); }
+    .kk-fs-xl   { font-size: calc(var(--kk-font-scale, 1) * 44px); }
+  `;
+  document.head.appendChild(s);
+}
+
+function _applyFontScale(v) {
+  const fs = Math.max(0.6, Math.min(1.6, Number(v) || 1));
+  if (typeof document !== 'undefined' && document.documentElement) {
+    document.documentElement.style.setProperty('--kk-font-scale', String(fs));
+  }
+}
+
+// Re-push the postfx uniforms + state caches after any accessibility toggle
+// so the change reads immediately (no app reload required).
+function _applyAccessibilityLive() {
+  const m = getMeta();
+  state._optReduceMotion = !!m.optReduceMotion;
+  state._optReducedFlashing = !!m.optReducedFlashing;
+  // Reduce-motion forces shake to 0; otherwise honor the slider value.
+  state._optShakeMul = state._optReduceMotion ? 0 : Number(m.optShake);
+  applyAccessibilityOptions(state.postFXPass, {
+    reduceMotion: state._optReduceMotion,
+    reduceFlashing: state._optReducedFlashing,
+    colorblind:   m.optColorblind,
+    highContrast: !!m.optHighContrast,
+  });
+}
+
+export function showOptions() {
+  // Iter 21a — defensive tooltip hide on modal entry.
+  try { hideTooltip(); } catch (_) {}
+  try { sfx.modalOpen(); } catch (_) {}
+  if (_optionsPanel) return;
+  _ensureFontScaleStyle();
+  const meta = getMeta();
+
+  _optionsPanel = document.createElement('div');
+  _optionsPanel.setAttribute('role', 'dialog');
+  _optionsPanel.setAttribute('aria-modal', 'true');
+  _optionsPanel.setAttribute('aria-label', 'Options');
+  _optionsPanel.style.cssText = `
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at center, rgba(0,0,0,0.55), rgba(0,0,0,0.9) 80%);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-start;
+    pointer-events: auto;
+    font-family: ${F.body};
+    z-index: 120;
+    overflow-y: auto; overflow-x: hidden;
+    overscroll-behavior: contain;
+    -webkit-overflow-scrolling: touch;
+    padding: 26px 20px;
+  `;
+
+  const title = document.createElement('div');
+  title.textContent = 'Options';
+  title.className = 'kk-fs-xl';
+  title.style.cssText = `font-family: ${F.display}; font-weight: 900;
+    letter-spacing: 0.20em; color: ${C.cyan};
+    text-shadow: 0 2px 14px rgba(0,0,0,0.5);
+    margin-bottom: 14px; flex: 0 0 auto;`;
+
+  // Active-tab content host — shows ONE section at a time. flex min-height:0
+  // is the non-obvious bit: without it the flex column's intrinsic min-content
+  // height defeats overflow-y, so a tall tab (Display) clips instead of scrolls.
+  const wrap = document.createElement('div');
+  wrap.style.cssText = `
+    flex: 1 1 auto; min-height: 0; overflow-y: auto;
+    display: flex; flex-direction: column; gap: 18px;
+    width: min(560px, 100%); color: ${C.text}; padding: 2px;
+  `;
+
+  // ── helpers ──
+  function sectionBox(label) {
+    const box = document.createElement('div');
+    box.className = 'kk-panel';
+    box.style.cssText = `
+      background: linear-gradient(180deg, rgba(20,28,22,0.85), rgba(8,14,12,0.92));
+      border: 1px solid ${C.edge}; border-radius: 10px;
+      padding: 14px 18px;
+      display: flex; flex-direction: column; gap: 10px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 6px 16px rgba(0,0,0,0.45);
+    `;
+    const hdr = document.createElement('div');
+    hdr.textContent = label;
+    hdr.className = 'kk-fs-sm';
+    hdr.style.cssText = `font-family: ${F.display}; font-weight: 700;
+      letter-spacing: 0.32em; color: ${C.amber};
+      text-transform: uppercase;
+      border-bottom: 1px solid rgba(255,210,127,0.18);
+      padding-bottom: 6px; margin-bottom: 4px;`;
+    box.appendChild(hdr);
+    return box;
+  }
+
+  function row(labelText, controlEl, hint) {
+    const r = document.createElement('div');
+    r.style.cssText = `display: flex; justify-content: space-between; align-items: center;
+      gap: 18px; padding: 3px 0;`;
+    const labWrap = document.createElement('div');
+    labWrap.style.cssText = `display: flex; flex-direction: column; gap: 2px; flex: 1 1 auto;`;
+    const lab = document.createElement('span');
+    lab.textContent = labelText;
+    lab.className = 'kk-fs-sm';
+    lab.style.cssText = `font-family: ${F.body};
+      letter-spacing: 0.22em; text-transform: uppercase;
+      color: rgba(245,239,225,0.82);`;
+    labWrap.appendChild(lab);
+    if (hint) {
+      const h = document.createElement('span');
+      h.textContent = hint;
+      h.className = 'kk-fs-mono';
+      h.style.cssText = `font-family: ${F.mono};
+        color: rgba(245,239,225,0.45);
+        letter-spacing: 0.06em;`;
+      labWrap.appendChild(h);
+    }
+    r.appendChild(labWrap);
+    r.appendChild(controlEl);
+    return r;
+  }
+
+  const sliderStyle = 'width: 180px; accent-color:' + C.cyan;
+  const toggleStyle = (accent) => `padding: 6px 22px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86));
+    border: 1px solid ${C.edge}; border-radius: 6px;
+    color: ${accent}; font-family: ${F.display}; font-weight: 700;
+    letter-spacing: 0.24em;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset;`;
+  const selectStyle = `padding: 6px 12px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86));
+    border: 1px solid ${C.edge}; border-radius: 6px;
+    color: ${C.cyan}; font-family: ${F.body};
+    letter-spacing: 0.10em; min-width: 180px;`;
+
+  function mkSlider(min, max, step, value, onChange) {
+    const s = document.createElement('input');
+    s.type = 'range';
+    s.min = String(min); s.max = String(max); s.step = String(step);
+    s.value = String(value);
+    s.style.cssText = sliderStyle;
+    s.className = 'kk-fs-sm';
+    s.addEventListener('input', () => onChange(parseFloat(s.value)));
+    return s;
+  }
+  function mkToggle(initial, accent, onText, offText, onClick) {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'kk-fs-sm';
+    b.setAttribute('aria-pressed', String(!!initial));
+    b.style.cssText = toggleStyle(accent);
+    function paint(on) { b.textContent = on ? onText : offText; b.setAttribute('aria-pressed', String(!!on)); }
+    paint(initial);
+    b.addEventListener('click', () => { const nv = onClick(); paint(nv); });
+    return b;
+  }
+  function mkSelect(options, value, onChange) {
+    const sel = document.createElement('select');
+    sel.className = 'kk-fs-sm';
+    sel.style.cssText = selectStyle;
+    for (const o of options) {
+      const op = document.createElement('option');
+      op.value = o.value;
+      op.textContent = o.label;
+      if (o.value === value) op.selected = true;
+      sel.appendChild(op);
+    }
+    sel.addEventListener('change', () => onChange(sel.value));
+    return sel;
+  }
+
+  // ─── Section: Audio ───
+  const sAudio = sectionBox('Audio');
+  const masterSlider = mkSlider(0, 1, 0.05, meta.optMasterVolume != null ? meta.optMasterVolume : meta.optVolume, v => {
+    setOption('optMasterVolume', v); setMasterVolume(v);
+  });
+  const musicSlider = mkSlider(0, 1, 0.05, meta.optMusicVolume != null ? meta.optMusicVolume : (meta.optVolume * 0.6), v => {
+    setOption('optMusicVolume', v); setMusicVolume(v);
+  });
+  const sfxSlider = mkSlider(0, 1, 0.05, meta.optSfxVolume != null ? meta.optSfxVolume : meta.optVolume, v => {
+    setOption('optSfxVolume', v); setSfxVolume(v);
+  });
+  // P4G #141 — Ambient bus slider (4th audio control). Governs sampled stage
+  // ambient loops: forest day/night phase tracks + cinder/twilight/void flat
+  // beds. Sits between Music and SFX in the modal so the visual order
+  // (Master → Music → SFX → Ambient) matches the bus hierarchy.
+  const ambientSlider = mkSlider(0, 1, 0.05, meta.optAmbientVolume != null ? meta.optAmbientVolume : 0.6, v => {
+    setOption('optAmbientVolume', v); setAmbientVolume(v);
+  });
+  const musicTgl = mkToggle(!!meta.optMusic, C.cyan, 'On', 'Off', () => {
+    const nv = !getMeta().optMusic;
+    setOption('optMusic', nv);
+    import('./audio.js').then(m => nv ? m.startMusic() : m.stopMusic());
+    return nv;
+  });
+  sAudio.appendChild(row('Master Volume',  masterSlider));
+  sAudio.appendChild(row('Music Volume',   musicSlider));
+  sAudio.appendChild(row('SFX Volume',     sfxSlider));
+  sAudio.appendChild(row('Ambient Volume', ambientSlider, 'Stage ambience (forest phases, etc)'));
+  sAudio.appendChild(row('Music Track',    musicTgl,      'Procedural in-run music loop'));
+
+  // ─── Section: Display ───
+  const sDisp = sectionBox('Display');
+  const vfxSlider = mkSlider(0, 1, 0.05, meta.optVfx != null ? meta.optVfx : 1.0, v => setOption('optVfx', v));
+  const shkSlider = mkSlider(0, 1.5, 0.1, meta.optShake, v => {
+    setOption('optShake', v);
+    state._optShakeMul = state._optReduceMotion ? 0 : v;
+  });
+  const reduceMotionTgl = mkToggle(!!meta.optReduceMotion, C.amber, 'On', 'Off', () => {
+    const nv = !getMeta().optReduceMotion;
+    setOption('optReduceMotion', nv);
+    // User explicitly chose — sentinel so boot won't override from prefers-reduced-motion.
+    setOption('optReduceMotionUserSet', true);
+    _applyAccessibilityLive();
+    return nv;
+  });
+  const reducedFlashTgl = mkToggle(!!meta.optReducedFlashing, C.amber, 'On', 'Off', () => {
+    const nv = !getMeta().optReducedFlashing;
+    setOption('optReducedFlashing', nv);
+    _applyAccessibilityLive();
+    return nv;
+  });
+  const hcTgl = mkToggle(!!meta.optHighContrast, C.amber, 'On', 'Off', () => {
+    const nv = !getMeta().optHighContrast;
+    setOption('optHighContrast', nv);
+    _applyAccessibilityLive();
+    return nv;
+  });
+  const cbSelect = mkSelect([
+    { value: 'off',           label: 'Off' },
+    { value: 'deuteranopia',  label: 'Deuteranopia (green-weak)' },
+    { value: 'protanopia',    label: 'Protanopia (red-weak)' },
+    { value: 'tritanopia',    label: 'Tritanopia (blue-weak)' },
+  ], meta.optColorblind || 'off', v => {
+    setOption('optColorblind', v);
+    _applyAccessibilityLive();
+  });
+  const fsSlider = mkSlider(0.85, 1.30, 0.05, meta.optFontScale != null ? meta.optFontScale : 1.0, v => {
+    setOption('optFontScale', v);
+    _applyFontScale(v);
+  });
+  const frameCapSel = mkSelect([
+    { value: '0',   label: 'Unlocked' },
+    { value: '30',  label: '30 fps' },
+    { value: '60',  label: '60 fps' },
+    { value: '144', label: '144 fps' },
+  ], String(meta.optFrameCap || 0), v => setOption('optFrameCap', parseInt(v, 10) || 0));
+
+  // Renderer switches require a fresh Three.js renderer/pipeline object graph,
+  // so this advanced Display control stages the choice and applies it through
+  // one explicit save + reload. Applying removes any temporary `?renderer=`
+  // override; every other QA/support query parameter and the hash are kept.
+  const savedRendererPreference = normalizeBackendPreference(meta.optRenderer);
+  let pendingRendererPreference = savedRendererPreference;
+  const rendererSelect = mkSelect([
+    { value: 'auto',   label: 'Auto · WebGPU + fallback' },
+    { value: 'webgpu', label: 'Require WebGPU' },
+    { value: 'webgl',  label: 'Force WebGL 2' },
+  ], savedRendererPreference, v => {
+    pendingRendererPreference = normalizeBackendPreference(v);
+  });
+  rendererSelect.setAttribute('aria-label', 'Renderer backend');
+  const rendererApply = document.createElement('button');
+  rendererApply.type = 'button';
+  rendererApply.className = 'kk-fs-sm';
+  rendererApply.style.cssText = toggleStyle(C.cyan);
+  rendererApply.textContent = 'Apply & Reload';
+  rendererApply.addEventListener('click', () => {
+    setOption('optRenderer', normalizeBackendPreference(pendingRendererPreference));
+    const nextHref = rendererPreferenceReloadUrl(window.location.href);
+    if (nextHref) window.location.href = nextHref;
+    else window.location.reload();
+  });
+  const rendererControls = document.createElement('div');
+  rendererControls.style.cssText = 'display:flex; flex-direction:column; align-items:flex-end; gap:7px;';
+  rendererControls.append(rendererSelect, rendererApply);
+  let rendererHint = 'Auto prefers WebGPU and falls back to WebGL 2. Reload ends an active run.';
+  try {
+    const rendererParams = new URLSearchParams(window.location.search || '');
+    if (rendererParams.has('renderer')) {
+      const override = normalizeBackendPreference(rendererParams.get('renderer'));
+      rendererHint = `URL override active (${override}). Apply clears it and reloads from this saved choice.`;
+    }
+  } catch (_) {}
+  sDisp.appendChild(row('VFX Intensity',    vfxSlider));
+  sDisp.appendChild(row('Screen Shake',     shkSlider, 'Reduce Motion overrides to 0'));
+  sDisp.appendChild(row('Reduce Motion',    reduceMotionTgl, 'Skip flashes, warp, screen shake'));
+  sDisp.appendChild(row('Reduced Flashing', reducedFlashTgl, 'Cap to ~4 flashes/sec at 40% alpha'));
+  sDisp.appendChild(row('High Contrast',    hcTgl, 'Boost HUD + text legibility'));
+  sDisp.appendChild(row('Colorblind',       cbSelect));
+  // P4H #142 — Hold-to-confirm for irreversible actions. Lives next to the
+  // colorblind enum so all a11y toggles cluster visually in the Display
+  // section. When on, destructive buttons (Wipe Progress, Save Import) need
+  // a sustained pointerdown (~600ms) before firing — see src/holdConfirm.js.
+  const holdConfirmTgl = mkToggle(!!meta.optHoldConfirm, C.amber, 'On', 'Off', () => {
+    const nv = !getMeta().optHoldConfirm;
+    setOption('optHoldConfirm', nv);
+    return nv;
+  });
+  sDisp.appendChild(row('Hold to Confirm',  holdConfirmTgl, 'Require 600ms hold on irreversible actions'));
+  sDisp.appendChild(row('Font Scale',       fsSlider, '0.85× to 1.30× (modals only)'));
+  sDisp.appendChild(row('Frame Cap',        frameCapSel, 'Hint only; v1.0 honors monitor refresh'));
+  sDisp.appendChild(row('Renderer · Advanced', rendererControls, rendererHint));
+
+  // ─── Section: Controls ───
+  const sCtrl = sectionBox('Controls');
+  const aimTgl = mkToggle(!!meta.optManualAim, C.cyan, 'On · 🎯', 'Off', () => {
+    const nv = !getMeta().optManualAim;
+    setOption('optManualAim', nv);
+    return nv;
+  });
+  // Auto-Fire Primary (DMD-hybrid). optAutoFirePrimary is null by default and
+  // resolves by device (ON for touch, OFF for mouse); the toggle shows the
+  // resolved state and writes an explicit bool once the player flips it.
+  const _coarsePtr = !!(window.matchMedia && window.matchMedia('(pointer: coarse)').matches) || ('ontouchstart' in window);
+  const autoFireInit = (meta.optAutoFirePrimary == null) ? _coarsePtr : !!meta.optAutoFirePrimary;
+  const autoFireTgl = mkToggle(autoFireInit, C.amber, 'On', 'Off', () => {
+    const cur = getMeta().optAutoFirePrimary;
+    const resolved = (cur == null) ? _coarsePtr : !!cur;
+    const nv = !resolved;
+    setOption('optAutoFirePrimary', nv);
+    return nv;
+  });
+  const deadzoneSlider = mkSlider(0, 0.30, 0.01, meta.optControllerDeadzone != null ? meta.optControllerDeadzone : 0.15, v => {
+    setOption('optControllerDeadzone', v);
+  });
+  sCtrl.appendChild(row('Manual Aim',         aimTgl, 'Mouse target for autoaim/volley'));
+  sCtrl.appendChild(row('Auto-Fire Primary',  autoFireTgl, 'On: primary fires itself (mobile). Off: hold L-Click / fire'));
+  sCtrl.appendChild(row('Controller Deadzone', deadzoneSlider, '0.00 (twitchy) to 0.30 (lazy)'));
+
+  // Language (i18n stub) — folded into Display so it isn't a lonely 1-row tab.
+  const langSel = mkSelect([
+    { value: 'en', label: 'English' },
+  ], meta.optLanguage || 'en', v => setOption('optLanguage', v));
+  sDisp.appendChild(row('Language', langSel, 'More languages post-1.0'));
+
+  // ─── Section: Modes (unlock-gated) ───
+  const sMode = sectionBox('Modes');
+  let anyMode = false;
+  if (meta.unlockedHyper) {
+    anyMode = true;
+    const hyperBtn = mkToggle(!!meta.optHyper, '#ff7a7a', 'On · 🔥', 'Off', () => {
+      const nv = !getMeta().optHyper; setOption('optHyper', nv); return nv;
+    });
+    sMode.appendChild(row('Hyper Mode', hyperBtn, '1.5× difficulty + coins'));
+  }
+  if (meta.unlockedEndless) {
+    anyMode = true;
+    const endBtn = mkToggle(!!meta.optEndless, C.cyan, 'On · ♾', 'Off', () => {
+      const nv = !getMeta().optEndless; setOption('optEndless', nv); return nv;
+    });
+    sMode.appendChild(row('Endless', endBtn, 'No final boss timer'));
+  }
+  if (meta.unlockedHyper) {
+    anyMode = true;
+    const brBtn = mkToggle(!!meta.optBossRush, '#ff7a7a', 'On · ⚔', 'Off', () => {
+      const nv = !getMeta().optBossRush; setOption('optBossRush', nv); return nv;
+    });
+    sMode.appendChild(row('Boss Rush', brBtn, 'Mini-bosses at 25/75/135s, final at 200s'));
+  }
+  if (!anyMode) {
+    const empty = document.createElement('div');
+    empty.className = 'kk-fs-mono';
+    empty.style.cssText = `font-family: ${F.mono}; color: rgba(245,239,225,0.5); padding: 4px 0;`;
+    empty.textContent = '— First victory unlocks Hyper, Endless, and Boss Rush —';
+    sMode.appendChild(empty);
+  }
+
+  // ─── Section: Developer ───
+  // This is a reversible gate bypass, not a progression grant. It lets the
+  // developer inspect every authored chapter while preserving the profile's
+  // real unlock flags underneath. Turning it off snaps an otherwise-locked
+  // selected chapter back to Forest so a stale selection cannot bypass gates.
+  const sDev = sectionBox('Developer');
+  const unlockAllTgl = mkToggle(!!meta.optDevUnlockAllLevels, '#ffb85c', 'Unlocked', 'Progression', () => {
+    const nv = !getMeta().optDevUnlockAllLevels;
+    setOption('optDevUnlockAllLevels', nv);
+    if (!nv) {
+      const legalStage = selectedStage(STAGES);
+      if (getMeta().selectedStage !== legalStage.id) setOption('selectedStage', legalStage.id);
+    }
+    // The chapter rail is already mounted behind Settings on the v2 menu.
+    // Rebuild it immediately so lock badges and click targets match the toggle.
+    import('./menuV2.js').then((m) => {
+      try { if (m.refreshMenuV2) m.refreshMenuV2(); } catch (_) {}
+    }).catch(() => {});
+    return nv;
+  });
+  sDev.appendChild(row(
+    'Unlock All Levels',
+    unlockAllTgl,
+    'Developer preview only · preserves real campaign progress',
+  ));
+  const devNote = document.createElement('div');
+  devNote.className = 'kk-fs-mono';
+  devNote.style.cssText = `font-family: ${F.mono}; color: rgba(245,239,225,0.58); padding: 8px 0 2px; line-height: 1.55;`;
+  devNote.textContent = 'Use this to test Felt Switchback, Paper Woods, Ceramic Basin, Woolen Drift, Glass Mile, and Chalk Plateau. Disable it to restore normal chapter locks.';
+  sDev.appendChild(devNote);
+
+  // ─── Section: Data ───
+  const sData = sectionBox('Data');
+  // Export — copy + download.
+  const exportRow = document.createElement('div');
+  exportRow.style.cssText = 'display: flex; gap: 10px; flex-wrap: wrap;';
+  const exportCopyBtn = document.createElement('button');
+  exportCopyBtn.type = 'button';
+  exportCopyBtn.className = 'kk-fs-sm';
+  exportCopyBtn.style.cssText = toggleStyle(C.cyan);
+  exportCopyBtn.textContent = 'Copy JSON';
+  exportCopyBtn.addEventListener('click', () => {
+    const json = exportMeta();
+    try {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(json);
+        exportCopyBtn.textContent = 'Copied ✓';
+      } else {
+        // Fallback: textarea + execCommand
+        const ta = document.createElement('textarea');
+        ta.value = json;
+        document.body.appendChild(ta);
+        ta.select();
+        try { document.execCommand('copy'); } catch (_) {}
+        document.body.removeChild(ta);
+        exportCopyBtn.textContent = 'Copied ✓';
+      }
+    } catch (e) { exportCopyBtn.textContent = 'Copy failed'; }
+    setTimeout(() => { exportCopyBtn.textContent = 'Copy JSON'; }, 1800);
+  });
+  const exportFileBtn = document.createElement('button');
+  exportFileBtn.type = 'button';
+  exportFileBtn.className = 'kk-fs-sm';
+  exportFileBtn.style.cssText = toggleStyle(C.cyan);
+  exportFileBtn.textContent = 'Download .json';
+  exportFileBtn.addEventListener('click', () => {
+    const json = exportMeta();
+    try {
+      const blob = new Blob([json], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `kk-survivors-save-${Date.now()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(url), 1000);
+    } catch (e) {
+      console.warn('[exportMeta] download failed', e);
+    }
+  });
+  exportRow.appendChild(exportCopyBtn);
+  exportRow.appendChild(exportFileBtn);
+  sData.appendChild(row('Save Export', exportRow, 'Copy / download your meta progress'));
+
+  // Import — textarea OR file input.
+  const importWrap = document.createElement('div');
+  importWrap.style.cssText = 'display: flex; flex-direction: column; gap: 8px; width: 100%;';
+  const importStatus = document.createElement('div');
+  importStatus.className = 'kk-fs-mono';
+  importStatus.style.cssText = `font-family: ${F.mono}; color: rgba(245,239,225,0.6);`;
+  const importTa = document.createElement('textarea');
+  importTa.className = 'kk-fs-mono';
+  importTa.placeholder = 'Paste exported JSON here…';
+  importTa.style.cssText = `width: 100%; min-height: 80px;
+    background: rgba(8,14,12,0.92); color: ${C.text};
+    border: 1px solid ${C.edge}; border-radius: 6px;
+    padding: 8px 10px; font-family: ${F.mono};
+    resize: vertical;`;
+  const importBtnRow = document.createElement('div');
+  importBtnRow.style.cssText = 'display: flex; gap: 10px; flex-wrap: wrap;';
+  const importBtn = document.createElement('button');
+  importBtn.type = 'button';
+  importBtn.className = 'kk-fs-sm';
+  importBtn.style.cssText = toggleStyle(C.amber);
+  importBtn.textContent = 'Import Pasted';
+  // P4H #142 — Save Import overwrites the entire meta blob (coins, embers,
+  // unlocks, run history) with the pasted JSON. Wrap with hold-to-confirm
+  // so a misclick on a populated textarea can't nuke years of progress.
+  holdConfirm(importBtn, () => {
+    const r = importMeta(importTa.value);
+    if (r.ok) {
+      importStatus.style.color = C.green;
+      importStatus.textContent = '✓ Save imported. Restart recommended.';
+      // Re-apply live so the new settings show without a reload.
+      _applyAccessibilityLive();
+      _applyFontScale(getMeta().optFontScale != null ? getMeta().optFontScale : 1);
+    } else {
+      importStatus.style.color = C.red;
+      importStatus.textContent = `✗ Import failed: ${r.reason || 'unknown'}`;
+    }
+  });
+  const fileIn = document.createElement('input');
+  fileIn.type = 'file';
+  fileIn.accept = 'application/json,.json';
+  fileIn.style.cssText = `color: ${C.text}; font-family: ${F.mono};`;
+  fileIn.addEventListener('change', () => {
+    const f = fileIn.files && fileIn.files[0];
+    if (!f) return;
+    const reader = new FileReader();
+    reader.onload = () => {
+      importTa.value = String(reader.result || '');
+      const r = importMeta(importTa.value);
+      if (r.ok) {
+        importStatus.style.color = C.green;
+        importStatus.textContent = '✓ Save imported from file. Restart recommended.';
+        _applyAccessibilityLive();
+        _applyFontScale(getMeta().optFontScale != null ? getMeta().optFontScale : 1);
+      } else {
+        importStatus.style.color = C.red;
+        importStatus.textContent = `✗ Import failed: ${r.reason || 'unknown'}`;
+      }
+    };
+    reader.onerror = () => {
+      importStatus.style.color = C.red;
+      importStatus.textContent = '✗ Could not read file';
+    };
+    reader.readAsText(f);
+  });
+  importBtnRow.appendChild(importBtn);
+  importBtnRow.appendChild(fileIn);
+  importWrap.appendChild(importTa);
+  importWrap.appendChild(importBtnRow);
+  importWrap.appendChild(importStatus);
+  sData.appendChild(row('Save Import', importWrap));
+
+  // Reset — type-to-confirm.
+  const resetBtn = document.createElement('button');
+  resetBtn.type = 'button';
+  resetBtn.className = 'kk-fs-sm';
+  resetBtn.style.cssText = toggleStyle(C.red);
+  resetBtn.textContent = 'Reset Progress…';
+  resetBtn.addEventListener('click', () => {
+    _showResetConfirmModal(() => {
+      resetMeta();
+      _applyAccessibilityLive();
+      _applyFontScale(1);
+      hideOptions();
+      // Reload to ensure all module-level caches drop.
+      try { window.location.reload(); } catch (_) {}
+    });
+  });
+  sData.appendChild(row('Reset Progress', resetBtn, 'Wipes coins, embers, unlocks, runs'));
+
+  // ── Tabbed categories ──
+  // Replaces the old single tall scroll (6 stacked sections overflowed the
+  // viewport and the global wheel-zoom handler ate the scroll). Now one
+  // category shows at a time; wrap still scrolls if a tab is taller than the
+  // window (Display on a short screen).
+  const TABS = [
+    { label: 'Audio',    box: sAudio },
+    { label: 'Display',  box: sDisp  },
+    { label: 'Controls', box: sCtrl  },
+    { label: 'Modes',    box: sMode  },
+    { label: 'Dev',      box: sDev   },
+    { label: 'Data',     box: sData  },
+  ];
+  const tabBar = document.createElement('div');
+  tabBar.setAttribute('role', 'tablist');
+  tabBar.setAttribute('aria-label', 'Options categories');
+  tabBar.style.cssText = `display: flex; flex-wrap: wrap; gap: 8px;
+    justify-content: center; width: min(560px, 100%);
+    margin-bottom: 14px; flex: 0 0 auto;`;
+  const tabBtns = [];
+  function selectTab(i) {
+    for (let k = 0; k < TABS.length; k++) {
+      const on = k === i;
+      const b = tabBtns[k];
+      b.setAttribute('aria-selected', String(on));
+      b.tabIndex = on ? 0 : -1;
+      b.style.color = on ? C.cyan : 'rgba(245,239,225,0.6)';
+      b.style.borderColor = on ? C.cyan : C.edge;
+      b.style.boxShadow = on
+        ? '0 0 12px rgba(34,224,224,0.25), 0 1px 0 rgba(255,255,255,0.05) inset'
+        : 'none';
+      b.style.background = on
+        ? 'linear-gradient(180deg, rgba(18,40,40,0.88), rgba(8,20,20,0.92))'
+        : 'linear-gradient(180deg, rgba(20,28,22,0.70), rgba(8,14,12,0.80))';
+    }
+    wrap.replaceChildren(TABS[i].box);
+    wrap.scrollTop = 0;
+  }
+  TABS.forEach((t, i) => {
+    const b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'kk-fs-sm';
+    b.setAttribute('role', 'tab');
+    b.textContent = t.label;
+    b.style.cssText = `padding: 7px 16px; cursor: pointer; border: 1px solid ${C.edge};
+      border-radius: 7px; font-family: ${F.display}; font-weight: 700;
+      letter-spacing: 0.18em; text-transform: uppercase; transition: all 0.12s ease;`;
+    b.addEventListener('click', () => selectTab(i));
+    tabBtns.push(b);
+    tabBar.appendChild(b);
+  });
+
+  // Footer button row — Close + Return-to-Main-Menu side by side.
+  // Menu button only renders if we're mid-run or in a sub-mode (town /
+  // catacomb / interior); on the start screen itself there's nothing to
+  // return from, so only Close shows.
+  const footer = document.createElement('div');
+  footer.style.cssText = `display:flex; gap:14px; margin-top:18px; flex-wrap:wrap; justify-content:center; flex:0 0 auto;`;
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'kk-btn-secondary kk-fs-sm';
+  close.textContent = 'Close · Esc';
+  close.setAttribute('aria-label', 'Close options');
+  close.addEventListener('click', hideOptions);
+  footer.appendChild(close);
+
+  if (state.mode !== 'menu') {
+    const menuBtn = document.createElement('button');
+    menuBtn.type = 'button';
+    menuBtn.className = 'kk-btn-primary kk-fs-sm';
+    menuBtn.textContent = '↩ Main Menu';
+    menuBtn.setAttribute('aria-label', 'Return to main menu');
+    menuBtn.addEventListener('click', () => {
+      if (typeof window.kkReturnToMenu === 'function') window.kkReturnToMenu();
+      else location.reload();
+    });
+    footer.appendChild(menuBtn);
+  }
+
+  _optionsPanel.appendChild(title);
+  _optionsPanel.appendChild(tabBar);
+  _optionsPanel.appendChild(wrap);
+  _optionsPanel.appendChild(footer);
+  selectTab(0);
+  // Mount on <body>, not #ui-root — see _deathScreen note: #ui-root is clipped
+  // to the letterboxed stage strip on portrait phones.
+  document.body.appendChild(_optionsPanel);
+
+  state.time.paused = true;
+}
+
+// Reset-progress type-to-confirm modal — RESET text gate so a misclick can't
+// destroy years of progress. Calls `onConfirm()` only when the player types
+// the exact word and presses the confirm button.
+function _showResetConfirmModal(onConfirm) {
+  const overlay = document.createElement('div');
+  overlay.setAttribute('role', 'dialog');
+  overlay.setAttribute('aria-label', 'Confirm reset progress');
+  overlay.style.cssText = `
+    position: fixed; inset: 0;
+    background: rgba(0,0,0,0.78);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    display: flex; align-items: center; justify-content: center;
+    z-index: 200; font-family: ${F.body};
+  `;
+  const box = document.createElement('div');
+  box.style.cssText = `
+    background: linear-gradient(180deg, rgba(40,15,15,0.95), rgba(20,8,8,0.97));
+    border: 2px solid ${C.red}; border-radius: 12px;
+    padding: 24px 30px; min-width: min(360px, 90vw); max-width: 460px;
+    max-height: 90%; overflow-y: auto; overflow-x: hidden;
+    color: ${C.text};
+    box-shadow: 0 16px 36px rgba(0,0,0,0.65), 0 0 22px rgba(255,94,94,0.25);
+    display: flex; flex-direction: column; gap: 12px;
+  `;
+  const h = document.createElement('div');
+  h.className = 'kk-fs-lg';
+  h.style.cssText = `font-family: ${F.display}; font-weight: 900; letter-spacing: 0.16em;
+    color: ${C.red}; text-transform: uppercase;`;
+  h.textContent = 'Reset progress';
+  const p = document.createElement('div');
+  p.className = 'kk-fs-sm';
+  p.style.cssText = `line-height: 1.5; color: rgba(245,239,225,0.85);`;
+  p.innerHTML = `This wipes <b>coins, embers, sigils, unlocks, run history, achievements, and presets</b>. There is no undo.<br><br>Type <b style="color:${C.red};">RESET</b> to confirm:`;
+  const inp = document.createElement('input');
+  inp.type = 'text';
+  inp.placeholder = 'RESET';
+  inp.className = 'kk-fs-md';
+  inp.style.cssText = `padding: 8px 12px; background: rgba(8,4,4,0.9);
+    color: ${C.text}; border: 1px solid ${C.edge}; border-radius: 6px;
+    font-family: ${F.mono}; letter-spacing: 0.2em; text-transform: uppercase;`;
+  const btnRow = document.createElement('div');
+  btnRow.style.cssText = 'display: flex; gap: 10px; margin-top: 6px;';
+  const cancelBtn = document.createElement('button');
+  cancelBtn.type = 'button';
+  cancelBtn.className = 'kk-fs-sm';
+  cancelBtn.textContent = 'Cancel';
+  cancelBtn.style.cssText = `padding: 8px 18px; cursor: pointer;
+    background: rgba(20,20,20,0.8); color: ${C.text};
+    border: 1px solid ${C.edge}; border-radius: 6px;
+    font-family: ${F.display}; font-weight: 700; letter-spacing: 0.20em;`;
+  cancelBtn.addEventListener('click', () => {
+    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+  });
+  const confirmBtn = document.createElement('button');
+  confirmBtn.type = 'button';
+  confirmBtn.className = 'kk-fs-sm';
+  confirmBtn.textContent = 'Wipe Progress';
+  confirmBtn.disabled = true;
+  confirmBtn.style.cssText = `padding: 8px 18px; cursor: not-allowed;
+    background: rgba(80,20,20,0.6); color: rgba(245,239,225,0.5);
+    border: 1px solid ${C.red}; border-radius: 6px;
+    font-family: ${F.display}; font-weight: 700; letter-spacing: 0.20em;
+    opacity: 0.5;`;
+  function refreshGate() {
+    const ok = inp.value.trim().toUpperCase() === 'RESET';
+    confirmBtn.disabled = !ok;
+    confirmBtn.style.cursor = ok ? 'pointer' : 'not-allowed';
+    confirmBtn.style.background = ok ? `rgba(160,40,40,0.9)` : 'rgba(80,20,20,0.6)';
+    confirmBtn.style.color = ok ? C.text : 'rgba(245,239,225,0.5)';
+    confirmBtn.style.opacity = ok ? '1' : '0.5';
+  }
+  inp.addEventListener('input', refreshGate);
+  // P4H #142 — Wipe Progress is the most catastrophic action in the game
+  // (irrecoverable meta wipe). Stack hold-to-confirm on TOP of the existing
+  // type-RESET gate when optHoldConfirm is on. Red fill matches the danger
+  // accent already used on the button border.
+  holdConfirm(confirmBtn, () => {
+    if (inp.value.trim().toUpperCase() !== 'RESET') return;
+    if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+    try { onConfirm(); } catch (e) { console.warn('[resetMeta] confirm failed', e); }
+  }, { palette: { fill: '#ff5e5e', trough: 'rgba(40,8,8,0.65)' } });
+  btnRow.appendChild(cancelBtn);
+  btnRow.appendChild(confirmBtn);
+  box.appendChild(h);
+  box.appendChild(p);
+  box.appendChild(inp);
+  box.appendChild(btnRow);
+  overlay.appendChild(box);
+  document.body.appendChild(overlay);
+  setTimeout(() => inp.focus(), 0);
+}
+
+export function hideOptions() {
+  if (!_optionsPanel) return;
+  try { sfx.modalClose(); } catch (_) {}
+  if (_optionsPanel.parentNode) _optionsPanel.parentNode.removeChild(_optionsPanel);
+  _optionsPanel = null;
+  if (!state.gameOver && state.started) state.time.paused = false;
+}
+
+export function isOptionsOpen() { return !!_optionsPanel; }
+
+// ── Weapon panel ─────────────────────────────────────────────────────────────
+function _updateWeaponPanel() {
+  if (!_weaponPanel) return;
+  const reg = _registry || {};
+  const weapons = state.weapons || [];
+  // Add/update cells
+  for (const w of weapons) {
+    const entry = reg[w.id];
+    if (!entry) continue;
+    let cell = _weaponCells.get(w.id);
+    if (!cell) {
+      const wrap = document.createElement('div');
+      const evolved = w.inst && w.inst.evolved;
+      wrap.className = 'kk-weapon-cell';
+      wrap.classList.toggle('kk-weapon-evolved', !!evolved);
+      wrap.setAttribute('role', 'img');
+      wrap.setAttribute('aria-label', `${entry.name || w.id}, level ${w.level}`);
+      const icon = document.createElement('div');
+      icon.className = 'kk-weapon-icon';
+      if (ICON_ART.has(w.id)) {
+        const img = document.createElement('img');
+        img.src = `assets/icons/${w.id}.webp`;
+        img.alt = '';
+        icon.appendChild(img);
+      } else {
+        icon.textContent = entry.icon || '★';
+      }
+      const lvl = document.createElement('div');
+      lvl.className = 'kk-weapon-level';
+      lvl.textContent = evolved ? 'EVO' : `LV${w.level}`;
+      wrap.appendChild(icon); wrap.appendChild(lvl);
+      _weaponPanel.appendChild(wrap);
+      cell = { wrap, level: w.level, evolved };
+      _weaponCells.set(w.id, cell);
+      // Pointer events default to none on the HUD; enable on the cell so the
+      // tooltip listeners fire when the player pauses + hovers.
+      wrap.style.pointerEvents = 'auto';
+      wrap.style.cursor = 'help';
+      bindTooltip(wrap, () => {
+        const w2 = (state.weapons || []).find(x => x.id === w.id);
+        if (!w2) return null;
+        const evo = w2.inst && w2.inst.evolved;
+        const wb = weaponBlurb(w2.id, w2.level);
+        if (!wb) return { title: w.id, body: 'Equipped weapon.' };
+        const reg = (_registry || {})[w2.id];
+        const maxLv = reg ? reg.maxLevel : w2.level;
+        return {
+          title: wb.name + (evo ? ' · EVOLVED' : ` · Lv ${w2.level}/${maxLv}`),
+          icon: wb.icon,
+          body: wb.flavor + '\n\n' + wb.body + (evo ? '\n\nEvolved form active.' : ''),
+          tags: wb.tags,
+          stats: weaponStatRows(w2.id, w2.level),
+          accent: evo ? '#ffd27f' : '#7fffe4',
+        };
+      });
+    } else {
+      const evolved = w.inst && w.inst.evolved;
+      if (cell.level !== w.level || cell.evolved !== evolved) {
+        const lvl = cell.wrap.children[1];
+        lvl.textContent = evolved ? 'EVO' : `LV${w.level}`;
+        cell.wrap.classList.toggle('kk-weapon-evolved', !!evolved);
+        cell.wrap.setAttribute('aria-label', `${entry.name || w.id}, ${evolved ? 'evolved' : `level ${w.level}`}`);
+        cell.level = w.level;
+        cell.evolved = evolved;
+      }
+    }
+  }
+  // Remove cells for weapons no longer owned (e.g., reset)
+  const ownedIds = new Set(weapons.map(w => w.id));
+  for (const [id, cell] of _weaponCells.entries()) {
+    if (!ownedIds.has(id)) {
+      unbindTooltip(cell.wrap);
+      if (cell.wrap.parentNode) cell.wrap.parentNode.removeChild(cell.wrap);
+      _weaponCells.delete(id);
+    }
+  }
+}
+
+// ── Achievement toast ────────────────────────────────────────────────────────
+const _achQueue = [];
+let _achToast = null;
+export function tryAchievement(id) {
+  // Import locally to avoid circular import at module load
+  return import('./meta.js').then(m => {
+    const def = m.unlockAchievement(id);
+    if (def) _enqueueAchievement(def);
+    return def;
+  });
+}
+function _enqueueAchievement(def) {
+  _achQueue.push(def);
+  if (!_achToast) _showNextAchievement();
+}
+function _showNextAchievement() {
+  const def = _achQueue.shift();
+  if (!def || !_root) { _achToast = null; return; }
+  _achToast = document.createElement('div');
+  _achToast.className = 'kk-achievement-toast';
+  _achToast.style.cssText = `
+    position: fixed; right: 18px; top: 148px;
+    background: linear-gradient(145deg, rgba(47,31,41,.96), rgba(20,15,22,.97));
+    border: 1px solid var(--kk-hud-line, rgba(255,226,188,.30));
+    border-left: 3px solid ${C.amber};
+    border-radius: 14px;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.06) inset,
+      0 16px 38px rgba(12,6,10,.52),
+      0 0 22px rgba(255,210,127,0.12);
+    backdrop-filter: blur(14px) saturate(125%); -webkit-backdrop-filter: blur(14px) saturate(125%);
+    padding: 12px 16px; min-width: min(280px, 90vw); max-width: min(350px, 90vw);
+    font-family: ${F.body};
+    color: ${C.text}; pointer-events: none; z-index: 65;
+    transform: translateX(120%); transition: transform 0.4s ease-out;
+    display: flex; gap: 14px; align-items: center;
+  `;
+  _achToast.innerHTML = `
+    <div style="font-size:calc(var(--kk-font-scale, 1) * 38px);filter:drop-shadow(0 3px 8px rgba(0,0,0,0.5));">${def.icon}</div>
+    <div>
+      <div style="font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 10px);color:${C.amber};letter-spacing:0.36em;text-transform:uppercase;">Achievement</div>
+      <div style="font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 18px);font-weight:700;color:${C.text};letter-spacing:0.10em;margin-top:2px;">${escapeHtml(def.name)}</div>
+      <div style="font-size:calc(var(--kk-font-scale, 1) * 11.5px);opacity:0.78;margin-top:3px;line-height:1.45;">${escapeHtml(def.desc)}</div>
+    </div>
+  `;
+  _root.appendChild(_achToast);
+  requestAnimationFrame(() => { if (_achToast) _achToast.style.transform = 'translateX(0)'; });
+  setTimeout(() => {
+    if (!_achToast) return;
+    _achToast.style.transform = 'translateX(120%)';
+    setTimeout(() => {
+      if (_achToast && _achToast.parentNode) _achToast.parentNode.removeChild(_achToast);
+      _achToast = null;
+      _showNextAchievement();
+    }, 400);
+  }, 3500);
+}
+
+// ── Secret toast (purple-framed variant) ─────────────────────────────────────
+const _secretQueue = [];
+let _secretToast = null;
+export function trySecret(id) {
+  return import('./meta.js').then(m => {
+    const def = m.unlockSecret(id);
+    if (def) _enqueueSecret(def);
+    return def;
+  });
+}
+function _enqueueSecret(def) {
+  _secretQueue.push(def);
+  if (!_secretToast) _showNextSecret();
+}
+function _showNextSecret() {
+  const def = _secretQueue.shift();
+  if (!def || !_root) { _secretToast = null; return; }
+  const purple = '#c87bff';
+  _secretToast = document.createElement('div');
+  _secretToast.className = 'kk-secret-toast';
+  _secretToast.style.cssText = `
+    position: fixed; right: 18px; top: 148px;
+    background: linear-gradient(145deg, rgba(45,27,49,.97), rgba(18,12,25,.98));
+    border: 1px solid var(--kk-hud-line, rgba(255,226,188,.30));
+    border-left: 3px solid ${purple};
+    border-radius: 14px;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.06) inset,
+      0 16px 38px rgba(12,6,10,.55),
+      0 0 24px rgba(200,123,255,0.18);
+    backdrop-filter: blur(14px) saturate(125%); -webkit-backdrop-filter: blur(14px) saturate(125%);
+    padding: 12px 16px; min-width: min(300px, 90vw); max-width: min(360px, 90vw);
+    font-family: ${F.body};
+    color: ${C.text}; pointer-events: none; z-index: 66;
+    transform: translateX(120%); transition: transform 0.4s ease-out;
+    display: flex; gap: 14px; align-items: center;
+  `;
+  _secretToast.innerHTML = `
+    <div style="font-size:calc(var(--kk-font-scale, 1) * 38px);filter:drop-shadow(0 3px 10px rgba(200,123,255,0.45));">${def.icon}</div>
+    <div>
+      <div style="font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 10px);color:${purple};letter-spacing:0.36em;text-transform:uppercase;">★ Secret Found</div>
+      <div style="font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 18px);font-weight:700;color:${C.text};letter-spacing:0.10em;margin-top:2px;">${escapeHtml(def.name)}</div>
+      <div style="font-size:calc(var(--kk-font-scale, 1) * 11.5px);opacity:0.78;margin-top:3px;line-height:1.45;">${escapeHtml(def.desc)}</div>
+    </div>
+  `;
+  _root.appendChild(_secretToast);
+  requestAnimationFrame(() => { if (_secretToast) _secretToast.style.transform = 'translateX(0)'; });
+  setTimeout(() => {
+    if (!_secretToast) return;
+    _secretToast.style.transform = 'translateX(120%)';
+    setTimeout(() => {
+      if (_secretToast && _secretToast.parentNode) _secretToast.parentNode.removeChild(_secretToast);
+      _secretToast = null;
+      _showNextSecret();
+    }, 400);
+  }, 4000);
+}
+
+// ── Tutorial overlay (first run only) ────────────────────────────────────────
+let _tutorial = null;
+let _tutorialHideTO = null;
+export function showTutorial() {
+  // Iter 21a — defensive tooltip hide on modal entry.
+  try { hideTooltip(); } catch (_) {}
+  if (_tutorial || !_root) return;
+  _tutorial = document.createElement('div');
+  _tutorial.style.cssText = `
+    position: fixed; left: 50%; bottom: 110px;
+    transform: translateX(-50%);
+    background: rgba(6,16,8,0.92);
+    border: 1px solid ${C.cyan};
+    box-shadow: 0 0 16px rgba(68,255,204,0.55);
+    padding: 16px 28px; min-width: min(460px, 90vw);
+    font-family: ${F.body}; color: ${C.text};
+    font-size: calc(var(--kk-font-scale, 1) * 13px); letter-spacing: 1px; line-height: 1.8;
+    pointer-events: auto; z-index: 70;
+    opacity: 0; transition: opacity 0.35s ease-out;
+    text-align: left;
+  `;
+  _tutorial.innerHTML = `
+    <div style="font-size:calc(var(--kk-font-scale, 1) * 18px);color:${C.cyan};text-shadow:0 0 8px ${C.cyan};letter-spacing:4px;text-align:center;margin-bottom:10px;">CONTROLS</div>
+    <div><span style="color:${C.amber}">WASD / Arrows</span> &mdash; Move</div>
+    <div><span style="color:${C.amber}">Mouse</span> &mdash; Aim &nbsp;<span style="color:${C.amber}">Hold L-Click</span> &mdash; Fire primary</div>
+    <div><span style="color:${C.amber}">Space</span> &mdash; Jump</div>
+    <div><span style="color:${C.amber}">Shift</span> &mdash; Dash <span style="opacity:0.6">(upgrade via filler)</span></div>
+    <div><span style="color:${C.amber}">R-Click</span> &mdash; Pipes grapple &nbsp;<span style="color:${C.amber}">Q</span> &mdash; Active ability</div>
+    <div><span style="color:${C.amber}">Mouse wheel</span> &mdash; Zoom <span style="opacity:0.6">(unlocks via filler)</span></div>
+    <div><span style="color:${C.amber}">ESC</span> &mdash; Options</div>
+    <div style="text-align:center;margin-top:8px;opacity:0.7;font-size:calc(var(--kk-font-scale, 1) * 11px);">[click or any key to dismiss]</div>
+  `;
+  _root.appendChild(_tutorial);
+  // Fade in on next frame
+  requestAnimationFrame(() => { if (_tutorial) _tutorial.style.opacity = '1'; });
+  const dismiss = () => hideTutorial();
+  _tutorial.addEventListener('click', dismiss);
+  window.addEventListener('keydown', dismiss, { once: true });
+  // Auto-dismiss after 10s
+  _tutorialHideTO = setTimeout(dismiss, 10000);
+}
+export function hideTutorial() {
+  if (!_tutorial) return;
+  if (_tutorialHideTO) { clearTimeout(_tutorialHideTO); _tutorialHideTO = null; }
+  _tutorial.style.opacity = '0';
+  const el = _tutorial;
+  _tutorial = null;
+  setTimeout(() => { if (el && el.parentNode) el.parentNode.removeChild(el); }, 400);
+  // Persist seen flag
+  setOption('seenTutorial', true);
+}
+
+// ── Damage flash overlay ─────────────────────────────────────────────────────
+let _dmgOverlay = null;
+let _dmgFadeTO = null;
+function _ensureDmgOverlay() {
+  if (_dmgOverlay) return;
+  _dmgOverlay = document.createElement('div');
+  _dmgOverlay.id = 'kk-dmg-overlay';
+  _dmgOverlay.style.cssText = `
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at center, rgba(255,40,40,0) 35%, rgba(255,40,40,0.65) 100%);
+    pointer-events: none; z-index: 25;
+    opacity: 0;
+    transition: opacity 0.12s ease-out;
+  `;
+  document.body.appendChild(_dmgOverlay);
+}
+export function flashDamage(severity = 1) {
+  _ensureDmgOverlay();
+  const op = Math.min(1, 0.45 + 0.55 * severity);   // 0.45..1.0 by severity
+  const ms = 70 + Math.floor(severity * 80);         // 70..150ms
+  _dmgOverlay.style.opacity = String(op);
+  if (_dmgFadeTO) clearTimeout(_dmgFadeTO);
+  _dmgFadeTO = setTimeout(() => {
+    if (_dmgOverlay) _dmgOverlay.style.opacity = '0';
+  }, ms);
+}
+
+// ── Level-up flash overlay ───────────────────────────────────────────────────
+let _luOverlay = null;
+let _luFadeTO = null;
+function _ensureLuOverlay() {
+  if (_luOverlay) return;
+  _luOverlay = document.createElement('div');
+  _luOverlay.id = 'kk-lu-overlay';
+  _luOverlay.style.cssText = `
+    position: fixed; inset: 0;
+    background: radial-gradient(ellipse at center, rgba(68,255,204,0.45) 0%, rgba(68,255,204,0) 60%);
+    pointer-events: none; z-index: 24;
+    opacity: 0;
+    transition: opacity 0.25s ease-out;
+  `;
+  document.body.appendChild(_luOverlay);
+}
+export function flashLevelUp() {
+  _ensureLuOverlay();
+  _luOverlay.style.opacity = '1';
+  if (_luFadeTO) clearTimeout(_luFadeTO);
+  _luFadeTO = setTimeout(() => {
+    if (_luOverlay) _luOverlay.style.opacity = '0';
+  }, 200);
+}
+
+// ── Hall of Records ──────────────────────────────────────────────────────────
+// Iter-9 retention surface #5: surfaces local leaderboard.topRunsAcrossAll(20)
+// as a single-screen table. Defaults to topRunsAcrossAll's existing sort order
+// (timeSurvived desc, kills desc) — the brief calls "sortable" but lists no
+// per-column toggle, so we don't gold-plate click-to-resort headers. Seed cell
+// is click-to-replay: it pre-loads the entry's stage/character/mode into the
+// next run via setOption, then closes the modal.
+let _hallModal = null;
+export function isHallOfRecordsOpen() { return !!_hallModal; }
+export function hideHallOfRecords() {
+  if (!_hallModal) return;
+  try { sfx.modalClose(); } catch (_) {}
+  if (_hallModal.parentNode) _hallModal.parentNode.removeChild(_hallModal);
+  _hallModal = null;
+}
+export function showHallOfRecords() {
+  // Iter 21a — defensive tooltip hide on modal entry.
+  try { hideTooltip(); } catch (_) {}
+  if (_hallModal) return;
+  try { sfx.modalOpen(); } catch (_) {}
+  if (!_root) {
+    injectCSS();
+    _root = document.getElementById('ui-root');
+    if (!_root) return;
+  }
+  const runs = (typeof topRunsAcrossAll === 'function') ? (topRunsAcrossAll(20) || []) : [];
+
+  _hallModal = document.createElement('div');
+  _hallModal.style.cssText = `
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(255,122,216,0.06), transparent 60%),
+      radial-gradient(ellipse at center, rgba(0,0,0,0.55), rgba(0,0,0,0.92) 80%);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-start;
+    padding: 48px 20px;
+    pointer-events: auto;
+    font-family: ${F.body};
+    z-index: 130; overflow-y: auto;
+  `;
+
+  const title = document.createElement('div');
+  title.style.cssText = `font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 44px); font-weight: 900;
+    letter-spacing: 0.20em; color: ${C.magenta};
+    text-shadow: 0 2px 16px rgba(0,0,0,0.55), 0 0 24px rgba(255,122,216,0.22);
+    margin-bottom: 6px;`;
+  title.textContent = 'Hall of Records';
+
+  const subtitle = document.createElement('div');
+  subtitle.style.cssText = `font-family: ${F.body}; font-size: calc(var(--kk-font-scale, 1) * 11px); letter-spacing: 0.32em;
+    color: rgba(245,239,225,0.62); text-transform: uppercase; margin-bottom: 22px;`;
+  subtitle.textContent = `Top ${Math.min(runs.length, 20)} runs across all categories · click a seed to replay`;
+
+  const table = document.createElement('div');
+  table.style.cssText = `
+    width: 100%; max-width: 1000px;
+    background: linear-gradient(180deg, rgba(20,28,22,0.94), rgba(8,14,12,0.96));
+    border: 1px solid ${C.edge}; border-radius: 10px;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 14px 36px rgba(0,0,0,0.55);
+    padding: 14px 18px;
+    display: flex; flex-direction: column; gap: 4px;
+  `;
+
+  // Header row
+  const header = document.createElement('div');
+  header.style.cssText = `
+    display: grid;
+    grid-template-columns: 48px 1.2fr 1.2fr 0.9fr 0.8fr 0.9fr 1.6fr;
+    column-gap: 12px;
+    padding: 8px 10px;
+    font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 10.5px); letter-spacing: 0.30em;
+    text-transform: uppercase; color: ${C.amber};
+    border-bottom: 1px solid ${C.edge};
+  `;
+  for (const lbl of ['Rank', 'Character', 'Stage', 'Mode', 'Kills', 'Time', 'Seed']) {
+    const c = document.createElement('div'); c.textContent = lbl; header.appendChild(c);
+  }
+  table.appendChild(header);
+
+  if (runs.length === 0) {
+    const empty = document.createElement('div');
+    empty.style.cssText = `padding: 28px; text-align: center; color: rgba(245,239,225,0.62); font-size: calc(var(--kk-font-scale, 1) * 13px); letter-spacing: 0.16em;`;
+    empty.textContent = 'No records yet. Survive a run to appear here.';
+    table.appendChild(empty);
+  } else {
+    runs.forEach((r, i) => {
+      const row = document.createElement('div');
+      const isTop3 = i < 3;
+      const accentC = i === 0 ? C.amber : i === 1 ? C.cyan : i === 2 ? C.magenta : 'rgba(245,239,225,0.78)';
+      row.style.cssText = `
+        display: grid;
+        grid-template-columns: 48px 1.2fr 1.2fr 0.9fr 0.8fr 0.9fr 1.6fr;
+        column-gap: 12px;
+        padding: 8px 10px;
+        align-items: center;
+        font-family: ${F.mono}; font-size: calc(var(--kk-font-scale, 1) * 12px);
+        color: ${C.text};
+        border-bottom: 1px solid rgba(255,232,188,0.06);
+        ${isTop3 ? 'background: linear-gradient(90deg, rgba(255,210,127,0.05), transparent);' : ''}
+      `;
+      const seedBtn = document.createElement('button');
+      seedBtn.type = 'button';
+      seedBtn.textContent = r.seed || '—';
+      seedBtn.title = 'Click to load this seed for the next run';
+      seedBtn.style.cssText = `
+        padding: 4px 8px; cursor: pointer;
+        background: rgba(8,14,12,0.66);
+        border: 1px solid ${C.cyan};
+        border-radius: 6px;
+        color: ${C.cyan};
+        font-family: ${F.mono}; font-size: calc(var(--kk-font-scale, 1) * 11px); letter-spacing: 0.04em;
+      `;
+      seedBtn.addEventListener('mouseenter', () => { try { sfx.uiHover(); } catch (_) {} });
+      seedBtn.addEventListener('click', (ev) => {
+        ev.stopPropagation();
+        try { sfx.uiClick(); } catch (_) {}
+        if (r.stage) setOption('selectedStage', r.stage);
+        if (r.char)  setOption('selectedChar',  r.char);
+        // Always clear ALL mode toggles first, then flip the one that matches
+        // the recorded run. Otherwise a player with Daily on, clicking a hyper
+        // seed, ends up with BOTH Daily and Hyper active — which the run
+        // pipeline (main.js applyMetaUpgrades) treats as a bug state.
+        setOption('optHyper',    false);
+        setOption('optEndless',  false);
+        setOption('optBossRush', false);
+        setOption('optDaily',    false);
+        setOption('optWeekly',   false);
+        if (r.mode === 'hyper')     setOption('optHyper',    true);
+        else if (r.mode === 'endless')   setOption('optEndless',  true);
+        else if (r.mode === 'boss-rush') setOption('optBossRush', true);
+        // daily/weekly seeds are date-locked — don't auto-toggle those.
+        // The player can opt-in explicitly via the Daily/Weekly button.
+        _kkShowMicroToast(`Loaded seed ${r.seed || ''}`, C.amber);
+        setTimeout(() => { hideHallOfRecords(); }, 350);
+      });
+      const charLabel = (r.char || '?').toUpperCase();
+      const stageLabel = (r.stage || '?').toUpperCase();
+      const modeLabel = (r.mode || 'normal').toUpperCase();
+      row.innerHTML = `
+        <div style="color:${accentC};font-family:${F.mono};font-size:calc(var(--kk-font-scale, 1) * 14px);">#${i + 1}</div>
+        <div style="font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 12px);letter-spacing:0.10em;color:${C.text};">${escapeHtml(charLabel)}</div>
+        <div style="font-family:${F.body};font-size:calc(var(--kk-font-scale, 1) * 11px);letter-spacing:0.12em;color:rgba(245,239,225,0.82);text-transform:uppercase;">${escapeHtml(stageLabel)}</div>
+        <div style="font-family:${F.body};font-size:calc(var(--kk-font-scale, 1) * 10.5px);letter-spacing:0.16em;color:${r.mode === 'daily' ? '#c87bff' : r.mode === 'weekly' ? C.magenta : r.mode === 'hyper' ? C.red : C.cyan};text-transform:uppercase;">${escapeHtml(modeLabel)}</div>
+        <div style="color:${C.amber};">${(r.kills | 0).toLocaleString()}</div>
+        <div style="color:${C.text};">${fmtTime(r.timeSurvived | 0)}</div>
+      `;
+      // Replace the last cell placeholder with the live button.
+      const seedCell = document.createElement('div');
+      seedCell.appendChild(seedBtn);
+      row.appendChild(seedCell);
+      table.appendChild(row);
+    });
+  }
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = 'Close · Esc';
+  close.style.cssText = `margin-top: 22px; padding: 10px 26px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86));
+    border: 1px solid ${C.edge}; border-radius: 8px;
+    color: ${C.magenta}; font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 13px); font-weight: 700;
+    letter-spacing: 0.28em;`;
+  close.addEventListener('mouseenter', () => { try { sfx.uiHover(); } catch (_) {} });
+  close.onclick = hideHallOfRecords;
+
+  // ── Helltide stats panel (iter 18) ──────────────────────────────────────
+  // Sits between the subtitle and the top-runs table so it's the first thing
+  // a returning player sees — surfaces the lifetime "feels like it MATTERS"
+  // weight that iter 17's run-currency was missing. Reads from meta.lifetime
+  // which helltide.endHelltide() bumps on every event close.
+  const helltidePanel = document.createElement('div');
+  {
+    const m = (typeof getMeta === 'function') ? getMeta() : {};
+    const lt = (m && m.lifetime) || {};
+    const totalEmbers = (lt.helltideEmbersTotal | 0) || 0;
+    const maxBanked = (lt.helltideMaxBanked | 0) || 0;
+    helltidePanel.style.cssText = `
+      width: 100%; max-width: 1000px;
+      background: linear-gradient(180deg, rgba(34,18,12,0.92), rgba(20,10,8,0.94));
+      border: 1px solid rgba(255,122,40,0.45);
+      border-radius: 10px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset,
+                  0 12px 28px rgba(0,0,0,0.55),
+                  0 0 28px rgba(255,90,40,0.10);
+      padding: 14px 22px;
+      display: flex; align-items: center; justify-content: space-between;
+      gap: 18px; flex-wrap: wrap;
+      margin-bottom: 14px;
+    `;
+    helltidePanel.innerHTML = `
+      <div style="display:flex;flex-direction:column;gap:2px;">
+        <div style="font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 13px);font-weight:900;letter-spacing:0.28em;color:#ffae6a;text-transform:uppercase;">
+          🔥 Helltide
+        </div>
+        <div style="font-family:${F.body};font-size:calc(var(--kk-font-scale, 1) * 10.5px);letter-spacing:0.22em;color:rgba(245,239,225,0.55);text-transform:uppercase;">
+          Hellfire embers — lifetime tally
+        </div>
+      </div>
+      <div style="display:flex;gap:28px;align-items:baseline;">
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+          <div style="font-family:${F.mono};font-size:calc(var(--kk-font-scale, 1) * 22px);color:#ff8a5a;letter-spacing:0.04em;">
+            ${totalEmbers.toLocaleString()} ⚜
+          </div>
+          <div style="font-family:${F.body};font-size:calc(var(--kk-font-scale, 1) * 9.5px);letter-spacing:0.24em;color:rgba(245,239,225,0.62);text-transform:uppercase;">
+            Embers banked (lifetime)
+          </div>
+        </div>
+        <div style="display:flex;flex-direction:column;align-items:flex-end;gap:2px;">
+          <div style="font-family:${F.mono};font-size:calc(var(--kk-font-scale, 1) * 22px);color:#ff8a5a;letter-spacing:0.04em;">
+            ${maxBanked.toLocaleString()} ⚜
+          </div>
+          <div style="font-family:${F.body};font-size:calc(var(--kk-font-scale, 1) * 9.5px);letter-spacing:0.24em;color:rgba(245,239,225,0.62);text-transform:uppercase;">
+            Most banked in one Helltide
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  _hallModal.appendChild(title);
+  _hallModal.appendChild(subtitle);
+  _hallModal.appendChild(helltidePanel);
+  _hallModal.appendChild(table);
+  _hallModal.appendChild(close);
+  _root.appendChild(_hallModal);
+
+  // Capture-phase Esc handler — mirrors runHistory + codex patterns so the
+  // global Esc in main.js doesn't toggle the options panel underneath.
+  const winKey = (e) => {
+    if (!_hallModal) { window.removeEventListener('keydown', winKey, true); return; }
+    if (e.code === 'Escape') {
+      e.stopPropagation();
+      e.preventDefault();
+      hideHallOfRecords();
+    }
+  };
+  window.addEventListener('keydown', winKey, true);
+}
+
+// ── Nemesis Tease (Punch List #2, 2026-05-16) ───────────────────────────────
+// HUD-only directional arrow pinned near the screen edge, rotated to point at
+// the spawn vector. Lives in `_root` so it scales with the rest of the HUD,
+// stays out of the world-FX pipeline (no Three.js coupling, no BLOOM_LAYER
+// management), and survives a 60s lifetime without polling.
+//
+// Contract: `angle` is the WORLD-space angle the eventual Nemesis spawn will
+// come from, measured the same way spawnDirector picks it (atan2-style:
+// cos(a)·r East, sin(a)·r South in world XZ). The arrow points OUTWARD toward
+// that direction so the player can read "the hunter is out there." Single
+// active arrow — repeat calls replace.
+let _nemesisArrow = null;
+let _nemesisArrowHideTO = null;
+const NEMESIS_RED = '#ff2020';   // matches existing 'THE NEMESIS HUNTS' banner
+
+export function showNemesisArrow(angle, lifetimeSec = 60) {
+  if (!_root) return;
+  if (_nemesisArrow && _nemesisArrow.parentNode) _nemesisArrow.parentNode.removeChild(_nemesisArrow);
+  if (_nemesisArrowHideTO) clearTimeout(_nemesisArrowHideTO);
+
+  // Screen-space placement: orbit the centre on a fixed radius so the arrow
+  // sits just inside the viewport edge. Map world angle (XZ plane) to screen
+  // angle. Convention: world +x = right (screen 0°), world +z = down on the
+  // top-down camera (screen 90°), so we can reuse angle directly.
+  const orbitVMin = 38;        // % of min(vw,vh) — keeps arrow visible on both axes
+  const cssAngleDeg = (angle * 180) / Math.PI;
+  // tx/ty are translation offsets from centre; rotate -90deg because the SVG
+  // triangle points "up" by default and we want it to point along the angle.
+  const tx = `calc(${Math.cos(angle) * orbitVMin}vmin)`;
+  const ty = `calc(${Math.sin(angle) * orbitVMin}vmin)`;
+
+  _nemesisArrow = document.createElement('div');
+  _nemesisArrow.setAttribute('aria-hidden', 'true');
+  _nemesisArrow.style.cssText = `
+    position: fixed; left: 50%; top: 50%;
+    transform: translate(-50%, -50%) translate(${tx}, ${ty}) rotate(${cssAngleDeg + 90}deg);
+    width: 48px; height: 48px;
+    pointer-events: none; z-index: 79;
+    filter: drop-shadow(0 0 12px ${NEMESIS_RED}cc) drop-shadow(0 0 4px ${NEMESIS_RED});
+    animation: kk-nemesis-arrow-pulse 1.2s ease-in-out infinite;
+    opacity: 0.92;
+  `;
+  _nemesisArrow.innerHTML = `
+    <svg viewBox="0 0 48 48" width="48" height="48" xmlns="http://www.w3.org/2000/svg">
+      <polygon points="24,4 40,36 24,28 8,36"
+        fill="${NEMESIS_RED}" stroke="#ffd2d2" stroke-width="1.5" stroke-linejoin="round"/>
+    </svg>
+  `;
+  _ensureNemesisArrowKeyframes();
+  _root.appendChild(_nemesisArrow);
+  _nemesisArrowHideTO = setTimeout(() => { hideNemesisArrow(); }, lifetimeSec * 1000);
+}
+
+export function hideNemesisArrow() {
+  if (_nemesisArrowHideTO) { clearTimeout(_nemesisArrowHideTO); _nemesisArrowHideTO = null; }
+  if (_nemesisArrow && _nemesisArrow.parentNode) _nemesisArrow.parentNode.removeChild(_nemesisArrow);
+  _nemesisArrow = null;
+}
+
+let _nemesisArrowStyleInjected = false;
+function _ensureNemesisArrowKeyframes() {
+  if (_nemesisArrowStyleInjected || typeof document === 'undefined') return;
+  const s = document.createElement('style');
+  s.textContent = `
+    @keyframes kk-nemesis-arrow-pulse {
+      0%, 100% { opacity: 0.92; }
+      50%      { opacity: 0.55; }
+    }
+  `;
+  document.head.appendChild(s);
+  _nemesisArrowStyleInjected = true;
+}
+
+/**
+ * Composite tease — banner + arrow in one call. Spawn director uses this at
+ * the telegraph wave. `angle` is the pre-rolled spawn direction so the arrow
+ * actually points at where the Nemesis will appear one wave later.
+ */
+export function showNemesisTease(angle, arrowLifetimeSec = 60) {
+  showBanner('HUNTER ARRIVES — WAVE 8', 3.0, NEMESIS_RED, {
+    owner: 'nemesis',
+    priority: 'boss',
+  });
+  showNemesisArrow(angle, arrowLifetimeSec);
+}
+
+// ── Banner ───────────────────────────────────────────────────────────────────
+// One shared channel for short gameplay notices. Explicit priorities let
+// critical encounters hold the channel without changing legacy call sites:
+//   showBanner(text, seconds, color)
+//   showBanner(text, seconds, color, { owner: 'final-boss', priority: 'boss' })
+// `color` may also be the options object for callers that do not need a tint.
+export const BANNER_PRIORITY = Object.freeze({
+  ambient: 0,
+  normal: 10,
+  important: 20,
+  boss: 30,
+  cinematic: 40,
+});
+
+let _banner = null;
+let _bannerHideTO = null;
+let _bannerOwner = null;
+let _bannerPriority = -Infinity;
+let _bannerGeneration = 0;
+
+function _priorityFor(value, text) {
+  if (Number.isFinite(value)) return value;
+  if (typeof value === 'string' && Object.prototype.hasOwnProperty.call(BANNER_PRIORITY, value)) {
+    return BANNER_PRIORITY[value];
+  }
+
+  // Compatibility safety net for the many existing three-argument callers.
+  // These phrases identify encounter/finale notices already in the game; new
+  // code should prefer the explicit option above.
+  const label = String(text == null ? '' : text).toUpperCase();
+  if (/\b(FINAL BOSS|MAIN BOSS|BOSS CHAMBER|POWERFUL FOE|REAPER|NEMESIS|ENRAGED|VICTORY)\b/.test(label)) {
+    return BANNER_PRIORITY.boss;
+  }
+  if (/\b(UNLOCKED|CONQUERED|OUTLASTED)\b/.test(label)) return BANNER_PRIORITY.important;
+  return BANNER_PRIORITY.normal;
+}
+
+function _hasBlockingCinematic() {
+  if (state.run && state.run._bossIntroActive) return true;
+
+  // DOM checks cover defensive/banner-only cinematic paths and the evolution
+  // cinematic, whose state is intentionally private to its module.
+  const boss = document.getElementById('kk-boss-intro-banner');
+  if (boss && boss.classList.contains('kk-bi-show') && boss.style.opacity !== '0') return true;
+  const evolve = document.getElementById('kk-evolve-cin-banner');
+  if (evolve && evolve.classList.contains('kk-ec-show') && evolve.style.opacity !== '0') return true;
+
+  return false;
+}
+
+function _clearSharedBanner() {
+  if (_bannerHideTO) {
+    clearTimeout(_bannerHideTO);
+    _bannerHideTO = null;
+  }
+  if (_banner && _banner.parentNode) _banner.parentNode.removeChild(_banner);
+  _banner = null;
+  _bannerOwner = null;
+  _bannerPriority = -Infinity;
+  _bannerGeneration++;
+}
+
+/**
+ * Hide the shared notice. Passing an owner only releases a banner currently
+ * held by that owner; omitting it preserves the legacy unconditional hide.
+ * @returns {boolean} whether an active banner was released
+ */
+export function hideBanner(owner = null) {
+  if (!_banner) return false;
+  if (owner != null && _bannerOwner !== owner) return false;
+  _clearSharedBanner();
+  return true;
+}
+
+/**
+ * Show a compact shared HUD notice.
+ * @param {string} text
+ * @param {number} durationSec
+ * @param {string|object} color
+ * @param {{owner?:string, priority?:number|string, replaceEqual?:boolean}} options
+ * @returns {boolean} false when a higher-priority owner/cinematic holds the channel
+ */
+export function showBanner(text, durationSec = 3, color, options = null) {
+  let opts = options;
+  let requestedColor = color;
+  if (color && typeof color === 'object') {
+    opts = color;
+    requestedColor = color.color;
+  }
+  if (Number.isFinite(opts) || typeof opts === 'string') opts = { priority: opts };
+  if (!opts || typeof opts !== 'object') opts = {};
+
+  const root = (_root && _root.isConnected)
+    ? _root
+    : document.getElementById('ui-root');
+  if (!root) return false;
+  _root = root;
+
+  // A detached node means its host lifecycle already removed it. Reset the
+  // metadata/timer before applying priority rules to the next host.
+  if (_banner && _banner.isConnected === false) _clearSharedBanner();
+
+  const priority = _priorityFor(opts.priority, text);
+  const owner = typeof opts.owner === 'string' && opts.owner ? opts.owner : null;
+  const sameOwner = owner !== null && owner === _bannerOwner;
+  const replaceEqual = opts.replaceEqual !== false;
+
+  if (priority < BANNER_PRIORITY.cinematic && _hasBlockingCinematic()) return false;
+  if (_banner && !sameOwner) {
+    if (priority < _bannerPriority) return false;
+    if (!replaceEqual && priority === _bannerPriority) return false;
+  }
+
+  _clearSharedBanner();
+  _banner = document.createElement('div');
+  _banner.className = 'kk-shared-banner';
+  _banner.setAttribute('role', 'status');
+  _banner.setAttribute('aria-atomic', 'true');
+  _banner.dataset.owner = owner || '';
+  _banner.dataset.priority = String(priority);
+  _bannerOwner = owner;
+  _bannerPriority = priority;
+
+  const col = requestedColor || C.amber;
+  _banner.style.cssText = `
+    position: fixed; left: 50%; top: clamp(128px, 18vh, 156px);
+    transform: translate(-50%, 0);
+    font-family: ${F.display};
+    font-size: clamp(18px, 2.15vw, 28px); font-weight: 800;
+    line-height: 1.18; letter-spacing: clamp(0.08em, 0.35vw, 0.15em);
+    color: ${col};
+    text-shadow: 0 2px 10px rgba(0,0,0,0.68), 0 0 16px ${col}44;
+    pointer-events: none; z-index: 80;
+    padding: clamp(7px, 1.2vh, 10px) clamp(14px, 2.4vw, 24px);
+    background: linear-gradient(180deg, rgba(20,28,22,0.72), rgba(8,14,12,0.78));
+    border-top: 1px solid ${C.edge};
+    border-bottom: 1px solid ${C.edge};
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    box-shadow: 0 9px 26px rgba(0,0,0,0.48);
+    width: max-content; max-width: min(88vw, 820px);
+    box-sizing: border-box; text-align: center; white-space: normal;
+    overflow-wrap: anywhere;
+    animation: kk-banner-in 0.24s ease-out;
+  `;
+  _banner.textContent = String(text == null ? '' : text);
+  root.appendChild(_banner);
+
+  const generation = _bannerGeneration;
+  const seconds = Number.isFinite(durationSec) ? Math.max(0.1, durationSec) : 3;
+  _bannerHideTO = setTimeout(() => {
+    if (generation === _bannerGeneration) _clearSharedBanner();
+  }, seconds * 1000);
+  return true;
+}
+
+// ── Credits modal ────────────────────────────────────────────────────────────
+// Mirrors the Grimoire / Shop / Codex modal aesthetic — gradient backdrop with
+// a radial highlight at the top, blur, gold-accented title. Lists the people +
+// libraries that made the game. Esc-friendly via uiFocus push.
+let _creditsModal = null;
+let _creditsFocusScope = null;
+
+export function showCredits() {
+  // Iter 21a — defensive tooltip hide on modal entry.
+  try { hideTooltip(); } catch (_) {}
+  if (_creditsModal || !_root) return;
+  try { sfx.modalOpen(); } catch (_) {}
+
+  _creditsModal = document.createElement('div');
+  _creditsModal.setAttribute('role', 'dialog');
+  _creditsModal.setAttribute('aria-label', 'Credits');
+  _creditsModal.style.cssText = `
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(255,210,127,0.08), transparent 60%),
+      radial-gradient(ellipse at center, rgba(0,0,0,0.55), rgba(0,0,0,0.92) 80%);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: flex-start;
+    padding: 48px 20px;
+    pointer-events: auto;
+    font-family: ${F.body};
+    z-index: 125; overflow-y: auto;
+  `;
+
+  const title = document.createElement('div');
+  title.style.cssText = `font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 44px); font-weight: 900;
+    letter-spacing: 0.20em; color: ${C.amber};
+    text-shadow: 0 2px 16px rgba(0,0,0,0.55), 0 0 24px rgba(255,210,127,0.22);
+    margin-bottom: 6px;`;
+  title.textContent = 'Credits';
+
+  const subtitle = document.createElement('div');
+  subtitle.style.cssText = `font-family: ${F.body}; font-size: calc(var(--kk-font-scale, 1) * 11px); letter-spacing: 0.32em;
+    color: rgba(245,239,225,0.62); text-transform: uppercase; margin-bottom: 26px;`;
+  subtitle.textContent = `Made with care · ${KK_VERSION}`;
+
+  const sections = document.createElement('div');
+  sections.style.cssText = 'display: grid; grid-template-columns: 1fr; gap: 14px; max-width: 720px; width: 100%;';
+
+  const _section = (heading, accent, lines) => {
+    const card = document.createElement('div');
+    card.style.cssText = `
+      background: linear-gradient(180deg, rgba(20,28,22,0.94), rgba(8,14,12,0.96));
+      border: 1px solid ${accent};
+      border-radius: 10px;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 12px 26px rgba(0,0,0,0.55);
+      padding: 16px 20px;
+    `;
+    const h = document.createElement('div');
+    h.style.cssText = `font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 13px); font-weight: 700;
+      letter-spacing: 0.28em; text-transform: uppercase; color: ${accent}; margin-bottom: 8px;`;
+    h.textContent = heading;
+    card.appendChild(h);
+    const body = document.createElement('div');
+    body.style.cssText = `font-size: calc(var(--kk-font-scale, 1) * 13px); line-height: 1.65; color: ${C.text};`;
+    body.innerHTML = lines.join('<br>');
+    card.appendChild(body);
+    return card;
+  };
+
+  sections.appendChild(_section('Made by', C.amber, [
+    `<a href="https://github.com/dknos" target="_blank" rel="noopener noreferrer" style="color:${C.amber};text-decoration:none;">@dknos</a> · code, gameplay, shaders, FX`,
+  ]));
+  sections.appendChild(_section('Tech', C.cyan, [
+    `<a href="https://threejs.org" target="_blank" rel="noopener" style="color:${C.cyan};text-decoration:none;">THREE.js r185 / 0.185.1</a> + WebGPU/TSL (RenderPipeline, GLTFLoader, DRACOLoader)`,
+    'No bundler — native ES modules + importmap',
+  ]));
+  sections.appendChild(_section('Art', C.amber, [
+    'Models — <span style="color:' + C.amber + ';">Quaternius</span> (Ultimate Monsters bundle, chest) — CC0',
+    'Models — <span style="color:' + C.amber + ';">Poly by Google</span> via Poly Pizza (Beetle, Ladybug, Grasshopper, Mantis, etc.) — CC-BY',
+    'Textures &amp; HDRI — <span style="color:' + C.amber + ';">Poly Haven</span> (forrest_ground_01, approaching_storm) — CC0',
+    'All FX, particles, post-processing — procedural / canvas-rendered',
+  ]));
+  sections.appendChild(_section('Inspiration', C.magenta, [
+    '<span style="color:' + C.magenta + ';">Vampire Survivors</span> — the loop, the slot machine, the joy of horde shaping',
+    '<span style="color:' + C.magenta + ';">Halls of Torment</span> — weapon evolutions, biome variety',
+    '<span style="color:' + C.magenta + ';">Hades</span> — accessibility bar, polish discipline, character signatures',
+  ]));
+  sections.appendChild(_section('Special Thanks', C.cyan, [
+    'Claude Opus 4.7 (1M context) — pair-programmer for the iter 1-11 sprint',
+    'The open-source three.js + WebGPU community',
+    'Everyone who tested an early build and said "the spider web is good"',
+  ]));
+
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.textContent = 'Close · Esc';
+  close.setAttribute('aria-label', 'Close credits');
+  close.style.cssText = `margin-top: 26px; padding: 10px 26px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(20,28,22,0.78), rgba(8,14,12,0.86));
+    border: 1px solid ${C.edge}; border-radius: 8px;
+    color: ${C.amber}; font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 13px); font-weight: 700;
+    letter-spacing: 0.28em;
+    box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 20px rgba(0,0,0,0.5);`;
+  close.onclick = hideCredits;
+
+  _creditsModal.appendChild(title);
+  _creditsModal.appendChild(subtitle);
+  _creditsModal.appendChild(sections);
+  _creditsModal.appendChild(close);
+  _root.appendChild(_creditsModal);
+
+  // Focus scope: trap arrow/enter to the close button (single focus target).
+  // onCancel fires when uiFocus.cancelFocus() is called (Esc).
+  _creditsFocusScope = pushFocusScope([close], { layout: 'auto', onCancel: hideCredits });
+}
+
+export function hideCredits() {
+  if (!_creditsModal) return;
+  try { sfx.modalClose(); } catch (_) {}
+  if (_creditsFocusScope) { popFocusScope(_creditsFocusScope); _creditsFocusScope = null; }
+  if (_creditsModal.parentNode) _creditsModal.parentNode.removeChild(_creditsModal);
+  _creditsModal = null;
+}
+
+export function isCreditsOpen() { return !!_creditsModal; }
+
+// ── Version label (start screen bottom-right) ────────────────────────────────
+// Attached to <body> not _startScreen so it doesn't fight the start-screen
+// flex layout AND it doesn't disappear when start screen unmounts. Visibility
+// is toggled by start screen show/hide via the helper below.
+let _versionLabel = null;
+function _ensureVersionLabel() {
+  if (_versionLabel) return _versionLabel;
+  _versionLabel = document.createElement('div');
+  _versionLabel.id = 'kk-version-label';
+  _versionLabel.style.cssText = `
+    position: fixed; right: 12px; bottom: 12px;
+    font-family: ${F.mono};
+    font-size: calc(var(--kk-font-scale, 1) * 10px); letter-spacing: 0.12em;
+    color: rgba(245,239,225,0.42);
+    pointer-events: none; z-index: 5;
+    user-select: none;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.6);
+  `;
+  _versionLabel.textContent = `v${KK_VERSION}`;
+  document.body.appendChild(_versionLabel);
+  return _versionLabel;
+}
+function _setVersionLabelVisible(visible) {
+  const el = _ensureVersionLabel();
+  el.style.display = visible ? 'block' : 'none';
+}
+
+// ── Error toasts (kk-meta-load-failed, kk-asset-load-failed, error) ──────────
+// Bound at MODULE LOAD time (not initUI) so boot-time failures during
+// preloadAll()/loadMeta() — which fire before initUI() — still surface to the
+// player. _root may not exist yet; each emit-handler probes #ui-root lazily.
+let _errorListenersBound = false;
+let _lastWindowErrorAt = 0;
+
+function _getToastRoot() {
+  return _root || document.getElementById('ui-root') || document.body;
+}
+
+// Generic toast factory. Stacks vertically in the top-right corner with a
+// 8px gap. Sticky toasts get a Dismiss button + manual close; auto toasts
+// fade out after `durationMs` and remove themselves.
+//   opts: { color, durationMs, sticky, icon, title, body }
+let _toastSlot = 0;
+function _spawnErrorToast(opts) {
+  const root = _getToastRoot();
+  if (!root) return null;
+
+  const col = opts.color || C.amber;
+  const slot = _toastSlot++;
+  const top = 20 + (slot % 6) * 86; // 6-deep vertical stack, then wrap
+
+  const toast = document.createElement('div');
+  toast.setAttribute('role', 'alert');
+  toast.setAttribute('aria-live', 'assertive');
+  toast.style.cssText = `
+    position: fixed; right: 20px; top: ${top}px;
+    background: linear-gradient(180deg, rgba(20,28,22,0.96), rgba(8,14,12,0.98));
+    border: 1px solid ${col};
+    border-radius: 10px;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.06) inset,
+      0 14px 30px rgba(0,0,0,0.55),
+      0 0 22px ${col}33;
+    padding: 12px 16px; min-width: min(280px, 90vw); max-width: 360px;
+    font-family: ${F.body};
+    color: ${C.text}; pointer-events: ${opts.sticky ? 'auto' : 'none'};
+    z-index: 220;
+    transform: translateX(120%); transition: transform 0.32s ease-out;
+    display: flex; gap: 12px; align-items: flex-start;
+  `;
+  const icon = String(opts.icon || '⚠');
+  const safeTitle = escapeHtml(String(opts.title || ''));
+  const safeBody  = escapeHtml(String(opts.body || ''));
+  const dismissHtml = opts.sticky
+    ? `<button type="button" class="kk-err-dismiss" style="
+        margin-top:6px;padding:5px 12px;cursor:pointer;
+        background:linear-gradient(180deg,rgba(20,28,22,0.78),rgba(8,14,12,0.86));
+        border:1px solid ${col};border-radius:6px;
+        color:${col};font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 11px);font-weight:700;
+        letter-spacing:0.22em;text-transform:uppercase;
+      ">Dismiss</button>` : '';
+  toast.innerHTML = `
+    <div style="font-size:calc(var(--kk-font-scale, 1) * 22px);line-height:1;filter:drop-shadow(0 2px 4px rgba(0,0,0,0.5));">${escapeHtml(icon)}</div>
+    <div style="flex:1;">
+      <div style="font-family:${F.display};font-size:calc(var(--kk-font-scale, 1) * 11px);color:${col};letter-spacing:0.28em;text-transform:uppercase;">${safeTitle}</div>
+      <div style="font-size:calc(var(--kk-font-scale, 1) * 12px);opacity:0.86;margin-top:4px;line-height:1.5;">${safeBody}</div>
+      ${dismissHtml}
+    </div>
+  `;
+  root.appendChild(toast);
+  requestAnimationFrame(() => { toast.style.transform = 'translateX(0)'; });
+
+  const removeToast = () => {
+    if (!toast.parentNode) return;
+    toast.style.transform = 'translateX(120%)';
+    setTimeout(() => {
+      if (toast.parentNode) toast.parentNode.removeChild(toast);
+      _toastSlot = Math.max(0, _toastSlot - 1);
+    }, 360);
+  };
+
+  if (opts.sticky) {
+    const btn = toast.querySelector('.kk-err-dismiss');
+    if (btn) btn.addEventListener('click', removeToast);
+  } else {
+    setTimeout(removeToast, Math.max(500, opts.durationMs || 4000));
+  }
+  return toast;
+}
+
+function _bindErrorListeners() {
+  if (_errorListenersBound) return;
+  _errorListenersBound = true;
+
+  // Celebrate flag-avatar unlocks — meta.js emits kk-avatar-unlocked when a set
+  // unlock flag bridges a new character into the roster (bomdia/camper/radcat/
+  // bezelbug/rocker/borgirboss). Global banner so it lands in-run, in the casino,
+  // wherever the unlock happens (the unlocks were previously silent).
+  window.addEventListener('kk-avatar-unlocked', (e) => {
+    try {
+      const id = e && e.detail && e.detail.id;
+      const a = AVATARS.find((x) => x.id === id);
+      if (!a) return;
+      showBanner(`${a.icon || '\u{1F389}'}  NEW CHARACTER: ${(a.name || id).toUpperCase()}`, 4.5, '#ffd86b');
+    } catch (_) {}
+  });
+
+  // 10b emits this from meta.js loadMeta() on JSON.parse failure.
+  window.addEventListener('kk-meta-load-failed', (e) => {
+    const detail = (e && e.detail) || {};
+    if (detail && detail.reason) console.error('[meta] load failed:', detail.reason);
+    _spawnErrorToast({
+      color: C.red,
+      sticky: true,
+      icon: '⚠',
+      title: 'Save Load Failed',
+      body: "Save data couldn't be loaded. Your progress is reset to defaults. Check the console for details.",
+    });
+  });
+
+  // 10b emits this from assets.js _preload() on GLTF failure.
+  window.addEventListener('kk-asset-load-failed', (e) => {
+    const detail = (e && e.detail) || {};
+    if (detail && detail.key) console.warn('[assets] failed:', detail.key, detail.path || '');
+    _spawnErrorToast({
+      color: C.amber,
+      sticky: false,
+      durationMs: 6000,
+      icon: '⚠',
+      title: 'Asset Load Warning',
+      body: 'Some art assets failed to load. The game will still run but may show placeholders.',
+    });
+  });
+
+  // Generic window-level handlers. Throttled to one visible toast per 3s — a
+  // runaway RAF callback can fire hundreds of errors/sec; the throttle keeps
+  // the toast stack legible while still mirroring every error to the console.
+  const _handleWinError = (label, err) => {
+    try { console.error(`[${label}]`, err); } catch (_) {}
+    const now = (typeof performance !== 'undefined' ? performance.now() : Date.now());
+    if (now - _lastWindowErrorAt < 3000) return;
+    _lastWindowErrorAt = now;
+    _spawnErrorToast({
+      color: C.red,
+      sticky: false,
+      durationMs: 4000,
+      icon: '⚠',
+      title: 'Error',
+      body: 'An error occurred. Press F3 for diagnostics.',
+    });
+  };
+  window.addEventListener('error', (e) => {
+    _handleWinError('error', (e && (e.error || e.message)) || e);
+  });
+  window.addEventListener('unhandledrejection', (e) => {
+    _handleWinError('unhandledrejection', (e && (e.reason || e)) || e);
+  });
+}
+
+// Bind immediately at module-load time — boot-time asset/meta failures fire
+// BEFORE initUI() is called, so a listener registered inside initUI() would
+// miss them entirely.
+_bindErrorListeners();
+
+// ── Graphics device-loss modal ───────────────────────────────────────────────
+// The renderer service calls these helpers for WebGPU device loss and WebGL 2
+// context loss. Persistent modal — no auto-dismiss; the player explicitly
+// retries, reloads, or switches to the WebGL 2 backend.
+let _ctxLossModal = null;
+
+export function showContextLossModal(options = {}) {
+  // Iter 21a — defensive tooltip hide on modal entry.
+  try { hideTooltip(); } catch (_) {}
+  if (_ctxLossModal) return;
+  const root = _getToastRoot();
+  if (!root) return;
+
+  const config = options && typeof options === 'object' ? options : {};
+  const presentation = normalizeRecoveryPresentation({
+    backend: config.backend,
+    recoveryState: config.recoveryState,
+  });
+
+  _ctxLossModal = document.createElement('div');
+  _ctxLossModal.setAttribute('role', 'dialog');
+  _ctxLossModal.setAttribute('aria-modal', 'true');
+  _ctxLossModal.setAttribute('aria-label', 'Graphics device disconnected');
+  _ctxLossModal.style.cssText = `
+    position: fixed; inset: 0;
+    background:
+      radial-gradient(ellipse at 50% 30%, rgba(255,80,80,0.10), transparent 60%),
+      radial-gradient(ellipse at center, rgba(0,0,0,0.65), rgba(0,0,0,0.95) 80%);
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+    display: flex; flex-direction: column;
+    align-items: center; justify-content: center;
+    pointer-events: auto;
+    font-family: ${F.body};
+    z-index: 240;
+  `;
+
+  const card = document.createElement('div');
+  card.style.cssText = `
+    background: linear-gradient(180deg, rgba(20,28,22,0.96), rgba(8,14,12,0.98));
+    border: 1px solid ${C.red};
+    border-radius: 12px;
+    box-shadow:
+      0 1px 0 rgba(255,255,255,0.06) inset,
+      0 24px 48px rgba(0,0,0,0.6),
+      0 0 28px ${C.red}33;
+    padding: 28px 36px; min-width: min(360px, 90vw); max-width: 480px; text-align: center;
+    max-height: 90%; overflow-y: auto; overflow-x: hidden;
+  `;
+
+  const icon = document.createElement('div');
+  icon.style.cssText = `font-size: calc(var(--kk-font-scale, 1) * 44px); margin-bottom: 8px; filter: drop-shadow(0 3px 10px ${C.red}66);`;
+  icon.textContent = '⚠';
+
+  const title = document.createElement('div');
+  title.style.cssText = `font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 22px); font-weight: 700;
+    letter-spacing: 0.22em; color: ${C.red}; text-transform: uppercase; margin-bottom: 8px;`;
+  title.textContent = 'Graphics Disconnected';
+
+  const body = document.createElement('div');
+  body.style.cssText = `font-size: calc(var(--kk-font-scale, 1) * 13.5px); color: ${C.text}; line-height: 1.6; margin-bottom: 14px; opacity: 0.88;`;
+  body.textContent = 'Rendering was safely paused after the graphics device stopped responding. Choose how to restart graphics below.';
+
+  const diagnostics = document.createElement('div');
+  diagnostics.style.cssText = `font-family: ${F.mono}; font-size: calc(var(--kk-font-scale, 1) * 11.5px);
+    color: ${C.text}; line-height: 1.55; text-align: left; margin: 0 0 14px;
+    padding: 10px 12px; border-radius: 7px; border: 1px solid ${C.edge};
+    background: rgba(0,0,0,0.22); overflow-wrap: anywhere;`;
+
+  const backendLine = document.createElement('div');
+  backendLine.textContent = `Backend: ${presentation.backendLabel}`;
+  diagnostics.appendChild(backendLine);
+  if (presentation.reason) {
+    const reasonLine = document.createElement('div');
+    // Keep driver/browser diagnostics out of HTML parsing. The presentation
+    // helper also strips control characters and bounds the displayed length.
+    reasonLine.textContent = `Loss reason: ${presentation.reason}`;
+    diagnostics.appendChild(reasonLine);
+  }
+
+  const progress = document.createElement('div');
+  progress.setAttribute('role', 'status');
+  progress.setAttribute('aria-live', 'polite');
+  progress.style.cssText = `text-align: left; margin: 0 0 18px; padding: 12px 14px;
+    border-radius: 8px; border: 1px solid ${presentation.progressSaved === true ? C.green : C.amber};
+    background: ${presentation.progressSaved === true ? 'rgba(46,93,57,0.18)' : 'rgba(112,76,29,0.18)'};`;
+  const progressTitle = document.createElement('div');
+  progressTitle.style.cssText = `font-family: ${F.display}; color: ${presentation.progressSaved === true ? C.green : C.amber};
+    font-size: calc(var(--kk-font-scale, 1) * 13px); font-weight: 700; letter-spacing: 0.08em; margin-bottom: 4px;`;
+  progressTitle.textContent = presentation.progressTitle;
+  const progressDetail = document.createElement('div');
+  progressDetail.style.cssText = `font-size: calc(var(--kk-font-scale, 1) * 12.5px); color: ${C.text}; line-height: 1.5; opacity: 0.9;`;
+  progressDetail.textContent = presentation.progressDetail;
+  progress.append(progressTitle, progressDetail);
+
+  const actions = document.createElement('div');
+  actions.style.cssText = 'display:flex;flex-wrap:wrap;gap:10px;justify-content:center;';
+
+  const styleAction = (button, accent = C.red) => {
+    button.style.cssText = `padding: 12px 20px; cursor: pointer;
+      background: linear-gradient(180deg, rgba(40,18,18,0.94), rgba(20,8,8,0.96));
+      border: 1px solid ${accent}; border-radius: 8px;
+      color: ${accent}; font-family: ${F.display}; font-size: calc(var(--kk-font-scale, 1) * 12px); font-weight: 700;
+      letter-spacing: 0.18em; text-transform: uppercase;
+      box-shadow: 0 1px 0 rgba(255,255,255,0.04) inset, 0 8px 20px rgba(0,0,0,0.5);`;
+    return button;
+  };
+
+  const reportActionFailure = (error) => {
+    const message = error instanceof Error ? error.message : String(error || 'Recovery failed.');
+    body.textContent = `Graphics recovery failed: ${message.slice(0, 180)}`;
+    body.style.color = C.red;
+  };
+
+  if (presentation.canRetry && typeof config.onRetry === 'function') {
+    const retry = styleAction(document.createElement('button'), C.green);
+    retry.type = 'button';
+    retry.textContent = 'Retry Renderer';
+    retry.setAttribute('aria-label', 'Retry the current graphics renderer');
+    retry.onclick = async () => {
+      retry.disabled = true;
+      retry.textContent = 'Retrying…';
+      try {
+        const result = await config.onRetry();
+        if (result !== false) hideContextLossModal();
+      } catch (error) {
+        reportActionFailure(error);
+        retry.disabled = false;
+        retry.textContent = 'Retry Renderer';
+      }
+    };
+    actions.appendChild(retry);
+  }
+
+  const reload = styleAction(document.createElement('button'));
+  reload.type = 'button';
+  reload.textContent = typeof config.onRetry === 'function' ? 'Reload Page' : 'Reload / Retry';
+  reload.setAttribute('aria-label', 'Reload the page and retry graphics');
+  reload.onclick = () => { try { window.location.reload(); } catch (_) {} };
+  actions.appendChild(reload);
+
+  if (presentation.canSwitchToWebGL) {
+    const fallback = styleAction(document.createElement('button'), C.amber);
+    fallback.type = 'button';
+    fallback.textContent = 'Switch to WebGL 2';
+    fallback.setAttribute('aria-label', 'Reload using the WebGL 2 renderer');
+    fallback.onclick = async () => {
+      try {
+        if (typeof config.onSwitchToWebGL === 'function') {
+          await config.onSwitchToWebGL();
+        } else {
+          window.location.href = rendererBackendUrl(window.location.href, 'webgl');
+        }
+      } catch (error) {
+        reportActionFailure(error);
+      }
+    };
+    actions.appendChild(fallback);
+  }
+
+  card.appendChild(icon);
+  card.appendChild(title);
+  card.appendChild(body);
+  card.appendChild(diagnostics);
+  card.appendChild(progress);
+  card.appendChild(actions);
+  _ctxLossModal.appendChild(card);
+  root.appendChild(_ctxLossModal);
+}
+
+export function hideContextLossModal() {
+  if (!_ctxLossModal) return;
+  if (_ctxLossModal.parentNode) _ctxLossModal.parentNode.removeChild(_ctxLossModal);
+  _ctxLossModal = null;
+}
+
+// ── Helltide countdown bar (iter 17) ────────────────────────────────────────
+// Top-center bar shown only while the Helltide event is active. Hosts the
+// remaining time + the running ember count. Created lazily on first call
+// to showHelltideBar so the DOM stays clean when no helltide is running.
+let _helltideBar = null;
+let _helltideFill = null;
+let _helltideLabel = null;
+let _helltideBank = null;
+export function showHelltideBar(remainingSec, totalSec, embers) {
+  if (!_root) return;
+  if (!_helltideBar) {
+    _helltideBar = document.createElement('div');
+    _helltideBar.style.cssText = `
+      position: fixed; left: 50%; top: 8px;
+      transform: translateX(-50%);
+      pointer-events: none; z-index: 70;
+      padding: 6px 14px 8px;
+      background: linear-gradient(180deg, rgba(60,12,8,0.92), rgba(20,4,2,0.96));
+      border: 1px solid #ff5a28;
+      border-radius: 8px;
+      box-shadow: 0 0 18px rgba(255,90,40,0.45),
+                  0 6px 22px rgba(0,0,0,0.65);
+      font-family: ${F.display}; min-width: min(320px, 90vw);
+    `;
+    const header = document.createElement('div');
+    header.style.cssText = `
+      display: flex; justify-content: space-between; align-items: baseline;
+      gap: 18px; font-size: 12px; letter-spacing: 0.24em;
+      text-transform: uppercase; color: #ff8a5a;
+      text-shadow: 0 1px 6px rgba(0,0,0,0.7);
+    `;
+    _helltideLabel = document.createElement('span');
+    _helltideLabel.textContent = 'HELLTIDE — 3:00';
+    _helltideBank = document.createElement('span');
+    _helltideBank.style.cssText = 'color: #ffc278; font-weight: 800;';
+    _helltideBank.textContent = '0 ⚜';
+    header.appendChild(_helltideLabel);
+    header.appendChild(_helltideBank);
+    const track = document.createElement('div');
+    track.style.cssText = `
+      margin-top: 4px;
+      height: 6px; width: 100%;
+      background: rgba(40,8,6,0.85);
+      border: 1px solid rgba(255,90,40,0.45);
+      border-radius: 3px; overflow: hidden;
+    `;
+    _helltideFill = document.createElement('div');
+    _helltideFill.style.cssText = `
+      height: 100%; width: 100%;
+      background: linear-gradient(90deg, #ffc26b, #ff5a28 60%, #b03010);
+      box-shadow: 0 0 10px rgba(255,90,40,0.65) inset;
+    `;
+    // No CSS transition — we drive width directly each tick from showHelltideBar.
+    // A CSS transition fights the per-frame update and reads as stutter.
+    track.appendChild(_helltideFill);
+    _helltideBar.appendChild(header);
+    _helltideBar.appendChild(track);
+    _root.appendChild(_helltideBar);
+  }
+  const r = Math.max(0, remainingSec | 0);
+  const mins = Math.floor(r / 60);
+  const secs = r % 60;
+  _helltideLabel.textContent = `HELLTIDE — ${mins}:${secs < 10 ? '0' + secs : secs}`;
+  _helltideBank.textContent = `${embers | 0} ⚜`;
+  const k = totalSec > 0 ? Math.max(0, Math.min(1, remainingSec / totalSec)) : 0;
+  _helltideFill.style.width = (k * 100).toFixed(1) + '%';
+}
+
+export function hideHelltideBar() {
+  if (!_helltideBar) return;
+  if (_helltideBar.parentNode) _helltideBar.parentNode.removeChild(_helltideBar);
+  _helltideBar = null;
+  _helltideFill = null;
+  _helltideLabel = null;
+  _helltideBank = null;
+}

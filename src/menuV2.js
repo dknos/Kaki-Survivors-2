@@ -1,0 +1,1598 @@
+/**
+ * Kitty Kaki Survivors — Main Menu v2
+ *
+ * Vanilla-DOM reimplementation of the Claude Design v2 handoff bundle
+ * (survivor/project/menu-v2.{jsx,css}). The visual contract — hero scene SVGs,
+ * dawn-tone palette, side nav, continue card, chapter rail, footer — is lifted
+ * verbatim from the handoff; this module wires it into the existing game state
+ * (STAGES, getMeta, selectedAvatar, kkStartRun) and the existing modals
+ * (Codex, Grimoire, Quest Board, Options).
+ *
+ * Mount contract:
+ *   showMenuV2()  — builds DOM under #ui-root, attaches resize-fit listener
+ *   hideMenuV2()  — tears down DOM + listener
+ *
+ * The legacy `showStartScreen()` is preserved untouched in ui.js as a fallback
+ * (re-enable by editing main.js boot path). `showStartScreen('Loading…')` is
+ * still called pre-preload because menuV2 requires post-preload state
+ * (carousel needs GLTF_CACHE.hero); the swap happens on the second
+ * showStartScreen call ("Press Play to begin"), which we re-route.
+ */
+
+import { getMeta, selectedStage, setOption, isStageUnlocked } from './meta.js';
+import { STAGES, AVATARS } from './config.js';
+import { createCharCarousel } from './charCarousel.js';
+import { createHeroSplash } from './menuHeroSplash.js';
+import { playMenuMusic, stopMenuMusic, setMenuMusicMuted, isMenuMusicMuted, unlockAudio } from './audio.js';
+import { TRIALS_TRACKS, TRIALS_TRACK_ORDER } from './racing/trialsTracks.js';
+import { MONSTER_ARENAS, MONSTER_ARENA_ORDER } from './racing/monsterArenaDefinition.js';
+import { getDrawTrackModeCardStats, openDrawTrackMode } from './racing/drawTrackMode.js';
+import { readCrashRecord } from './racing/crash/crashRecords.js';
+import { canLaunchRacingMode, getRacingModeAvailability } from './racing/racingModeAvailability.js';
+// PHASE 1 P1B — Achievement chain title-screen indicator (Achievements: N/Total).
+import { mountTitlePanel as _mountAchievementsTitlePanel } from './forestAchievements.js';
+
+// ─────────────────────────────────────────────────────────
+// Tone palette — locked to "dawn" for v1.
+// ─────────────────────────────────────────────────────────
+const TONE = {
+  hi:   '#ffd58a',
+  mid:  '#e0954a',
+  lo:   '#6b2a14',
+  glow: 'rgba(255,180,100,.55)',
+  rim:  '#ffe2a8',
+  sky1: '#3a1f1c',
+  sky2: '#0e0807',
+};
+
+// Per-stage palette + SVG art template. The handoff has 3 biomes; we extend to
+// 4 by adding a violet `void` variant matching Catacomb Void.
+const STAGE_ART = {
+  forest: {
+    bg: '#0c1815',
+    accent: 'mistwood',
+    tier: 'Chapter I',
+    sub: 'Felt Switchback',
+    diff: 'Careful',
+    waves: 32,
+  },
+  twilight: {
+    bg: '#180c08',
+    accent: 'dungeon',
+    tier: 'Chapter II',
+    sub: 'Paper Woods',
+    diff: 'Damp',
+    waves: 48,
+  },
+  cinder: {
+    bg: '#180a06',
+    accent: 'cinder',
+    tier: 'Chapter III',
+    sub: 'Ceramic Basin',
+    diff: 'Kiln Shift',
+    waves: 64,
+  },
+  void: {
+    bg: '#0a0612',
+    accent: 'void',
+    tier: 'Chapter IV',
+    sub: 'Woolen Drift',
+    diff: 'Quiet Toll',
+    waves: 80,
+  },
+  // PHASE 4 P4A (2026-05-18, cohort 1 of N) — Cave stage menu card.
+  // bg is slot-1 cave shadow (CAVE_PALETTE.shadow). accent reuses the cave
+  // string so a future SVG art preset can hook on it; falls back to the
+  // forest art template until P4A-cN lands a dedicated cave SVG.
+  cave: {
+    bg: '#1a1820',
+    accent: 'cave',
+    tier: 'Chapter V',
+    sub: 'Glass Mile',
+    diff: 'Echoing',
+    waves: 56,
+  },
+  kakiland: {
+    bg: '#8bd2f0',
+    accent: 'kakiland',
+    tier: 'Chapter VI',
+    sub: 'Chalk Plateau',
+    diff: 'Last Mark',
+    waves: 4,
+    wavesLabel: '3 trials + sovereign',
+  },
+};
+
+const NAV_ITEMS = [
+  { id: 'play',       label: 'Embark',     glyph: '▶', kbd: 'Enter' },
+  { id: 'racing',     label: 'Kaki Rally', glyph: '🏁', kbd: 'R' },
+  { id: 'bullethell', label: 'Bullet Hell', glyph: '⭘', kbd: 'B' },
+  { id: 'characters', label: 'Heroes',     glyph: '✦', kbd: 'H' },
+  { id: 'arsenal',    label: 'Arsenal',    glyph: '⚔', kbd: 'A' },
+  { id: 'codex',      label: 'Codex',      glyph: '❡', kbd: 'C' },
+  { id: 'town',       label: 'Town',       glyph: '◈', kbd: 'T' },
+  { id: 'options',    label: 'Settings',   glyph: '✲', kbd: 'O' },
+];
+
+// ─────────────────────────────────────────────────────────
+// Module state
+// ─────────────────────────────────────────────────────────
+let _menuRoot   = null;
+let _stage      = null;
+let _fitHandler = null;
+let _styleEl    = null;
+let _fontsEl    = null;
+let _activeNav  = 'play';
+let _carousel   = null;
+let _heroSplash = null;
+let _bgmAbort   = null;   // AbortController for the one-shot autoplay-unlock gesture
+let _overlay    = null;
+let _selectedStageId = null;
+let _heroWrap   = null;
+
+// ─────────────────────────────────────────────────────────
+// CSS + fonts injection
+// ─────────────────────────────────────────────────────────
+const CSS_URL = new URL('./menuV2.css?v=20260721garage1', import.meta.url).href;
+const FONTS_LINK = 'https://fonts.googleapis.com/css2?family=Cinzel:wght@400;500;600;700;800;900&family=Cormorant+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Geist:wght@400;500;600;700&family=Geist+Mono:wght@400;500&display=swap';
+
+function _injectStyles() {
+  if (!document.getElementById('kkv2-style')) {
+    _styleEl = document.createElement('link');
+    _styleEl.id = 'kkv2-style';
+    _styleEl.rel = 'stylesheet';
+    _styleEl.href = CSS_URL;
+    document.head.appendChild(_styleEl);
+  }
+  if (!document.getElementById('kkv2-fonts')) {
+    const pre1 = document.createElement('link');
+    pre1.rel = 'preconnect';
+    pre1.href = 'https://fonts.googleapis.com';
+    document.head.appendChild(pre1);
+    const pre2 = document.createElement('link');
+    pre2.rel = 'preconnect';
+    pre2.href = 'https://fonts.gstatic.com';
+    pre2.crossOrigin = 'anonymous';
+    document.head.appendChild(pre2);
+    _fontsEl = document.createElement('link');
+    _fontsEl.id = 'kkv2-fonts';
+    _fontsEl.rel = 'stylesheet';
+    _fontsEl.href = FONTS_LINK;
+    document.head.appendChild(_fontsEl);
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// Public API
+// ─────────────────────────────────────────────────────────
+export function initMenuV2() { _injectStyles(); }
+
+export function showMenuV2() {
+  _injectStyles();
+  if (_menuRoot) return; // idempotent
+
+  const uiRoot = document.getElementById('ui-root');
+  if (!uiRoot) return;
+
+  _menuRoot = document.createElement('div');
+  _menuRoot.className = 'kkv2-root';
+
+  _stage = document.createElement('div');
+  _stage.className = 'kkv2-stage';
+
+  // Resolve through the campaign predicate so an old/stale locked selection
+  // cannot visually select Kaki Land before its Cave-clear unlock.
+  _selectedStageId = selectedStage(STAGES).id;
+
+  _buildHeroScene(_stage);
+  _buildParticles(_stage);
+  _buildVignetteAndGrain(_stage);
+  _buildTopBar(_stage);
+  _buildSideNav(_stage);
+  _buildContinueCard(_stage);
+  _buildChapterRail(_stage);
+  _buildFooter(_stage);
+
+  _menuRoot.appendChild(_stage);
+  uiRoot.appendChild(_menuRoot);
+
+  _fitStage();
+  _fitHandler = _fitStage;
+  window.addEventListener('resize', _fitHandler);
+
+  // Menu BGM — start the looping track. Autoplay policy may defer the first
+  // play() until a user gesture, so arm a one-shot capture-phase listener that
+  // unlocks audio + (re)starts on the first pointer/key anywhere on the page.
+  setMenuMusicMuted(!!(getMeta() && getMeta().optMenuMusicMuted));
+  playMenuMusic();
+  if (_bgmAbort) { try { _bgmAbort.abort(); } catch (_) {} }
+  _bgmAbort = new AbortController();
+  const _startBgm = () => {
+    try { unlockAudio(); playMenuMusic(); } catch (_) {}
+    if (_bgmAbort) { try { _bgmAbort.abort(); } catch (_) {} _bgmAbort = null; }
+  };
+  document.addEventListener('pointerdown', _startBgm, { capture: true, signal: _bgmAbort.signal });
+  document.addEventListener('keydown', _startBgm, { capture: true, signal: _bgmAbort.signal });
+}
+
+export function hideMenuV2() {
+  if (_fitHandler) {
+    window.removeEventListener('resize', _fitHandler);
+    _fitHandler = null;
+  }
+  if (_carousel) { try { _carousel.destroy(); } catch (_) {} _carousel = null; }
+  if (_heroSplash) { try { _heroSplash.destroy(); } catch (_) {} _heroSplash = null; }
+  if (_bgmAbort) { try { _bgmAbort.abort(); } catch (_) {} _bgmAbort = null; }
+  stopMenuMusic();
+  if (_overlay && _overlay.parentNode) { _overlay.parentNode.removeChild(_overlay); _overlay = null; }
+  if (_menuRoot && _menuRoot.parentNode) _menuRoot.parentNode.removeChild(_menuRoot);
+  _menuRoot = null;
+  _stage = null;
+}
+
+export function isMenuV2Open() { return !!_menuRoot; }
+
+/** Rebuild unlock-sensitive menu chrome after a live Settings change. */
+export function refreshMenuV2() {
+  if (!_menuRoot) return;
+  hideMenuV2();
+  showMenuV2();
+}
+
+// ─────────────────────────────────────────────────────────
+// Scale-to-fit (matches React App.useEffect.fit())
+// ─────────────────────────────────────────────────────────
+function _fitStage() {
+  if (!_stage) return;
+  const s = Math.min(window.innerWidth / 1920, window.innerHeight / 1080);
+  _stage.style.transform = `translate(-50%, -50%) scale(${s})`;
+}
+
+// ─────────────────────────────────────────────────────────
+// Scene
+// ─────────────────────────────────────────────────────────
+function _svg(html) {
+  const wrap = document.createElement('div');
+  wrap.innerHTML = html.trim();
+  return wrap.firstElementChild;
+}
+
+// Pixel-art room backgrounds (Grok). Alternated at random on each menu open —
+// add more files here to widen the rotation.
+const MENU_BGS = ['menu-bg.png', 'menu-bg-night.png', 'menu-bg-dawn.png', 'menu-bg-rain.png'];
+
+// Ambient video loop (Grok image-to-video of menu-bg.png — day room only).
+// Attached lazily on top of the still once it can actually play, so the CSS
+// background acts as poster + full fallback and a missing/failed video never
+// blanks the menu.
+const MENU_BG_VIDEO = { still: 'menu-bg.png', file: 'menu-loop.mp4' };
+
+function _buildHeroScene(parent) {
+  const scene = document.createElement('div');
+  scene.className = 'kkv2-scene';
+
+  // Pixel-art room background. Replaces the procedural forest scene below
+  // (kept but unreachable while the photo bg is active). The dancing hero
+  // splash layers on top; vignette/grain (added separately) scrims it for
+  // text readability.
+  const photobg = document.createElement('div');
+  photobg.className = 'kkv2-photobg';
+  const bg = MENU_BGS[Math.floor(Math.random() * MENU_BGS.length)];
+  photobg.style.backgroundImage = `url("${new URL('../assets/sprites/' + bg, import.meta.url).href}")`;
+  scene.appendChild(photobg);
+  // Ambient loop over the day-room still. The video element is created
+  // detached and only appended on 'canplay' — until then (and on any error)
+  // the still underneath is all the user sees. Muted+playsinline satisfies
+  // mobile autoplay policies.
+  if (bg === MENU_BG_VIDEO.still) {
+    const vid = document.createElement('video');
+    vid.className = 'kkv2-photobg-video';
+    vid.muted = true;
+    vid.loop = true;
+    vid.autoplay = true;
+    vid.playsInline = true;
+    vid.setAttribute('playsinline', '');
+    vid.addEventListener('canplay', () => {
+      photobg.appendChild(vid);
+      vid.play().catch(() => {});
+    }, { once: true });
+    vid.addEventListener('error', () => vid.remove(), { once: true });
+    vid.src = new URL('../assets/sprites/' + MENU_BG_VIDEO.file, import.meta.url).href;
+  }
+  scene.appendChild(_buildHeroSilhouette());
+  parent.appendChild(scene);
+  return;
+
+  // sky gradient
+  const sky = document.createElement('div');
+  sky.className = 'kkv2-sky';
+  sky.style.background = `radial-gradient(120% 70% at 62% 18%, ${TONE.sky1} 0%, ${TONE.sky2} 60%, #020303 100%)`;
+  scene.appendChild(sky);
+
+  // sun/moon halo
+  const halo = document.createElement('div');
+  halo.className = 'kkv2-halo';
+  halo.style.background = `radial-gradient(circle, ${TONE.glow} 0%, transparent 65%)`;
+  scene.appendChild(halo);
+
+  const orb = document.createElement('div');
+  orb.className = 'kkv2-orb';
+  orb.style.background = `radial-gradient(circle at 38% 38%, ${TONE.rim} 0%, ${TONE.hi} 45%, ${TONE.mid} 100%)`;
+  orb.style.boxShadow = `0 0 80px 20px ${TONE.glow}`;
+  scene.appendChild(orb);
+
+  // far ridge
+  scene.appendChild(_svg(`
+    <svg class="kkv2-layer kkv2-far" viewBox="0 0 1920 1080" preserveAspectRatio="none">
+      <path fill="#1a0f0d" opacity="0.7" d="M0,640 L120,600 L260,640 L420,580 L600,620 L800,570 L1000,610 L1200,560 L1400,600 L1600,570 L1800,620 L1920,580 L1920,1080 L0,1080 Z" />
+    </svg>
+  `));
+
+  // mid pines (procedural, like the JSX Array.from(26))
+  let pineHtml = '';
+  for (let i = 0; i < 26; i++) {
+    const x = i * 78 + ((i * 17) % 23);
+    const h = 220 + ((i * 41) % 180);
+    const w = 32 + ((i * 11) % 22);
+    const y = 740 - h;
+    pineHtml += `<g transform="translate(${x},${y})"><path d="M${w/2},0 L${w*0.95},${h*0.35} L${w*0.72},${h*0.35} L${w*1.0},${h*0.7} L${w*0.75},${h*0.7} L${w},${h} L0,${h} L${w*0.25},${h*0.7} L0,${h*0.7} L${w*0.28},${h*0.35} L${w*0.05},${h*0.35} Z" /></g>`;
+  }
+  scene.appendChild(_svg(`
+    <svg class="kkv2-layer kkv2-mid" viewBox="0 0 1920 1080" preserveAspectRatio="none">
+      <g fill="#0c0807">${pineHtml}</g>
+    </svg>
+  `));
+
+  // atmospheric haze
+  const haze = document.createElement('div');
+  haze.className = 'kkv2-haze';
+  haze.style.background = `linear-gradient(180deg, transparent 0%, ${TONE.glow} 50%, transparent 100%)`;
+  scene.appendChild(haze);
+
+  // near branches
+  scene.appendChild(_svg(`
+    <svg class="kkv2-layer kkv2-branches" viewBox="0 0 1920 1080" preserveAspectRatio="none">
+      <g fill="#020404">
+        <path d="M0,0 L0,260 Q160,200 320,240 Q480,280 580,220 Q500,260 380,260 Q220,260 100,220 Q60,210 0,240 Z" />
+        <path d="M1920,0 L1920,280 Q1760,220 1600,260 Q1440,300 1340,240 Q1420,280 1540,280 Q1700,280 1820,240 Q1860,230 1920,260 Z" />
+      </g>
+    </svg>
+  `));
+
+  // hero character splash (decorative)
+  scene.appendChild(_buildHeroSilhouette());
+
+  // ground mist
+  const mist = document.createElement('div');
+  mist.className = 'kkv2-mist';
+  scene.appendChild(mist);
+
+  // foreground rocks/grass
+  let grassHtml = '';
+  for (let i = 0; i < 50; i++) {
+    const x = i * 40 + ((i * 13) % 23);
+    const h = 10 + ((i * 7) % 22);
+    const yBase = 950 + ((i * 5) % 30);
+    const sway = (i % 2 ? 2 : -2);
+    grassHtml += `<path d="M${x},${yBase} q${sway},-${h * 0.6} 0,-${h}" />`;
+  }
+  scene.appendChild(_svg(`
+    <svg class="kkv2-layer kkv2-fg" viewBox="0 0 1920 1080" preserveAspectRatio="none">
+      <g fill="#010202">
+        <path d="M0,1080 L0,920 Q80,900 180,930 Q300,960 420,940 Q540,920 680,950 Q820,980 960,960 Q1100,940 1260,970 Q1420,1000 1580,980 Q1740,960 1920,990 L1920,1080 Z" />
+      </g>
+      <g stroke="#020303" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.9">${grassHtml}</g>
+    </svg>
+  `));
+
+  parent.appendChild(scene);
+}
+
+function _buildHeroSilhouette() {
+  const wrap = document.createElement('div');
+  wrap.className = 'kkv2-hero';
+
+  const rim = document.createElement('div');
+  rim.className = 'kkv2-hero-rim';
+  rim.style.background = `radial-gradient(ellipse at 50% 35%, ${TONE.glow} 0%, transparent 55%)`;
+  wrap.appendChild(rim);
+
+  // Iter 37 — real 3D hero model splash. Show the selected avatar's GLB (the
+  // same model the in-game hero + Heroes carousel render, tinted/scaled),
+  // slow-rotating, instead of the static SVG. Falls back to the SVG below
+  // when the hero GLTF isn't cached yet (createHeroSplash returns null).
+  if (_heroSplash) { try { _heroSplash.destroy(); } catch (_) {} _heroSplash = null; }
+  {
+    // Marquee model = the player's selected avatar (AVATARS, not CHARACTERS:
+    // the cosmetic roster is where the per-avatar GLBs live). Falls back to
+    // kitty/AVATARS[0] if meta hasn't picked one yet.
+    const meta = getMeta();
+    const selId = meta && meta.selectedAvatar;
+    const av = AVATARS.find((a) => a.id === selId) || AVATARS.find((a) => a.id === 'kitty') || AVATARS[0] || {};
+    try {
+      _heroSplash = createHeroSplash(wrap, { avatarId: av.id, tint: av.tint, scaleMul: av.scaleMul, glb: av.glb });
+    } catch (_) { _heroSplash = null; }
+  }
+
+  // SVG hero — lifted verbatim from HeroCharacter component (fallback only)
+  if (!_heroSplash) wrap.appendChild(_svg(`
+    <svg class="kkv2-hero-svg" viewBox="0 0 600 900" preserveAspectRatio="xMidYMid meet">
+      <defs>
+        <linearGradient id="kkv2-hero-body" x1="0" y1="0" x2="0" y2="1">
+          <stop offset="0%" stop-color="#0c0807" />
+          <stop offset="60%" stop-color="#050202" />
+          <stop offset="100%" stop-color="#000000" />
+        </linearGradient>
+        <linearGradient id="kkv2-hero-rim" x1="0" y1="0" x2="1" y2="0">
+          <stop offset="0%" stop-color="${TONE.rim}" stop-opacity="0" />
+          <stop offset="50%" stop-color="${TONE.rim}" stop-opacity="0.65" />
+          <stop offset="100%" stop-color="${TONE.rim}" stop-opacity="0" />
+        </linearGradient>
+        <radialGradient id="kkv2-hero-eye" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="${TONE.rim}" />
+          <stop offset="60%" stop-color="${TONE.hi}" />
+          <stop offset="100%" stop-color="${TONE.mid}" stop-opacity="0" />
+        </radialGradient>
+      </defs>
+
+      <path fill="url(#kkv2-hero-body)" opacity="0.92"
+        d="M180,300 Q120,420 110,560 Q100,720 160,860 L240,860 Q190,720 200,580 Q210,460 240,360 Z" />
+      <path fill="url(#kkv2-hero-body)" opacity="0.92"
+        d="M420,300 Q480,420 490,560 Q500,720 440,860 L360,860 Q410,720 400,580 Q390,460 360,360 Z" />
+
+      <path fill="url(#kkv2-hero-body)"
+        d="M220,340 Q210,300 230,260 Q250,220 280,210 L320,210 Q350,220 370,260 Q390,300 380,340 L400,420 Q420,500 410,580 Q400,660 380,730 L380,860 L220,860 L220,730 Q200,660 190,580 Q180,500 200,420 Z" />
+
+      <path fill="#1a1210" stroke="${TONE.mid}" stroke-width="1.5"
+        d="M180,350 Q170,330 190,310 L240,320 Q250,360 230,400 Q200,400 180,380 Z" />
+      <path fill="#1a1210" stroke="${TONE.mid}" stroke-width="1.5"
+        d="M420,350 Q430,330 410,310 L360,320 Q350,360 370,400 Q400,400 420,380 Z" />
+
+      <g>
+        <path fill="url(#kkv2-hero-body)" d="M210,180 L200,100 L260,160 Z" />
+        <path fill="url(#kkv2-hero-body)" d="M390,180 L400,100 L340,160 Z" />
+        <path fill="${TONE.lo}" opacity="0.55" d="M215,170 L210,125 L245,160 Z" />
+        <path fill="${TONE.lo}" opacity="0.55" d="M385,170 L390,125 L355,160 Z" />
+        <path fill="url(#kkv2-hero-body)"
+          d="M220,200 Q210,160 240,140 L280,130 L320,130 L360,140 Q390,160 380,200 Q390,250 370,280 Q340,310 300,310 Q260,310 230,280 Q210,250 220,200 Z" />
+        <ellipse cx="262" cy="220" rx="8" ry="14" fill="url(#kkv2-hero-eye)" />
+        <ellipse cx="338" cy="220" rx="8" ry="14" fill="url(#kkv2-hero-eye)" />
+        <ellipse cx="262" cy="220" rx="2.5" ry="9" fill="${TONE.rim}" />
+        <ellipse cx="338" cy="220" rx="2.5" ry="9" fill="${TONE.rim}" />
+        <g stroke="rgba(200,180,140,.18)" stroke-width="1" fill="none">
+          <path d="M210,250 L160,245" />
+          <path d="M210,260 L165,265" />
+          <path d="M390,250 L440,245" />
+          <path d="M390,260 L435,265" />
+        </g>
+        <path fill="rgba(0,0,0,.45)" d="M220,200 Q280,260 380,200 Q390,250 370,280 Q340,310 300,310 Q260,310 230,280 Q210,250 220,200 Z" />
+      </g>
+
+      <rect x="220" y="520" width="160" height="22" fill="#150e0c" stroke="${TONE.mid}" stroke-width="1" />
+      <circle cx="300" cy="531" r="9" fill="${TONE.mid}" stroke="${TONE.hi}" stroke-width="1" />
+      <circle cx="300" cy="531" r="3" fill="${TONE.rim}" />
+
+      <g stroke="#0a0606" stroke-width="8" stroke-linecap="round" fill="none">
+        <line x1="430" y1="180" x2="530" y2="720" />
+      </g>
+      <g stroke="${TONE.mid}" stroke-width="2" stroke-linecap="round" fill="none" opacity="0.7">
+        <line x1="430" y1="180" x2="530" y2="720" />
+      </g>
+      <circle cx="424" cy="170" r="22" fill="url(#kkv2-hero-eye)" opacity="0.9" />
+      <circle cx="424" cy="170" r="10" fill="${TONE.rim}" opacity="0.9" />
+      <circle cx="424" cy="170" r="4" fill="#fff" />
+
+      <path fill="none" stroke="url(#kkv2-hero-rim)" stroke-width="2.2" opacity="0.9"
+        d="M220,200 Q210,160 240,140 L280,130 L320,130 L360,140 Q390,160 380,200" />
+      <path fill="none" stroke="url(#kkv2-hero-rim)" stroke-width="2.2" opacity="0.9"
+        d="M220,340 Q210,300 230,260 Q250,220 280,210" />
+      <path fill="none" stroke="url(#kkv2-hero-rim)" stroke-width="2.2" opacity="0.9"
+        d="M380,340 Q390,300 370,260 Q350,220 320,210" />
+    </svg>
+  `));
+
+  _heroWrap = wrap;
+  return wrap;
+}
+
+// Rebuild the marquee model in place — called after the Heroes overlay
+// changes meta.selectedAvatar, so the main-menu splash matches the pick
+// without needing a full hideMenuV2()/showMenuV2() round trip.
+function _refreshHeroSplash() {
+  // Capture the OLD wrap + its parent BEFORE calling _buildHeroSilhouette() —
+  // that call reassigns the module-level _heroWrap to the NEW wrap as its
+  // last step, so reading _heroWrap after the call points at the wrong node
+  // and replaceChild(fresh, fresh) throws (fresh isn't attached yet).
+  const old = _heroWrap;
+  if (!old || !old.parentNode) return;
+  const parent = old.parentNode;
+  const fresh = _buildHeroSilhouette();
+  parent.replaceChild(fresh, old);
+}
+
+function _buildParticles(parent) {
+  const wrap = document.createElement('div');
+  wrap.className = 'kkv2-particles';
+  // 32 drifting motes
+  for (let i = 0; i < 32; i++) {
+    const left = Math.random() * 100;
+    const top  = 30 + Math.random() * 60;
+    const size = 1.5 + Math.random() * 3;
+    const delay = Math.random() * 8;
+    const dur = 6 + Math.random() * 8;
+    const sway = 20 + Math.random() * 40;
+    const p = document.createElement('div');
+    p.className = 'kkv2-pcl';
+    p.style.left = `${left}%`;
+    p.style.top  = `${top}%`;
+    p.style.width  = `${size}px`;
+    p.style.height = `${size}px`;
+    // Rainbow embers: each mote a distinct hue spread across the spectrum
+    // (+ jitter so it isn't a clean gradient). The wrap slow-cycles hue-rotate.
+    const hue = Math.round((i / 32) * 360 + Math.random() * 26);
+    p.style.background = `hsl(${hue}, 95%, 64%)`;
+    p.style.boxShadow  = `0 0 ${size * 4}px ${size * 0.6}px hsl(${hue}, 95%, 60%)`;
+    p.style.animationDelay    = `${delay}s`;
+    p.style.animationDuration = `${dur}s`;
+    p.style.setProperty('--sway', `${sway}px`);
+    wrap.appendChild(p);
+  }
+  parent.appendChild(wrap);
+}
+
+function _buildVignetteAndGrain(parent) {
+  const v = document.createElement('div');
+  v.className = 'kkv2-vignette';
+  parent.appendChild(v);
+  const g = document.createElement('div');
+  g.className = 'kkv2-grain';
+  parent.appendChild(g);
+}
+
+// ─────────────────────────────────────────────────────────
+// Top bar
+// ─────────────────────────────────────────────────────────
+function _buildTopBar(parent) {
+  const header = document.createElement('header');
+  header.className = 'kkv2-top';
+
+  const lockup = document.createElement('div');
+  lockup.className = 'kkv2-lockup';
+  lockup.appendChild(_svg(`
+    <svg class="kkv2-mark" viewBox="0 0 64 56" fill="none">
+      <path d="M8,24 L4,4 L20,16 L44,16 L60,4 L56,24 Q56,46 32,52 Q8,46 8,24 Z" fill="currentColor" stroke="rgba(0,0,0,.4)" stroke-width="0.6" />
+      <ellipse cx="22" cy="30" rx="2.2" ry="3.2" fill="#1a0f08" />
+      <ellipse cx="42" cy="30" rx="2.2" ry="3.2" fill="#1a0f08" />
+    </svg>
+  `));
+  const word = document.createElement('div');
+  word.className = 'kkv2-wordmark';
+  const wm = document.createElement('div');
+  wm.className = 'kkv2-word-main';
+  wm.textContent = 'KAKI';
+  const ws = document.createElement('div');
+  ws.className = 'kkv2-word-sub';
+  ws.textContent = 'SURVIVORS';
+  word.appendChild(wm);
+  word.appendChild(ws);
+  lockup.appendChild(word);
+
+  const right = document.createElement('div');
+  right.className = 'kkv2-top-right';
+
+  // Account chip — uses real meta
+  const meta = getMeta();
+  const name = meta && meta.name ? meta.name : 'Player';
+  // level proxy: prefer explicit meta.level, else derive from coins
+  const level = (meta && meta.level) ? meta.level
+              : (meta && meta.coins) ? Math.max(1, Math.floor(Math.sqrt(meta.coins / 10)))
+              : 1;
+
+  const acct = document.createElement('div');
+  acct.className = 'kkv2-acct';
+  const av = document.createElement('div');
+  av.className = 'kkv2-acct-avatar';
+  av.appendChild(_svg(`
+    <svg viewBox="0 0 32 32">
+      <circle cx="16" cy="13" r="6" fill="${TONE.mid}" />
+      <path d="M4,32 Q4,20 16,20 Q28,20 28,32 Z" fill="${TONE.mid}" />
+    </svg>
+  `));
+  const info = document.createElement('div');
+  info.className = 'kkv2-acct-info';
+  const an = document.createElement('div');
+  an.className = 'kkv2-acct-name';
+  an.textContent = name;
+  const at = document.createElement('div');
+  at.className = 'kkv2-acct-tag';
+  at.textContent = `#KAKI · LVL ${level}`;
+  info.appendChild(an);
+  info.appendChild(at);
+  acct.appendChild(av);
+  acct.appendChild(info);
+
+  const icons = document.createElement('div');
+  icons.className = 'kkv2-icons';
+  // 3 icon buttons — Settings, Inbox, Friends. Settings routes to showOptions.
+  const settingsBtn = _iconBtn('⛭', 'Settings', true);
+  settingsBtn.addEventListener('click', _openSettings);
+  const inboxBtn = _iconBtn('✉', 'Inbox', false);
+  const friendsBtn = _iconBtn('◴', 'Friends', false);
+  // Menu BGM mute toggle. Persists meta.optMenuMusicMuted; the click is a
+  // user gesture so it also unlocks audio + starts the track on first unmute.
+  // Monochrome music-note glyph to match the other icons (⛭ ✉ ◴); muted state
+  // = struck-through + dimmed (emoji speakers render inconsistently / colored).
+  const muteBtn = _iconBtn('♪', 'Mute music', false);
+  const _muteGlyph = muteBtn.querySelector('span');
+  const _paintMute = (m) => {
+    if (!_muteGlyph) return;
+    _muteGlyph.style.textDecoration = m ? 'line-through' : 'none';
+    _muteGlyph.style.opacity = m ? '0.4' : '1';
+  };
+  _paintMute(isMenuMusicMuted());
+  muteBtn.addEventListener('click', (e) => {
+    e.stopPropagation();
+    try { unlockAudio(); } catch (_) {}
+    const m = !isMenuMusicMuted();
+    setMenuMusicMuted(m);
+    try { setOption('optMenuMusicMuted', m); } catch (_) {}
+    _paintMute(m);
+    if (!m) playMenuMusic();
+  });
+  icons.appendChild(muteBtn);
+  icons.appendChild(settingsBtn);
+  icons.appendChild(inboxBtn);
+  icons.appendChild(friendsBtn);
+
+  right.appendChild(acct);
+  right.appendChild(icons);
+
+  header.appendChild(lockup);
+  header.appendChild(right);
+  parent.appendChild(header);
+}
+
+function _iconBtn(glyph, label, withDot) {
+  const b = document.createElement('button');
+  b.className = 'kkv2-iconbtn';
+  b.setAttribute('aria-label', label);
+  b.type = 'button';
+  if (withDot) {
+    const d = document.createElement('span');
+    d.className = 'kkv2-dot';
+    b.appendChild(d);
+  }
+  const span = document.createElement('span');
+  span.textContent = glyph;
+  b.appendChild(span);
+  return b;
+}
+
+// ─────────────────────────────────────────────────────────
+// Side nav
+// ─────────────────────────────────────────────────────────
+function _buildSideNav(parent) {
+  const nav = document.createElement('nav');
+  nav.className = 'kkv2-nav';
+  NAV_ITEMS.forEach(item => {
+    const btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'kkv2-navitem' + (item.id === _activeNav ? ' is-active' : '');
+    btn.dataset.nav = item.id;
+    btn.addEventListener('mouseenter', () => _setActive(item.id));
+    btn.addEventListener('focus',      () => _setActive(item.id));
+    btn.addEventListener('click', () => _dispatchNav(item.id));
+
+    const rail = document.createElement('span');
+    rail.className = 'kkv2-nav-rail';
+    const glyph = document.createElement('span');
+    glyph.className = 'kkv2-nav-glyph';
+    glyph.textContent = item.glyph;
+    const label = document.createElement('span');
+    label.className = 'kkv2-nav-label';
+    label.textContent = item.label;
+    const kbd = document.createElement('span');
+    kbd.className = 'kkv2-nav-kbd';
+    kbd.textContent = item.kbd;
+    btn.appendChild(rail);
+    btn.appendChild(glyph);
+    btn.appendChild(label);
+    btn.appendChild(kbd);
+    nav.appendChild(btn);
+  });
+  parent.appendChild(nav);
+}
+
+function _setActive(id) {
+  _activeNav = id;
+  if (!_stage) return;
+  _stage.querySelectorAll('.kkv2-navitem').forEach(el => {
+    el.classList.toggle('is-active', el.dataset.nav === id);
+  });
+}
+
+function _dispatchNav(id) {
+  switch (id) {
+    case 'play':       _beginRun(); break;
+    case 'racing':     _beginRacing(); break;
+    case 'bullethell': _beginBulletHell(); break;
+    case 'characters': _openHeroes(); break;
+    case 'arsenal':    _openArsenal(); break;
+    case 'codex':      _openCodex(); break;
+    case 'town':       _enterTownFromMenu(); break;
+    case 'options':    _openSettings(); break;
+  }
+}
+
+// ─────────────────────────────────────────────────────────
+// Continue card
+// ─────────────────────────────────────────────────────────
+function _buildContinueCard(parent) {
+  const card = document.createElement('div');
+  card.className = 'kkv2-continue';
+
+  const eyebrow = document.createElement('div');
+  eyebrow.className = 'kkv2-cont-eyebrow';
+  const rule = document.createElement('span');
+  rule.className = 'kkv2-cont-rule';
+  const eyeTxt = document.createElement('span');
+  eyeTxt.textContent = 'New Run';
+  eyebrow.appendChild(rule);
+  eyebrow.appendChild(eyeTxt);
+
+  // Stage + sub
+  const stage = STAGES.find(s => s.id === _selectedStageId) || STAGES[0];
+  const art = STAGE_ART[stage.id] || STAGE_ART.forest;
+  const bio = document.createElement('div');
+  bio.className = 'kkv2-cont-bio';
+  const sub = document.createElement('div');
+  sub.className = 'kkv2-cont-sub';
+  sub.textContent = `${art.tier} · ${art.sub}`;
+  const nm = document.createElement('div');
+  nm.className = 'kkv2-cont-name';
+  nm.textContent = stage.name;
+  bio.appendChild(sub);
+  bio.appendChild(nm);
+
+  // Stats row — real meta-derived: best score, best time, total runs
+  const meta = getMeta();
+  const row = document.createElement('div');
+  row.className = 'kkv2-cont-row';
+  row.appendChild(_stat('Best', String(meta && meta.bestScore || 0)));
+  row.appendChild(_stat('Time', _fmtTime((meta && meta.bestTime) || 0)));
+  row.appendChild(_stat('Runs', String((meta && meta.runs) || 0)));
+
+  // Begin Run button
+  const btn = document.createElement('button');
+  btn.className = 'kkv2-cont-btn';
+  btn.type = 'button';
+  const bg = document.createElement('span');
+  bg.className = 'kkv2-cont-btn-glyph';
+  bg.textContent = '▶';
+  const bl = document.createElement('span');
+  bl.textContent = 'Begin Run';
+  const bk = document.createElement('span');
+  bk.className = 'kkv2-cont-btn-kbd';
+  bk.textContent = 'SPACE';
+  btn.appendChild(bg);
+  btn.appendChild(bl);
+  btn.appendChild(bk);
+  btn.addEventListener('click', _beginRun);
+
+  card.appendChild(eyebrow);
+  card.appendChild(bio);
+  card.appendChild(row);
+  // P4D NG+ modifiers (#143) — pre-run toggle panel, forest-only. Mounted
+  // between the stats row and Begin Run so the player sees the active
+  // modifier set immediately before launch. Greyed-out + locked-hint text
+  // when meta.unlockedNgPlus is false (first-clear gate).
+  if (stage.id === 'forest') _buildNgPlusPanel(card);
+  card.appendChild(btn);
+
+  card.dataset.role = 'continue';
+  parent.appendChild(card);
+}
+
+// ─────────────────────────────────────────────────────────
+// P4D NG+ modifier panel (#143)
+// ─────────────────────────────────────────────────────────
+// Three pre-run toggles unlocked on first forest clear. Built inline with
+// the continue card (forest-only — other stages don't have NG+ yet). Uses
+// the 8-color amber palette via the same chrome already declared in
+// menuV2.css for the continue card; inline styles only for the row layout
+// + lock affordance so we don't bolt new selectors onto the stylesheet.
+function _buildNgPlusPanel(card) {
+  const meta = getMeta();
+  const locked = !meta || !meta.unlockedNgPlus;
+
+  const panel = document.createElement('div');
+  panel.className = 'kkv2-ng-panel';
+  panel.style.cssText = `
+    margin: 14px 0 12px;
+    padding: 12px 14px;
+    border: 1px solid rgba(217,166,72,0.32);
+    background: rgba(74,50,32,0.18);
+    border-radius: 4px;
+    opacity: ${locked ? '0.55' : '1'};
+  `;
+
+  const head = document.createElement('div');
+  head.style.cssText = `
+    font-family: Cinzel, serif;
+    font-weight: 600;
+    font-size: 11px;
+    letter-spacing: 0.18em;
+    text-transform: uppercase;
+    color: #d9a648;
+    margin-bottom: 8px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  `;
+  const hLabel = document.createElement('span');
+  hLabel.textContent = 'NG+ Modifiers';
+  head.appendChild(hLabel);
+  if (locked) {
+    const lockHint = document.createElement('span');
+    lockHint.textContent = '\u{1F512} Clear the forest to unlock';
+    lockHint.style.cssText = `
+      font-family: Geist, sans-serif;
+      font-weight: 400;
+      font-size: 10px;
+      letter-spacing: 0.06em;
+      text-transform: none;
+      color: #c7b89a;
+      opacity: 0.85;
+    `;
+    head.appendChild(lockHint);
+  }
+  panel.appendChild(head);
+
+  const TOGGLES = [
+    { key: 'optNgMirror',     label: 'Mirror Mobs',   hint: '+50% spawn cap' },
+    { key: 'optNgTwin',       label: 'Twin Bosses',   hint: 'Paired miniboss + final' },
+    { key: 'optNgHalfPickup', label: 'Half Pickups',  hint: '50% drop denial' },
+  ];
+
+  for (const t of TOGGLES) {
+    const row = document.createElement('label');
+    row.style.cssText = `
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 5px 0;
+      cursor: ${locked ? 'not-allowed' : 'pointer'};
+      font-family: Geist, sans-serif;
+      font-size: 12px;
+      color: #c7b89a;
+    `;
+    const cb = document.createElement('input');
+    cb.type = 'checkbox';
+    cb.checked = !!(meta && meta[t.key]);
+    cb.disabled = locked;
+    cb.style.cssText = `
+      width: 14px;
+      height: 14px;
+      accent-color: #d9a648;
+      cursor: ${locked ? 'not-allowed' : 'pointer'};
+    `;
+    cb.addEventListener('change', () => {
+      try { setOption(t.key, !!cb.checked); } catch (_) {}
+    });
+    const label = document.createElement('span');
+    label.textContent = t.label;
+    label.style.cssText = 'flex: 0 0 auto; font-weight: 500; color: #e89c4a;';
+    const hint = document.createElement('span');
+    hint.textContent = t.hint;
+    hint.style.cssText = 'flex: 1; opacity: 0.72; font-size: 11px; color: #c7b89a;';
+    row.appendChild(cb);
+    row.appendChild(label);
+    row.appendChild(hint);
+    panel.appendChild(row);
+  }
+
+  card.appendChild(panel);
+}
+
+function _stat(label, value) {
+  const s = document.createElement('div');
+  s.className = 'kkv2-cont-stat';
+  const l = document.createElement('div');
+  l.className = 'kkv2-cont-label';
+  l.textContent = label;
+  const v = document.createElement('div');
+  v.className = 'kkv2-cont-val';
+  v.textContent = value;
+  s.appendChild(l);
+  s.appendChild(v);
+  return s;
+}
+
+function _refreshContinueCard() {
+  if (!_stage) return;
+  const old = _stage.querySelector('.kkv2-continue');
+  if (old) old.parentNode.removeChild(old);
+  _buildContinueCard(_stage);
+}
+
+// ─────────────────────────────────────────────────────────
+// Chapter rail
+// ─────────────────────────────────────────────────────────
+function _buildChapterRail(parent) {
+  const rail = document.createElement('section');
+  rail.className = 'kkv2-rail';
+
+  const head = document.createElement('div');
+  head.className = 'kkv2-rail-head';
+
+  const title = document.createElement('div');
+  title.className = 'kkv2-rail-title';
+  const eye = document.createElement('span');
+  eye.className = 'kkv2-rail-eye';
+  eye.textContent = 'Select a Chapter';
+  const count = document.createElement('span');
+  count.className = 'kkv2-rail-count';
+  const meta = getMeta();
+  const unlockedCount = STAGES.filter(s => _stageUnlocked(s, meta)).length;
+  count.textContent = `${STAGES.length} chapters · ${unlockedCount} unlocked`;
+  title.appendChild(eye);
+  title.appendChild(count);
+
+  const tabs = document.createElement('div');
+  tabs.className = 'kkv2-rail-tabs';
+  // Campaign active; other tabs visually styled but non-functional v1
+  const tCampaign = _tab('Campaign', true);
+  const tEndless  = _tab('Endless', false);
+  const tDaily    = _tab('Daily', false);
+  tabs.appendChild(tCampaign);
+  tabs.appendChild(tEndless);
+  tabs.appendChild(tDaily);
+
+  head.appendChild(title);
+  head.appendChild(tabs);
+  rail.appendChild(head);
+
+  // List of chapter cards from STAGES config
+  const list = document.createElement('div');
+  list.className = 'kkv2-rail-list';
+  STAGES.forEach((stage, i) => {
+    const art = STAGE_ART[stage.id] || STAGE_ART.forest;
+    const unlocked = _stageUnlocked(stage, meta);
+    const cleared = !!(meta && _stageCleared(stage, meta));
+    const card = document.createElement('button');
+    card.type = 'button';
+    card.className = 'kkv2-chap'
+      + (stage.id === _selectedStageId ? ' is-selected' : '')
+      + (!unlocked ? ' is-locked' : '')
+      + (stage.id === 'kakiland' ? ' is-kaki-land' : '');
+    card.dataset.stage = stage.id;
+    card.title = unlocked ? stage.name : `${stage.name} — clear Glass Mile to unlock`;
+    card.setAttribute('aria-label', card.title);
+
+    const artBox = document.createElement('div');
+    artBox.className = 'kkv2-chap-art';
+    // Painted card art (Grok, storybook ink style) layered over the inline
+    // SVG placeholder. The SVG stays in the DOM as the fallback: if the webp
+    // is missing or fails to decode the <img> removes itself and the SVG
+    // shows through unchanged.
+    artBox.appendChild(_buildChapterArt(stage.id));
+    // Kaki already supplies its finished key art through _buildChapterArt.
+    // Do not make a guaranteed-missing chapter_kakiland.webp request.
+    if (stage.id !== 'kakiland') {
+      const artImg = document.createElement('img');
+      artImg.className = 'kkv2-chap-img';
+      artImg.alt = '';
+      artImg.loading = 'lazy';
+      artImg.decoding = 'async';
+      artImg.addEventListener('error', () => artImg.remove(), { once: true });
+      const chapterFile = stage.id === 'forest' ? 'chapter_forest_kaki-v1.webp' : `chapter_${stage.id}.webp`;
+      artImg.src = new URL('../assets/sprites/chapters/' + chapterFile, import.meta.url).href;
+      artBox.appendChild(artImg);
+    }
+    const shade = document.createElement('div');
+    shade.className = 'kkv2-chap-shade';
+    artBox.appendChild(shade);
+    if (!unlocked) {
+      const lock = document.createElement('div');
+      lock.className = 'kkv2-chap-lock';
+      lock.textContent = '\u{1F512}';
+      artBox.appendChild(lock);
+    }
+    if (cleared) {
+      const cl = document.createElement('div');
+      cl.className = 'kkv2-chap-cleared';
+      cl.textContent = '✓ Cleared';
+      artBox.appendChild(cl);
+    }
+    if (stage.id === 'kakiland') {
+      const featured = document.createElement('div');
+      featured.className = 'kkv2-chap-featured';
+      featured.textContent = 'FINAL CHAPTER';
+      artBox.appendChild(featured);
+    }
+
+    const body = document.createElement('div');
+    body.className = 'kkv2-chap-body';
+    const tier = document.createElement('div');
+    tier.className = 'kkv2-chap-tier';
+    tier.textContent = `${art.tier.toUpperCase()} · ${art.sub.toUpperCase()}`;
+    const nameEl = document.createElement('div');
+    nameEl.className = 'kkv2-chap-name';
+    nameEl.textContent = stage.name;
+    const metaRow = document.createElement('div');
+    metaRow.className = 'kkv2-chap-meta';
+    const diff = document.createElement('span');
+    diff.className = 'kkv2-chap-diff';
+    diff.textContent = art.diff;
+    const sep = document.createElement('span');
+    sep.className = 'kkv2-chap-sep';
+    sep.textContent = '·';
+    const waves = document.createElement('span');
+    waves.className = 'kkv2-chap-waves';
+    waves.textContent = art.wavesLabel || `${art.waves} waves`;
+    metaRow.appendChild(diff);
+    metaRow.appendChild(sep);
+    metaRow.appendChild(waves);
+    body.appendChild(tier);
+    body.appendChild(nameEl);
+    body.appendChild(metaRow);
+
+    card.appendChild(artBox);
+    card.appendChild(body);
+
+    if (unlocked) {
+      card.addEventListener('click', () => _selectStage(stage.id));
+    }
+    list.appendChild(card);
+  });
+  rail.appendChild(list);
+  parent.appendChild(rail);
+}
+
+function _tab(label, active, withDot) {
+  const b = document.createElement('button');
+  b.className = 'kkv2-tab' + (active ? ' is-active' : '');
+  b.type = 'button';
+  b.appendChild(document.createTextNode(label));
+  if (withDot) {
+    const d = document.createElement('span');
+    d.className = 'kkv2-tab-dot';
+    b.appendChild(d);
+  }
+  return b;
+}
+
+function _buildChapterArt(stageId) {
+  if (stageId === 'kakiland') {
+    const image = document.createElement('img');
+    image.src = new URL('../assets/kakiland/kaki-land-key-art-gpt-v2.png', import.meta.url).href;
+    image.alt = 'Chalk Plateau portal islands';
+    image.decoding = 'async';
+    image.style.cssText = 'width:100%;height:100%;display:block;object-fit:cover;object-position:center;';
+    return image;
+  }
+  // 4 stage-themed SVGs, each ~200x140 tile. Palettes match in-game stage tints.
+  const templates = {
+    forest: `
+      <svg viewBox="0 0 200 140" preserveAspectRatio="xMidYMid slice">
+        <rect width="200" height="140" fill="#0c1815" />
+        <circle cx="160" cy="35" r="14" fill="#a89860" opacity="0.5" />
+        <path d="M0,100 L40,80 L80,95 L120,75 L160,90 L200,80 L200,140 L0,140 Z" fill="#0a1a16" />
+        <g fill="#020a08">
+          <path d="M10,140 L20,80 L30,140 Z" />
+          <path d="M40,140 L50,70 L60,140 Z" />
+          <path d="M150,140 L160,75 L170,140 Z" />
+        </g>
+      </svg>`,
+    twilight: `
+      <svg viewBox="0 0 200 140" preserveAspectRatio="xMidYMid slice">
+        <rect width="200" height="140" fill="#0a1018" />
+        <circle cx="155" cy="38" r="16" fill="#6b88c0" opacity="0.5" />
+        <path d="M0,108 L42,86 L84,102 L126,82 L168,98 L200,88 L200,140 L0,140 Z" fill="#06101a" />
+        <g fill="#020610">
+          <path d="M16,140 L26,80 L36,140 Z" />
+          <path d="M64,140 L74,68 L84,140 Z" />
+          <path d="M148,140 L158,76 L168,140 Z" />
+        </g>
+        <g fill="#9cb8ff" opacity="0.5">
+          <circle cx="30" cy="20" r="1" /><circle cx="60" cy="14" r="0.8" />
+          <circle cx="98" cy="22" r="1.2" /><circle cx="140" cy="10" r="0.8" />
+          <circle cx="180" cy="18" r="1" />
+        </g>
+      </svg>`,
+    cinder: `
+      <svg viewBox="0 0 200 140" preserveAspectRatio="xMidYMid slice">
+        <rect width="200" height="140" fill="#180a06" />
+        <path d="M40,140 L40,40 Q60,20 100,20 Q140,20 160,40 L160,140 Z" fill="#0a0403" />
+        <circle cx="100" cy="90" r="22" fill="#e09040" opacity="0.5" />
+        <circle cx="100" cy="90" r="8" fill="#ffc080" />
+        <g fill="#ff7a3a" opacity="0.55">
+          <circle cx="60" cy="80" r="2" /><circle cx="140" cy="92" r="1.6" />
+          <circle cx="80" cy="120" r="1.4" /><circle cx="130" cy="118" r="2.2" />
+          <circle cx="48" cy="106" r="1.2" /><circle cx="156" cy="74" r="1.6" />
+        </g>
+      </svg>`,
+    void: `
+      <svg viewBox="0 0 200 140" preserveAspectRatio="xMidYMid slice">
+        <rect width="200" height="140" fill="#0a0612" />
+        <path d="M0,96 L200,96 L200,140 L0,140 Z" fill="#04020a" />
+        <g fill="#06020e">
+          <rect x="16" y="36" width="10" height="64" />
+          <rect x="46" y="22" width="10" height="78" />
+          <rect x="80" y="34" width="10" height="66" />
+          <rect x="118" y="20" width="10" height="80" />
+          <rect x="156" y="44" width="10" height="56" />
+          <rect x="182" y="28" width="10" height="72" />
+        </g>
+        <g fill="#c87bff" opacity="0.45">
+          <circle cx="50" cy="92" r="2.6" />
+          <circle cx="124" cy="80" r="2" />
+          <circle cx="160" cy="92" r="1.8" />
+        </g>
+      </svg>`,
+  };
+  const html = (templates[stageId] || templates.forest).trim();
+  return _svg(html);
+}
+
+// Unlock predicate — mirrors the meta flag pattern used by STAGES config
+function _stageUnlocked(stage, meta) {
+  return isStageUnlocked(stage, meta);
+}
+
+// Cleared = any per-stage best-time / first-victory flag would be ideal, but
+// no canonical key exists. Heuristic: a stage is "cleared" if the next stage's
+// unlock flag is set (since you unlock the next one by clearing this one).
+function _stageCleared(stage, meta) {
+  const idx = STAGES.findIndex(s => s.id === stage.id);
+  if (idx < 0 || idx === STAGES.length - 1) return false;
+  const next = STAGES[idx + 1];
+  if (!next || !next.unlock) return false;
+  return !!meta[next.unlock];
+}
+
+function _selectStage(stageId) {
+  _selectedStageId = stageId;
+  try { setOption('selectedStage', stageId); } catch (_) {}
+  // Repaint selected card outlines + continue card
+  if (_stage) {
+    _stage.querySelectorAll('.kkv2-chap').forEach(el => {
+      el.classList.toggle('is-selected', el.dataset.stage === stageId);
+    });
+  }
+  _refreshContinueCard();
+}
+
+// ─────────────────────────────────────────────────────────
+// Footer
+// ─────────────────────────────────────────────────────────
+function _buildFooter(parent) {
+  const foot = document.createElement('footer');
+  foot.className = 'kkv2-foot';
+
+  const left = document.createElement('div');
+  left.className = 'kkv2-foot-left';
+  const ver = document.createElement('span');
+  ver.className = 'kkv2-version';
+  ver.textContent = _versionLabel();
+  left.appendChild(ver);
+  // PHASE 1 P1B — Achievements indicator. Click → modal listing all defs.
+  try { _mountAchievementsTitlePanel(left); } catch (e) { console.warn('[menuV2.ach]', e); }
+
+  const right = document.createElement('div');
+  right.className = 'kkv2-foot-right';
+  right.appendChild(_key('↑↓', 'Navigate'));
+  right.appendChild(_key('Enter', 'Confirm'));
+  right.appendChild(_key('Tab', 'Switch panel'));
+  right.appendChild(_key('Esc', 'Back'));
+
+  foot.appendChild(left);
+  foot.appendChild(right);
+  parent.appendChild(foot);
+}
+
+function _key(kbdLabel, hint) {
+  const w = document.createElement('span');
+  w.className = 'kkv2-key';
+  const k = document.createElement('kbd');
+  k.textContent = kbdLabel;
+  const t = document.createElement('span');
+  t.textContent = hint;
+  w.appendChild(k);
+  w.appendChild(t);
+  return w;
+}
+
+function _versionLabel() {
+  // Try to read from window or a global; fall back to a static label.
+  if (typeof window !== 'undefined' && window.KK_BUILD) return window.KK_BUILD;
+  return 'v1.1 · menu v2';
+}
+
+function _fmtTime(sec) {
+  sec = Math.max(0, Math.floor(sec || 0));
+  const m = Math.floor(sec / 60);
+  const s = sec % 60;
+  return `${m}:${s.toString().padStart(2, '0')}`;
+}
+
+// ─────────────────────────────────────────────────────────
+// Action hooks
+// ─────────────────────────────────────────────────────────
+function _beginRun() {
+  // Same entry point the legacy start screen uses.
+  if (typeof window !== 'undefined' && typeof window.kkStartRun === 'function') {
+    window.kkStartRun();
+  }
+}
+
+function _beginBulletHell() {
+  if (typeof window !== 'undefined' && typeof window.kkStartBulletHell === 'function') {
+    window.kkStartBulletHell();
+  }
+}
+
+function _beginRacing() {
+  _openRacingSetup();
+}
+
+const TRIALS_PROGRESS_KEY = 'kks_rally_trials_v1';
+
+function _readTrialsMenuProgress() {
+  try {
+    const saved = JSON.parse(localStorage.getItem(TRIALS_PROGRESS_KEY) || '{}');
+    const unlocked = Array.isArray(saved.unlocked) ? saved.unlocked : ['meadow'];
+    if (new URLSearchParams(location.search).has('qa')) return { ...saved, unlocked: [...TRIALS_TRACK_ORDER] };
+    return { ...saved, unlocked: unlocked.includes('meadow') ? unlocked : ['meadow', ...unlocked] };
+  } catch (_) {
+    return { unlocked: ['meadow'], records: {} };
+  }
+}
+
+function _openRacingSetup() {
+  if (_overlay || typeof window === 'undefined') return;
+  let selectedMode = 'circuit';
+  let selectedCars = 8;
+  let selectedTrialsTrack = 'meadow';
+  let selectedTrialsVehicle = 'monster';
+  let selectedMonsterVehicle = 'cyber';
+  let selectedMonsterArena = 'pileup-pyramid-yard';
+  let selectedMonsterEvent = 'smashdown';
+  let selectedCrashVehicle = 'muscle';
+  let selectedCrashQuality = (typeof matchMedia !== 'undefined' && matchMedia('(pointer: coarse)').matches) ? 'low' : 'high';
+  const drawStats = getDrawTrackModeCardStats();
+  const drawRecord = drawStats.bestLap
+    ? `${_fmtTime(drawStats.bestLap)} BEST · ${drawStats.count} SAVED`
+    : `${drawStats.count} SAVED CREATION${drawStats.count === 1 ? '' : 'S'} · MOUSE + TOUCH + PAD`;
+  const trialsProgress = _readTrialsMenuProgress();
+  const crashRecord = readCrashRecord();
+  const crashAvailability = getRacingModeAvailability('crash');
+  const trialsTrackButtons = TRIALS_TRACK_ORDER.map((id, index) => {
+    const track = TRIALS_TRACKS[id];
+    const record = trialsProgress.records?.[id];
+    const unlocked = trialsProgress.unlocked.includes(id);
+    const best = Number(record?.effectiveTime || record?.time || 0);
+    const status = record?.medal ? `${record.medal} · ${_fmtTime(best)}` : unlocked ? 'NO MEDAL YET' : `EARN B ON ${TRIALS_TRACKS[TRIALS_TRACK_ORDER[index - 1]]?.name || 'PRIOR TRACK'}`;
+    return `<button type="button" data-trials-track="${id}" class="${id === selectedTrialsTrack ? 'is-selected' : ''}" ${unlocked ? '' : 'disabled'}><b>${String(index + 1).padStart(2, '0')} · ${track.difficultyLabel}</b><strong>${track.name}</strong><em>${status}</em></button>`;
+  }).join('');
+  const monsterArenaButtons = MONSTER_ARENA_ORDER.map((id, index) => {
+    const arena = MONSTER_ARENAS[id];
+    const structures = new Set(arena.targets.map((target) => target.structureId).filter(Boolean)).size;
+    const dominoes = arena.targets.filter((target) => target.dominoGroup).length;
+    const hotCars = arena.targets.filter((target) => target.explosive && target.kind !== 'haybale').length;
+    const detail = dominoes
+      ? `${arena.targets.length} crushables · ${dominoes} domino cars · ${hotCars} hot cars`
+      : structures
+        ? `${arena.targets.length} crushables · ${structures} support-collapse structures`
+      : `${arena.targets.length} crushables · ${arena.ramps.length} freestyle ramps`;
+    return `<button type="button" data-monster-arena="${arena.id}" class="${arena.id === selectedMonsterArena ? 'is-selected' : ''}"><b>0${index + 1} · ${arena.name}</b><strong>${arena.subtitle}</strong><em>${detail}</em></button>`;
+  }).join('');
+  _overlay = document.createElement('div');
+  _overlay.className = 'kkv2-overlay kkv2-race-overlay';
+  _overlay.innerHTML = `
+    <div class="kkv2-overlay-head">
+      <div><div class="kkv2-overlay-title">Kaki Racing</div><div class="kkv2-overlay-sub">Choose a discipline. Every rival seat is filled by another hero.</div></div>
+      <button class="kkv2-overlay-close" type="button">ESC · Close</button>
+    </div>
+    <div class="kkv2-race-grid">
+      <button class="kkv2-race-card kkv2-race-card-draw" type="button" data-mode="draw" data-cars="7">
+        <span><i>NEW</i> · DRAW YOUR TRACK</span><strong>DRAW IT. BUILD IT. RACE IT.</strong><p>Sketch one closed loop. Kaki Rally turns it into a polished circuit—with several track sizes, four road widths, automatic repair, and safe overpasses for good crossings.</p><em>${drawRecord}</em>
+        <svg viewBox="0 0 260 116" aria-hidden="true"><path class="kkv2-draw-shadow" d="M25 72 C37 22 82 20 106 55 C132 94 161 97 185 63 C204 37 228 42 236 70 C216 104 173 100 149 77 C122 52 96 91 62 91 C43 91 30 85 25 72Z"/><path class="kkv2-draw-line" d="M25 72 C37 22 82 20 106 55 C132 94 161 97 185 63 C204 37 228 42 236 70 C216 104 173 100 149 77 C122 52 96 91 62 91 C43 91 30 85 25 72Z"/><circle cx="25" cy="72" r="5"/></svg>
+      </button>
+      <button class="kkv2-race-card is-selected" type="button" data-mode="circuit" data-cars="8">
+        <span>01 · OFF-ROAD GP</span><strong>MUD, BOOST & JUMPS</strong><p>Eight heroes fight through the selected chapter map. Charged drifts fire mini-turbos.</p><em>8 CARS · 3 LAPS</em>
+      </button>
+      <button class="kkv2-race-card" type="button" data-mode="drift" data-cars="6">
+        <span>02 · DRIFT ATTACK</span><strong>90-SECOND SCORE RUN</strong><p>Link fast, sideways slides to build an 8× combo while hero traffic keeps the line lively.</p><em>6 CARS · SCORE ATTACK</em>
+      </button>
+      <button class="kkv2-race-card" type="button" data-mode="stock" data-cars="12">
+        <span>03 · KAKI STOCK CUP</span><strong>DRAFT THE HERO PACK</strong><p>Eight-lap oval racing with slipstreams, wall impacts, physical damage, smoke, and pit repairs.</p><em>12 CARS · 8 LAPS</em>
+      </button>
+      <button class="kkv2-race-card kkv2-race-card-monster" type="button" data-mode="monster" data-cars="1">
+        <span>04 · MONSTER SMASH</span><strong>FIVE-ROUND SMASHDOWN</strong><p>Clear escalating stunt layouts one car at a time. Crush every target to unlock the next level, then chase the fastest five-level total.</p><em>SOLO · 5 LEVELS · UNLIMITED TIME</em>
+      </button>
+      <button class="kkv2-race-card kkv2-race-card-trials" type="button" data-mode="trials" data-cars="1">
+        <span>05 · KAKI TRIALS</span><strong>LEAN. LAUNCH. LAND.</strong><p>A dedicated side-scrolling monster-truck challenge with rolling terrain, real gaps, turbo heat, checkpoints, crushables, medals, and personal-best ghosts.</p><em>SOLO · 3 POINT-TO-POINT TRACKS</em>
+      </button>
+      <button class="kkv2-race-card kkv2-race-card-crash is-deferred" type="button" data-mode="crash" data-cars="1" data-deferred-reason="${crashAvailability.reason}" disabled aria-disabled="true" title="${crashAvailability.detail}">
+        <span>06 · KAKI CATASTROPHE</span><strong>CAUSE THE CHAIN REACTION</strong><p>Launch into live traffic, create a pileup, trigger Kaki Boom and watch the best impacts in cinematic slow motion.</p><em>${crashAvailability.label} · ORIGINAL WEBGL RELEASE REMAINS AVAILABLE</em>
+        <svg viewBox="0 0 360 140" aria-hidden="true"><path d="M18 70H342M180 10V130"/><path d="M18 54H342M18 86H342M164 10V130M196 10V130"/><circle cx="180" cy="70" r="26"/><circle cx="117" cy="70" r="8"/><circle cx="243" cy="70" r="8"/></svg>
+      </button>
+    </div>
+    <div class="kkv2-race-count" hidden><span>STOCK GRID</span><button type="button" data-count="8">8</button><button class="is-selected" type="button" data-count="12">12</button><button type="button" data-count="16">16 · DESKTOP</button></div>
+    <div class="kkv2-monster-setup" hidden>
+      <div class="kkv2-monster-arenas">
+        <div class="kkv2-monster-heading"><span>DESTRUCTION ARENA</span><em>Pyramids collapse from below. Domino cars fall in sequence. Burning cars explode.</em></div>
+        <div class="kkv2-monster-arena-grid">${monsterArenaButtons}</div>
+      </div>
+      <div class="kkv2-monster-events" aria-label="Monster event format">
+        <div><span>EVENT FORMAT</span><em>One handling model, three ways to play.</em></div>
+        <button class="is-selected" type="button" data-monster-event="smashdown"><b>SMASHDOWN</b><em>Five levels · crush every car to advance · ranked by total time</em></button>
+        <button type="button" data-monster-event="freestyle"><b>FREESTYLE</b><em>Two-minute score attack · all targets</em></button>
+        <button type="button" data-monster-event="free-ride"><b>FREE RIDE</b><em>No clock · practice, refill, route ghost</em></button>
+      </div>
+      <div class="kkv2-monster-garage">
+        <div><span>MONSTER GARAGE</span><em>Choose your truck feel.</em></div>
+        <button type="button" data-monster-vehicle="meowster"><b>MIGHTY MEOWSTER</b><em>Forgiving landings · faster flips · balanced crushing</em></button>
+        <button class="is-selected" type="button" data-monster-vehicle="cyber"><b>CYBER KAKI</b><em>More stable · stronger ramming · slower air rotation</em></button>
+        <button type="button" data-monster-vehicle="tipsy"><b>TIPSY TUMBLER</b><em>Animated wobble · quick flips · strong ramming</em></button>
+      </div>
+    </div>
+    <div class="kkv2-trials-setup" hidden>
+      <div class="kkv2-trials-heading"><span>TRIALS COURSE</span><em>B medal unlocks the next climb</em></div>
+      <div class="kkv2-trials-tracks">${trialsTrackButtons}</div>
+      <div class="kkv2-trials-vehicles"><span>GARAGE</span><button class="is-selected" type="button" data-trials-vehicle="monster"><b>MONSTER TRUCK</b><em>Heavy · forgiving · crush power</em></button><button type="button" data-trials-vehicle="buggy"><b>RALLY BUGGY</b><em>Fast · agile · trickier landings</em></button></div>
+    </div>
+    <div class="kkv2-crash-setup" hidden>
+      <div class="kkv2-crash-heading"><div><span>PAWPRINT INTERCHANGE</span><strong>INDUSTRIAL LOOP / SIGNAL 06</strong></div><em>BEST ${crashRecord.score.toLocaleString()} · ${crashRecord.medal}</em></div>
+      <div class="kkv2-crash-grid">
+        <section><span>PLAYER VEHICLE</span>
+          <button type="button" data-crash-vehicle="pocket"><b>POCKET POUNCER</b><em>Light · agile · fastest launch</em></button>
+          <button class="is-selected" type="button" data-crash-vehicle="muscle"><b>KAKI MUSCLE</b><em>Balanced · forceful · forgiving</em></button>
+          <button type="button" data-crash-vehicle="iron"><b>IRON TABBY</b><em>Heavy · stable · maximum impact</em></button>
+        </section>
+        <section><span>TRAFFIC / PHYSICS</span>
+          <button type="button" data-crash-quality="low"><b>LOW</b><em>24 major bodies · mobile</em></button>
+          <button type="button" data-crash-quality="medium"><b>MEDIUM</b><em>38 major bodies · balanced</em></button>
+          <button type="button" data-crash-quality="high"><b>HIGH</b><em>54 major bodies · full junction</em></button>
+        </section>
+        <section class="kkv2-crash-brief"><span>INCIDENT BRIEF</span><p>Hit a sedan sideways. Block the bus. Turn the semi across two lanes. Hold Kaki Boom until the tanker arrives.</p><em>WASD / STICK DRIVE · C CAMERA · B LOOK BACK · X / SHIFT BOOM · ENTER SKIPS REPLAY</em></section>
+      </div>
+    </div>
+    <div class="kkv2-overlay-foot"><button class="kkv2-overlay-confirm" type="button">ENTER · START ENGINE</button></div>`;
+  _stage.appendChild(_overlay);
+  const countPanel = _overlay.querySelector('.kkv2-race-count');
+  const monsterPanel = _overlay.querySelector('.kkv2-monster-setup');
+  const trialsPanel = _overlay.querySelector('.kkv2-trials-setup');
+  const crashPanel = _overlay.querySelector('.kkv2-crash-setup');
+  const confirmButton = _overlay.querySelector('.kkv2-overlay-confirm');
+  const selectCard = (card) => {
+    if (!canLaunchRacingMode(card?.dataset?.mode)) return;
+    _overlay.querySelectorAll('.kkv2-race-card').forEach((item) => item.classList.toggle('is-selected', item === card));
+    selectedMode = card.dataset.mode;
+    selectedCars = Number(card.dataset.cars);
+    countPanel.hidden = selectedMode !== 'stock';
+    monsterPanel.hidden = selectedMode !== 'monster';
+    trialsPanel.hidden = selectedMode !== 'trials';
+    crashPanel.hidden = selectedMode !== 'crash';
+    confirmButton.textContent = selectedMode === 'draw' ? 'ENTER · OPEN TRACK WORKSHOP' : selectedMode === 'crash' ? 'ENTER · ARM INCIDENT' : 'ENTER · START ENGINE';
+    if (selectedMode === 'monster') {
+      _overlay.scrollTop = Math.max(0, monsterPanel.offsetTop - 16);
+    }
+    if (selectedMode === 'crash') requestAnimationFrame(() => crashPanel.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
+    if (selectedMode === 'stock') {
+      const countButton = countPanel.querySelector(`[data-count="${selectedCars}"]`);
+      countPanel.querySelectorAll('button').forEach((item) => item.classList.toggle('is-selected', item === countButton));
+    }
+  };
+  _overlay.querySelectorAll('.kkv2-race-card').forEach((card) => card.addEventListener('click', () => selectCard(card)));
+  countPanel.querySelectorAll('button').forEach((button) => button.addEventListener('click', () => {
+    selectedCars = Number(button.dataset.count);
+    countPanel.querySelectorAll('button').forEach((item) => item.classList.toggle('is-selected', item === button));
+    _overlay.querySelector('[data-mode="stock"]').dataset.cars = String(selectedCars);
+    _overlay.querySelector('[data-mode="stock"] em').textContent = `${selectedCars} CARS · 8 LAPS`;
+  }));
+  trialsPanel.querySelectorAll('[data-trials-track]').forEach((button) => button.addEventListener('click', () => {
+    if (button.disabled) return;
+    selectedTrialsTrack = button.dataset.trialsTrack;
+    trialsPanel.querySelectorAll('[data-trials-track]').forEach((item) => item.classList.toggle('is-selected', item === button));
+  }));
+  trialsPanel.querySelectorAll('[data-trials-vehicle]').forEach((button) => button.addEventListener('click', () => {
+    selectedTrialsVehicle = button.dataset.trialsVehicle;
+    trialsPanel.querySelectorAll('[data-trials-vehicle]').forEach((item) => item.classList.toggle('is-selected', item === button));
+  }));
+  monsterPanel.querySelectorAll('[data-monster-vehicle]').forEach((button) => button.addEventListener('click', () => {
+    selectedMonsterVehicle = button.dataset.monsterVehicle;
+    monsterPanel.querySelectorAll('[data-monster-vehicle]').forEach((item) => item.classList.toggle('is-selected', item === button));
+  }));
+  monsterPanel.querySelectorAll('[data-monster-event]').forEach((button) => button.addEventListener('click', () => {
+    selectedMonsterEvent = button.dataset.monsterEvent;
+    monsterPanel.querySelectorAll('[data-monster-event]').forEach((item) => item.classList.toggle('is-selected', item === button));
+  }));
+  monsterPanel.querySelectorAll('[data-monster-arena]').forEach((button) => button.addEventListener('click', () => {
+    selectedMonsterArena = button.dataset.monsterArena;
+    monsterPanel.querySelectorAll('[data-monster-arena]').forEach((item) => item.classList.toggle('is-selected', item === button));
+  }));
+  const selectedQualityButton = crashPanel.querySelector(`[data-crash-quality="${selectedCrashQuality}"]`);
+  crashPanel.querySelectorAll('[data-crash-quality]').forEach((item) => item.classList.toggle('is-selected', item === selectedQualityButton));
+  crashPanel.querySelectorAll('[data-crash-vehicle]').forEach((button) => button.addEventListener('click', () => {
+    selectedCrashVehicle = button.dataset.crashVehicle;
+    crashPanel.querySelectorAll('[data-crash-vehicle]').forEach((item) => item.classList.toggle('is-selected', item === button));
+  }));
+  crashPanel.querySelectorAll('[data-crash-quality]').forEach((button) => button.addEventListener('click', () => {
+    selectedCrashQuality = button.dataset.crashQuality;
+    crashPanel.querySelectorAll('[data-crash-quality]').forEach((item) => item.classList.toggle('is-selected', item === button));
+  }));
+  const start = () => {
+    if (!canLaunchRacingMode(selectedMode)) return;
+    _closeRacingSetup();
+    if (selectedMode === 'draw') {
+      openDrawTrackMode({ onExit: _openRacingSetup });
+      return;
+    }
+    if (typeof window.kkStartRacing === 'function') {
+      window.kkStartRacing(_selectedStageId || 'forest', {
+        mode: selectedMode,
+        carCount: selectedCars,
+        trialsTrackId: selectedTrialsTrack,
+        trialsVehicle: selectedTrialsVehicle,
+        monsterVehicle: selectedMonsterVehicle,
+        monsterArena: selectedMonsterArena,
+        monsterEvent: selectedMonsterEvent,
+        crashVehicle: selectedCrashVehicle,
+        crashQuality: selectedCrashQuality,
+      });
+    }
+  };
+  _overlay.querySelector('.kkv2-overlay-close').addEventListener('click', _closeRacingSetup);
+  _overlay.querySelector('.kkv2-overlay-confirm').addEventListener('click', start);
+  _overlay._raceKeyHandler = (event) => {
+    if (event.key === 'Escape') _closeRacingSetup();
+    if (event.key === 'Enter') {
+      const target = event.target;
+      const interactive = target instanceof Element
+        && !!target.closest('button, a, input, select, textarea, [role="button"]');
+      // Buttons already synthesize their own click on Enter. Starting here as
+      // well races that click and can launch the previously selected card.
+      if (!interactive && !event.repeat) start();
+    }
+  };
+  document.addEventListener('keydown', _overlay._raceKeyHandler);
+}
+
+function _closeRacingSetup() {
+  if (!_overlay?.classList.contains('kkv2-race-overlay')) return;
+  document.removeEventListener('keydown', _overlay._raceKeyHandler);
+  _overlay.remove();
+  _overlay = null;
+}
+
+function _openCodex() {
+  import('./codex.js').then(m => { try { m.showCodex && m.showCodex(); } catch (_) {} }).catch(() => {});
+}
+
+function _openSettings() {
+  import('./ui.js').then(m => { try { m.showOptions && m.showOptions(); } catch (_) {} }).catch(() => {});
+}
+
+function _openArsenal() {
+  // "Weapons / passives tree" → Grimoire.
+  import('./ui.js').then(m => { try { m.showGrimoire && m.showGrimoire(); } catch (_) {} }).catch(() => {});
+}
+
+function _enterTownFromMenu() {
+  // Town hub — NPCs, casino, shop, character interactions. Calls the
+  // window-exposed entry the legacy menu used. Hide the menu first so the
+  // town world is visible.
+  try { hideMenuV2(); } catch (_) {}
+  try { if (typeof window.kkEnterTown === 'function') window.kkEnterTown(); }
+  catch (e) { console.warn('[menuV2.town]', e); }
+}
+
+function _openHeroes() {
+  if (_overlay) return;
+  _overlay = document.createElement('div');
+  _overlay.className = 'kkv2-overlay';
+
+  const head = document.createElement('div');
+  head.className = 'kkv2-overlay-head';
+  const titleWrap = document.createElement('div');
+  const title = document.createElement('div');
+  title.className = 'kkv2-overlay-title';
+  title.textContent = 'Heroes';
+  const sub = document.createElement('div');
+  sub.className = 'kkv2-overlay-sub';
+  sub.textContent = 'Choose the avatar that walks the Mistwood tonight.';
+  titleWrap.appendChild(title);
+  titleWrap.appendChild(sub);
+  const closeBtn = document.createElement('button');
+  closeBtn.type = 'button';
+  closeBtn.className = 'kkv2-overlay-close';
+  closeBtn.textContent = 'ESC · Close';
+  closeBtn.addEventListener('click', _closeHeroes);
+  head.appendChild(titleWrap);
+  head.appendChild(closeBtn);
+
+  const body = document.createElement('div');
+  body.className = 'kkv2-overlay-body';
+  const host = document.createElement('div');
+  host.className = 'kkv2-overlay-host';
+  body.appendChild(host);
+
+  // Iter 36 — heroes overlay was missing an explicit "Select" CTA. Users hit
+  // the carousel arrows, expected a button, found only ESC·Close. Confirm
+  // commits selection (already auto-saved in onSelect) and closes the overlay
+  // back to the main menu. Enter key bound below mirrors the click.
+  const foot = document.createElement('div');
+  foot.className = 'kkv2-overlay-foot';
+  const confirmBtn = document.createElement('button');
+  confirmBtn.type = 'button';
+  confirmBtn.className = 'kkv2-overlay-confirm';
+  confirmBtn.textContent = 'ENTER · Select';
+  confirmBtn.addEventListener('click', _closeHeroes);
+  foot.appendChild(confirmBtn);
+
+  _overlay.appendChild(head);
+  _overlay.appendChild(body);
+  _overlay.appendChild(foot);
+  _stage.appendChild(_overlay);
+
+  _mountCarousel(host);
+  // Esc closes overlay; Enter commits selection (same effect — selection is
+  // already persisted via onSelect; closing returns to main menu).
+  document.addEventListener('keydown', _heroEsc);
+}
+
+function _heroEsc(e) {
+  if (e.key === 'Escape' || e.key === 'Enter') _closeHeroes();
+}
+
+function _closeHeroes() {
+  document.removeEventListener('keydown', _heroEsc);
+  if (_carousel) { try { _carousel.destroy(); } catch (_) {} _carousel = null; }
+  if (_overlay && _overlay.parentNode) _overlay.parentNode.removeChild(_overlay);
+  _overlay = null;
+}
+
+function _mountCarousel(host) {
+  // Lazy: GLTF_CACHE may not be ready yet. Try; if it errors, show placeholder.
+  const meta = getMeta();
+  const initialId = (meta && meta.selectedAvatar) || 'kitty';
+  try {
+    _carousel = createCharCarousel(host, {
+      items: AVATARS,
+      initialId,
+      onSelect: (id) => {
+        try { setOption('selectedAvatar', id); } catch (_) {}
+        if (meta) meta.selectedAvatar = id;
+        _refreshHeroSplash();
+      },
+    });
+  } catch (e) {
+    const ph = document.createElement('div');
+    ph.className = 'kkv2-overlay-placeholder';
+    ph.textContent = 'Loading heroes…';
+    host.appendChild(ph);
+    // Retry once after a short delay (preloadAll usually wins inside ~1s)
+    setTimeout(() => {
+      if (!_overlay) return;
+      host.innerHTML = '';
+      try {
+        _carousel = createCharCarousel(host, {
+          items: AVATARS,
+          initialId,
+          onSelect: (id) => {
+            try { setOption('selectedAvatar', id); } catch (_) {}
+            if (meta) meta.selectedAvatar = id;
+            _refreshHeroSplash();
+          },
+        });
+      } catch (e2) {
+        const ph2 = document.createElement('div');
+        ph2.className = 'kkv2-overlay-placeholder';
+        ph2.textContent = 'Heroes unavailable in this build.';
+        host.appendChild(ph2);
+      }
+    }, 800);
+  }
+}
