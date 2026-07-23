@@ -75,11 +75,22 @@ test('v1 remains valid while v2 rejects bad ranges and compiles numeric hot tabl
   assert.equal(atlasApi.validateAtlasSchema('enemies_v1.json', v1), true);
   assert.equal(atlasApi.validateAtlasSchema('forest_enemies_v2.json', v2), true);
   const compiled = atlasApi.compileEnemyAtlasV2(v2);
-  assert.equal(compiled.speciesCapacity, 10);
+  assert.equal(compiled.speciesCapacity, 11);
   assert.equal(compiled.stateCount, 3);
   assert.equal(compiled.directionCount, 4);
   assert.equal(compiled.speciesByName.get('mantis'), 5);
+  assert.equal(compiled.speciesByName.get('spider'), 10);
   assert.equal(compiled.valid[compiled.index(9, 2, 3)], 1);
+  assert.equal(compiled.valid[compiled.index(10, 0, 0)], 1);
+  assert.equal(compiled.valid[compiled.index(10, 1, 3)], 1);
+  const spider = v2.species[10];
+  assert.equal(spider.name, 'spider');
+  assert.equal(spider.authoring, 'source-animation-clips');
+  for (const state of spider.states) {
+    assert.deepEqual(state.directions.map((direction) => direction.id), [0, 1, 2, 3]);
+    assert.equal(state.directions[3].mirror, true);
+    assert.equal(state.directions[3].sourceDirection, 1);
+  }
   const invalid = structuredClone(v2);
   invalid.species[0].states[0].directions[0].to = invalid.pages[0].frameCount;
   assert.throws(

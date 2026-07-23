@@ -8,6 +8,7 @@ import http from 'node:http';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createRequire } from 'node:module';
+import { resolveChromiumArgs } from './webgpu/chromiumProfiles.mjs';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const require = createRequire(import.meta.url);
@@ -54,11 +55,14 @@ async function main() {
   const browser = await chromium.launch({
     executablePath: CHROME,
     headless: true,
-    args: ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'],
+    args: resolveChromiumArgs('webgl'),
   });
   const failures = [];
   const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await context.newPage();
+  await page.route(/fonts\.(?:googleapis|gstatic)\.com/, (route) => (
+    route.fulfill({ status: 204, body: '' })
+  ));
   const pageErrors = [];
   page.on('pageerror', (e) => pageErrors.push(e.message));
 
@@ -236,9 +240,9 @@ async function main() {
   } catch (e) {
     failures.push(`exception: ${e && e.message ? e.message : String(e)}`);
   } finally {
-    await context.close();
-    await browser.close();
-    server.close();
+    await context.close().catch(() => {});
+    await browser.close().catch(() => {});
+    await new Promise((resolve) => server.close(resolve));
   }
 
   console.log('\n========== SUMMARY ==========');

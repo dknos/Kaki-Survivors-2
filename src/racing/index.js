@@ -74,6 +74,7 @@ import { getMonsterArenaDefinition, queryMonsterArenaGround } from './monsterAre
 import {
   attachMonsterAudience,
   attachMonsterEnvironmentKit,
+  attachMonsterStoryDressing,
   buildMonsterArena,
   createMonsterArenaNavigationSamples,
   disposeMonsterArena,
@@ -555,7 +556,7 @@ function _createRacers(session, hero) {
     const renderTier = monsterMode ? 'monster-showcase' : (i <= 1 ? 'showcase' : 'pack');
     const visual = monsterMode
       ? (session.monsterVehicleId === 'cyber'
-          ? buildCyberTruck({ driver: drivers[i], owned })
+          ? buildCyberTruck({ driver: drivers[i], owned, decalTexture: monsterDecal })
           : session.monsterVehicleId === 'tipsy'
             ? buildTipsyTumbler({ driver: drivers[i], owned })
             : buildMonsterTruck({ color: 0xc76dff, driver: drivers[i], owned, decalTexture: monsterDecal }))
@@ -2171,10 +2172,10 @@ export function enterRacing(scene, courseId = 'forest', options = {}) {
       const pixelCapScale = pixels > REMOTE_ARENA_MAX_RENDER_PIXELS
         ? currentScale * Math.sqrt(REMOTE_ARENA_MAX_RENDER_PIXELS / pixels)
         : currentScale;
-      // Keep the established 0.8 Monster presentation scale and additionally
-      // bound 4K/high-DPR buffers, where the 15-target post stack can otherwise
-      // lose the device/context while HUD updates continue.
-      const monsterScale = Math.max(0.4, Math.min(currentScale, 0.8, pixelCapScale));
+      // Preserve native presentation at ordinary viewport sizes. The global
+      // DPR ceiling already bounds retina oversampling; this proportional cap
+      // remains for genuinely oversized buffers such as 4K fullscreen.
+      const monsterScale = Math.max(0.4, Math.min(currentScale, pixelCapScale));
       if (monsterScale < currentScale) {
         state.rendererService.setDynamicResolutionScale(monsterScale);
         session.monsterRenderScaleApplied = true;
@@ -2299,19 +2300,26 @@ export function enterRacing(scene, courseId = 'forest', options = {}) {
           }
         }).catch(() => {});
       }
-      if (session.monsterProductionAssets) {
+      if (session.assetLease.ids.includes('arenaTrafficKit')) {
         session.assetLease.whenReady('arenaTrafficKit').then((model) => {
           if (state.racing !== session || session.disposed) return;
           if (!attachMonsterTrafficModels(session.monsterArena, model)) {
             session.assetError ||= 'Arena traffic kit could not be attached; procedural crushable fallback remains active.';
           }
         }).catch(() => {});
+      }
+      if (session.assetLease.ids.includes('monsterEnvironmentKit')) {
         session.assetLease.whenReady('monsterEnvironmentKit').then((model) => {
           if (state.racing !== session || session.disposed) return;
-          if (!attachMonsterEnvironmentKit(session.monsterArenaView, model)) {
-            session.assetError ||= 'Monster Arena environment kit could not be attached; authored loading fallback remains active.';
+          const attached = session.monsterProductionAssets
+            ? attachMonsterEnvironmentKit(session.monsterArenaView, model)
+            : attachMonsterStoryDressing(session.monsterArenaView, model);
+          if (!attached) {
+            session.assetError ||= 'Monster Arena authored dressing could not be attached; procedural fallback remains active.';
           }
         }).catch(() => {});
+      }
+      if (session.monsterProductionAssets) {
         session.assetLease.whenReady('monsterAudienceBank').then((model) => {
           if (state.racing !== session || session.disposed) return;
           if (!attachMonsterAudience(session.monsterArenaView, model)) {

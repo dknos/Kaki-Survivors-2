@@ -1,7 +1,7 @@
 {
-  "generatedAt": "2026-07-22T18:06:28.417Z",
+  "generatedAt": "2026-07-23T16:45:43.059Z",
   "scenario": "isolated deterministic 350-enemy atlas comparison",
-  "environment": "headless Chromium software WebGL2/WebGPU; FPS is comparative, not physical-GPU throughput",
+  "environment": "headless Chromium software WebGL2/WebGPU; paired median FPS is comparative, not physical-GPU throughput",
   "cases": [
     {
       "backend": "webgl",
@@ -16,19 +16,19 @@
         "textureBaseBytes": 6029312,
         "textureBytes": 6029312,
         "cpuAnimationMs": {
-          "mean": 0.003999999999999998,
-          "p50": 0.003999999985098839,
-          "p95": 0.00800000000745058
+          "mean": 0.0040599999994039545,
+          "p50": 0.003999999910593033,
+          "p95": 0.009000000059604645
         },
         "frameMs": {
-          "mean": 54.303333333333384,
+          "mean": 54.71916666666668,
           "p50": 50,
-          "p95": 66.70000000000073,
-          "sustainedFps": 18.41507580872873
+          "p95": 66.70000000000027,
+          "sustainedFps": 18.275132113975904
         },
         "renderSubmissionMs": {
-          "p50": 0.3999999985098839,
-          "p95": 0.6000000014901161
+          "p50": 0.4000000059604645,
+          "p95": 0.7000000029802322
         },
         "gpuFrameMs": null,
         "gpuFrameMsReason": "Browser timestamp queries are unavailable in this portable WebGPU/WebGL2 QA harness."
@@ -41,29 +41,62 @@
         "enemyAtlasDrawCalls": 1,
         "sceneDrawCalls": 2,
         "triangles": 1025,
-        "textureBaseBytes": 23592960,
-        "textureBytes": 31457280,
+        "textureBaseBytes": 20070400,
+        "textureBytes": 26760533,
         "cpuAnimationMs": {
-          "mean": 0.011680000000447034,
-          "p50": 0.01199999999254942,
-          "p95": 0.013999999985098838
+          "mean": 0.011819999998807909,
+          "p50": 0.012000000029802322,
+          "p95": 0.015
         },
         "frameMs": {
-          "mean": 55.13666666666666,
+          "mean": 55.552499999999995,
           "p50": 50,
           "p95": 66.70000000000073,
-          "sustainedFps": 18.13675110331903
+          "sustainedFps": 18.000990054452995
         },
         "renderSubmissionMs": {
-          "p50": 0.30000000074505806,
-          "p95": 0.5
+          "p50": 0.3999999910593033,
+          "p95": 0.7000000029802322
         },
         "gpuFrameMs": null,
         "gpuFrameMsReason": "Browser timestamp queries are unavailable in this portable WebGPU/WebGL2 QA harness."
       },
+      "pairedTrials": [
+        {
+          "trial": 0,
+          "order": [
+            "v1",
+            "v2"
+          ],
+          "v1Fps": 18.18264466566662,
+          "v2Fps": 18.045655508436347,
+          "fpsChangePercent": -0.7534061174771844
+        },
+        {
+          "trial": 1,
+          "order": [
+            "v2",
+            "v1"
+          ],
+          "v1Fps": 18.274853801169588,
+          "v2Fps": 17.691026226946377,
+          "fpsChangePercent": -3.1947044861494134
+        },
+        {
+          "trial": 2,
+          "order": [
+            "v1",
+            "v2"
+          ],
+          "v1Fps": 18.275132113975904,
+          "v2Fps": 18.000990054452995,
+          "fpsChangePercent": -1.5000825045377253
+        }
+      ],
       "comparison": {
-        "fpsChangePercent": -1.511395925276482,
-        "cpuAnimationChangePercent": 192.00000001117598,
+        "fpsChangePercent": -1.5000825045377253,
+        "cpuAnimationChangePercent": 191.13300493948753,
+        "method": "median of 3 fresh-browser paired trials with alternating order",
         "withinFivePercentFpsBudget": true
       }
     },
@@ -80,19 +113,19 @@
         "textureBaseBytes": 6029312,
         "textureBytes": 6029312,
         "cpuAnimationMs": {
-          "mean": 0.006360000000894071,
-          "p50": 0.004000000022351742,
-          "p95": 0.00899999998509884
+          "mean": 0.004879999998211862,
+          "p50": 0.004000000059604645,
+          "p95": 0.008999999910593033
         },
         "frameMs": {
-          "mean": 56.66416666666669,
-          "p50": 50,
-          "p95": 116.69999999999982,
-          "sustainedFps": 17.64783740459137
+          "mean": 60.553333333333356,
+          "p50": 66.59999999999945,
+          "p95": 116.70000000000027,
+          "sustainedFps": 16.514367499724756
         },
         "renderSubmissionMs": {
-          "p50": 0.4000000022351742,
-          "p95": 0.6999999992549419
+          "p50": 0.5,
+          "p95": 1.199999988079071
         },
         "gpuFrameMs": null,
         "gpuFrameMsReason": "Browser timestamp queries are unavailable in this portable WebGPU/WebGL2 QA harness."
@@ -105,29 +138,62 @@
         "enemyAtlasDrawCalls": 1,
         "sceneDrawCalls": 2,
         "triangles": 1025,
-        "textureBaseBytes": 23592960,
-        "textureBytes": 31457280,
+        "textureBaseBytes": 20070400,
+        "textureBytes": 26760533,
         "cpuAnimationMs": {
-          "mean": 0.013320000000298024,
-          "p50": 0.013000000007450581,
-          "p95": 0.01799999997019768
+          "mean": 0.014259999999403958,
+          "p50": 0.013999999910593032,
+          "p95": 0.02
         },
         "frameMs": {
-          "mean": 57.77541666666668,
-          "p50": 50,
+          "mean": 60.83166666666668,
+          "p50": 66.59999999999854,
           "p95": 116.70000000000073,
-          "sustainedFps": 17.308399622099937
+          "sustainedFps": 16.438806542645
         },
         "renderSubmissionMs": {
-          "p50": 0.3999999985098839,
+          "p50": 0.4000000059604645,
           "p95": 0.7999999970197678
         },
         "gpuFrameMs": null,
         "gpuFrameMsReason": "Browser timestamp queries are unavailable in this portable WebGPU/WebGL2 QA harness."
       },
+      "pairedTrials": [
+        {
+          "trial": 0,
+          "order": [
+            "v1",
+            "v2"
+          ],
+          "v1Fps": 17.561832284501683,
+          "v2Fps": 16.902122624899647,
+          "fpsChangePercent": -3.756496753383931
+        },
+        {
+          "trial": 1,
+          "order": [
+            "v2",
+            "v1"
+          ],
+          "v1Fps": 17.225539733578316,
+          "v2Fps": 17.647577869937354,
+          "fpsChangePercent": 2.4500720609430093
+        },
+        {
+          "trial": 2,
+          "order": [
+            "v1",
+            "v2"
+          ],
+          "v1Fps": 16.514367499724756,
+          "v2Fps": 16.438806542645,
+          "fpsChangePercent": -0.45754678210361277
+        }
+      ],
       "comparison": {
-        "fpsChangePercent": -1.9233959080058316,
-        "cpuAnimationChangePercent": 109.43396223939521,
+        "fpsChangePercent": -0.45754678210361277,
+        "cpuAnimationChangePercent": 192.21311484895764,
+        "method": "median of 3 fresh-browser paired trials with alternating order",
         "withinFivePercentFpsBudget": true
       }
     }

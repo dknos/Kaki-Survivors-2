@@ -366,11 +366,20 @@ def main() -> None:
         "generatedBy": "tools/enemy-sprite-bake/author_forest_animation.py",
         "blenderVersion": bpy.app.version_string,
         "originalAssetsModified": False,
-        "wasp": {
-            "source": "assets/breakroom/Wasp.glb",
-            "authoringPath": "sample-source-clips",
-            "clips": ["WaspArmature|Wasp_Flying", "WaspArmature|Wasp_Attack", "WaspArmature|Wasp_Death"],
-        },
+        "sourceClipAssets": [
+            {
+                "species": "wasp",
+                "source": "assets/breakroom/Wasp.glb",
+                "authoringPath": "sample-source-clips",
+                "clips": ["WaspArmature|Wasp_Flying", "WaspArmature|Wasp_Attack", "WaspArmature|Wasp_Death"],
+            },
+            {
+                "species": "spider",
+                "source": "assets/breakroom/Spider.glb",
+                "authoringPath": "sample-source-clips",
+                "clips": ["SpiderArmature|Spider_Walk", "SpiderArmature|Spider_Attack", "SpiderArmature|Spider_Death"],
+            },
+        ],
         "assets": [merged[species] for species in order if species in merged],
     }
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)

@@ -13,6 +13,20 @@ const NORMALIZED_SIZE = 64;
 const ALPHA_THRESHOLD = 72;
 const MIN_ADJACENT_DIFFERENCE = 0.006;
 const MIN_MEAN_DIFFERENCE = 0.018;
+const EXPECTED_SPECIES = Object.freeze([
+  'ant', 'beetle', 'ladybug', 'grasshopper', 'cockroach', 'mantis',
+  'wasp', 'bee', 'butterfly', 'caterpillar', 'spider',
+]);
+const GROUNDED_SPECIES = new Set([
+  'ant', 'beetle', 'ladybug', 'grasshopper', 'cockroach', 'mantis',
+  'caterpillar', 'spider',
+]);
+const MEDIAN_LUMINANCE_LIMITS = Object.freeze({
+  ant: [45, 110],
+  beetle: [52, 150],
+  cockroach: [42, 160],
+  spider: [42, 150],
+});
 
 function assert(condition, message) {
   if (!condition) throw new Error(message);
@@ -31,6 +45,80 @@ export function frameAlphaPoints(png, page, frameIndex, alphaThreshold = ALPHA_T
     }
   }
   return points;
+}
+
+function frameVisualMetrics(png, page, frameIndex) {
+  const col = frameIndex % page.cols;
+  const row = Math.floor(frameIndex / page.cols);
+  const startX = col * page.frameWidth;
+  const startY = row * page.frameHeight;
+  const luminance = [];
+  let bottom = -1;
+  for (let y = 0; y < page.frameHeight; y++) {
+    for (let x = 0; x < page.frameWidth; x++) {
+      const offset = ((startY + y) * png.width + startX + x) * 4;
+      if (png.data[offset + 3] < 128) continue;
+      luminance.push(
+        png.data[offset] * 0.2126
+        + png.data[offset + 1] * 0.7152
+        + png.data[offset + 2] * 0.0722,
+      );
+      bottom = Math.max(bottom, y);
+    }
+  }
+  luminance.sort((a, b) => a - b);
+  return {
+    bottom,
+    medianLuminance: luminance.length
+      ? luminance[Math.floor((luminance.length - 1) * 0.5)]
+      : 0,
+  };
+}
+
+function frameFacingMetrics(png, page, frameIndex) {
+  const col = frameIndex % page.cols;
+  const row = Math.floor(frameIndex / page.cols);
+  const startX = col * page.frameWidth;
+  const startY = row * page.frameHeight;
+  let opaqueCount = 0;
+  let opaqueX = 0;
+  let opaqueY = 0;
+  let markerCount = 0;
+  let markerX = 0;
+  let markerY = 0;
+  for (let y = 0; y < page.frameHeight; y++) {
+    for (let x = 0; x < page.frameWidth; x++) {
+      const offset = ((startY + y) * png.width + startX + x) * 4;
+      const red = png.data[offset];
+      const green = png.data[offset + 1];
+      const blue = png.data[offset + 2];
+      if (png.data[offset + 3] < 128) continue;
+      opaqueCount++;
+      opaqueX += x;
+      opaqueY += y;
+      // Spider's authored saturated-red eyes/face plate provide an objective
+      // forward marker after the baker's restrained color grade.
+      if (red > 70 && red > green * 1.75 && red > blue * 1.45) {
+        markerCount++;
+        markerX += x;
+        markerY += y;
+      }
+    }
+  }
+  assert(opaqueCount > 0 && markerCount >= 8,
+    `Frame ${frameIndex}: missing opaque body or Spider face marker`);
+  const body = [opaqueX / opaqueCount, opaqueY / opaqueCount];
+  const marker = [markerX / markerCount, markerY / markerCount];
+  return {
+    frame: frameIndex,
+    markerPixels: markerCount,
+    body: body.map((value) => Number(value.toFixed(3))),
+    marker: marker.map((value) => Number(value.toFixed(3))),
+    delta: [
+      Number((marker[0] - body[0]).toFixed(3)),
+      Number((marker[1] - body[1]).toFixed(3)),
+    ],
+  };
 }
 
 /**
@@ -142,8 +230,10 @@ export function validateForestManifest(manifestPath) {
   assert(manifest.version === 2, `Expected v2 manifest, got ${manifest.version}`);
   assert(Array.isArray(manifest.pages) && manifest.pages.length >= 1 && manifest.pages.length <= 2,
     'v2 requires one or two atlas pages');
-  assert(Array.isArray(manifest.species) && manifest.species.length === 10,
-    `Expected ten Forest species, got ${manifest.species?.length}`);
+  assert(Array.isArray(manifest.species)
+    && manifest.species.length === EXPECTED_SPECIES.length
+    && manifest.species.every((species, index) => species.name === EXPECTED_SPECIES[index] && species.id === index),
+  `Expected dense Forest roster ${EXPECTED_SPECIES.join(', ')}`);
   assert(manifest.directionCount >= 4, 'At least four effective directions are required');
   assert(manifest.framePadding?.gutterPixels >= 2, 'At least two gutter pixels are required');
   assert(manifest.texture?.magFilter === 'linear', 'Rendered sprites require linear magnification');
@@ -177,12 +267,66 @@ export function validateForestManifest(manifestPath) {
       }
     }
 
+    let facingEvidence = null;
+    if (species.name === 'spider') {
+      const byId = new Map(move.directions.map((direction) => [direction.id, direction]));
+      const toward = byId.get(0);
+      const right = byId.get(1);
+      const away = byId.get(2);
+      const left = byId.get(3);
+      assert(toward && right && away && left, 'spider: all four directions are required');
+      assert(left.mirror === true && left.sourceDirection === right.id,
+        'spider: left must mirror the validated right-facing frames');
+      const towardMetrics = frameFacingMetrics(
+        pageById(pages, toward.page).png,
+        pageById(pages, toward.page),
+        toward.from,
+      );
+      const rightMetrics = frameFacingMetrics(
+        pageById(pages, right.page).png,
+        pageById(pages, right.page),
+        right.from,
+      );
+      const awayMetrics = frameFacingMetrics(
+        pageById(pages, away.page).png,
+        pageById(pages, away.page),
+        away.from,
+      );
+      const facingMargin = pageById(pages, right.page).frameWidth * 0.06;
+      assert(towardMetrics.delta[1] > facingMargin,
+        `spider/toward: face marker is not camera-near (${towardMetrics.delta[1]})`);
+      assert(rightMetrics.delta[0] > facingMargin,
+        `spider/right: face marker is not screen-right (${rightMetrics.delta[0]})`);
+      assert(awayMetrics.delta[1] < -facingMargin,
+        `spider/away: face marker is not camera-far (${awayMetrics.delta[1]})`);
+      facingEvidence = {
+        method: 'authored red face marker relative to opaque-body centroid',
+        toward: towardMetrics,
+        right: rightMetrics,
+        away: awayMetrics,
+        left: { mirroredFrom: right.id },
+      };
+    }
+
     const directions = [];
     for (const direction of move.directions.filter((entry) => !entry.mirror)) {
       const page = pageById(pages, direction.page);
       const masks = [];
+      const visualMetrics = [];
       for (let frame = direction.from; frame <= direction.to; frame++) {
         masks.push(normalizeSilhouette(frameAlphaPoints(page.png, page, frame)));
+        visualMetrics.push(frameVisualMetrics(page.png, page, frame));
+      }
+      if (GROUNDED_SPECIES.has(species.name)) {
+        const expectedBottom = page.frameHeight - manifest.framePadding.gutterPixels - 2;
+        assert(Math.abs(visualMetrics[0].bottom - expectedBottom) <= 2,
+          `${species.name}/dir${direction.id}: grounded baseline ends at ${visualMetrics[0].bottom}, expected ${expectedBottom}`);
+      }
+      const luminanceLimit = MEDIAN_LUMINANCE_LIMITS[species.name];
+      if (luminanceLimit) {
+        const median = visualMetrics[0].medianLuminance;
+        assert(median >= luminanceLimit[0] && median <= luminanceLimit[1],
+          `${species.name}/dir${direction.id}: median luminance ${median.toFixed(1)} outside ${luminanceLimit.join('-')}`);
       }
       const adjacent = [];
       for (let index = 0; index < masks.length; index++) {
@@ -199,9 +343,16 @@ export function validateForestManifest(manifestPath) {
         adjacentDifferences: adjacent.map((value) => Number(value.toFixed(6))),
         minimum: Number(minimum.toFixed(6)),
         mean: Number(mean.toFixed(6)),
+        baselineBottom: visualMetrics[0].bottom,
+        medianLuminance: Number(visualMetrics[0].medianLuminance.toFixed(2)),
       });
     }
-    speciesReport.push({ species: species.name, authoring: species.authoring, directions });
+    speciesReport.push({
+      species: species.name,
+      authoring: species.authoring,
+      directions,
+      ...(facingEvidence ? { facingEvidence } : {}),
+    });
   }
   return {
     schemaVersion: 1,

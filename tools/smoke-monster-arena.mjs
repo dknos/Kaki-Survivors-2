@@ -364,7 +364,7 @@ assert.ok(existsSync(meowsterGlbPath), `missing Mighty Meowster runtime asset: $
 const meowsterGlb = readFileSync(meowsterGlbPath);
 assert.equal(meowsterGlb.subarray(0, 4).toString('ascii'), 'glTF', 'Mighty Meowster is not a valid binary glTF');
 assert.ok(meowsterGlb.length < 500_000, 'Mighty Meowster body exceeds its compact hero budget');
-const trafficPath = resolve(repoRoot, 'assets/racing/models/arena-traffic-kit-v1.glb');
+const trafficPath = resolve(repoRoot, 'assets/racing/models/arena-traffic-kit-runtime-v2.glb');
 const exteriorRuntimePath = resolve(repoRoot, 'assets/racing/crown-chaos-exterior-grok-v1.webp');
 const groundedExteriorRuntimePath = resolve(repoRoot, 'assets/racing/domino-grand-yard-exterior-grok-v2.webp');
 for (const path of [trafficPath, exteriorRuntimePath, groundedExteriorRuntimePath]) {
@@ -372,7 +372,7 @@ for (const path of [trafficPath, exteriorRuntimePath, groundedExteriorRuntimePat
 }
 const trafficGlb = readFileSync(trafficPath);
 assert.equal(trafficGlb.subarray(0, 4).toString('ascii'), 'glTF', 'traffic kit is not a valid binary glTF');
-assert.ok(trafficGlb.length < 4_000_000, 'traffic kit is too heavy for this no-bundler web game');
+assert.ok(trafficGlb.length < 1_250_000, 'runtime traffic kit exceeds its bounded download budget');
 const exteriorRuntime = readFileSync(exteriorRuntimePath);
 assert.equal(exteriorRuntime.subarray(0, 4).toString('ascii'), 'RIFF', 'arena exterior is not a WebP RIFF asset');
 assert.equal(exteriorRuntime.subarray(8, 12).toString('ascii'), 'WEBP', 'arena exterior is not a valid WebP asset');

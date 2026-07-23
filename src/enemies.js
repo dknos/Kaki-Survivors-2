@@ -147,6 +147,7 @@ const _FOREST_SPRITE_SPECIES = Object.freeze({
   bee: 7,
   butterfly: 8,
   caterpillar: 9,
+  spider: 10,
 });
 const _anchorPool = [];   // reusable empty Object3D anchors for sprite enemies
 let _spriteSpawnSeed = 0;

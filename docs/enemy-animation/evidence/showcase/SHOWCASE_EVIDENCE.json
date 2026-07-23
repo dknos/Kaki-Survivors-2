@@ -1,5 +1,5 @@
 {
-  "generatedAt": "2026-07-22T18:06:05.493Z",
+  "generatedAt": "2026-07-23T16:42:04.262Z",
   "entrypoint": "enemy-animation-showcase.html",
   "viewport": {
     "width": 1920,
@@ -11,8 +11,8 @@
       "frames": [
         {
           "name": "webgl-overview-00.png",
-          "sha256": "7d9c72f0749ab2fd1cbdf189dd35d8155d37112ca2edb0e9b2707ad02a18e822",
-          "bytes": 221112,
+          "sha256": "5bf494ad530c497e6cf8666ebd341e4bb6d01b21aac9b5c95f27d22300436dd5",
+          "bytes": 279791,
           "probe": {
             "status": "ready",
             "requestedBackend": "webgl",
@@ -22,20 +22,20 @@
             "time": 0,
             "drawCalls": 3,
             "triangles": 2049,
-            "activeSprites": 110,
+            "activeSprites": 121,
             "activePages": 1,
             "textures": 4,
-            "attackAlive": 10,
-            "hitAlive": 10,
-            "deathAlive": 10,
+            "attackAlive": 11,
+            "hitAlive": 11,
+            "deathAlive": 11,
             "errors": []
           },
           "difference": null
         },
         {
           "name": "webgl-overview-01.png",
-          "sha256": "ade179e3357e8be5a5778c6f460c3cda0cb3c25c3ea179fb85058a4ff80ec21f",
-          "bytes": 224569,
+          "sha256": "902784e2da927428b793532dc4855efe25469d59e3965a26ffa36b6b72d40a76",
+          "bytes": 282757,
           "probe": {
             "status": "ready",
             "requestedBackend": "webgl",
@@ -45,23 +45,23 @@
             "time": 0.06,
             "drawCalls": 3,
             "triangles": 2049,
-            "activeSprites": 110,
+            "activeSprites": 121,
             "activePages": 1,
             "textures": 4,
-            "attackAlive": 10,
-            "hitAlive": 10,
-            "deathAlive": 10,
+            "attackAlive": 11,
+            "hitAlive": 11,
+            "deathAlive": 11,
             "errors": []
           },
           "difference": {
-            "changedPixelRatio": 0.013641927083333333,
-            "meanRgbDelta": 0.7195238715277777
+            "changedPixelRatio": 0.019232204861111112,
+            "meanRgbDelta": 0.8974976851851851
           }
         },
         {
           "name": "webgl-overview-02.png",
-          "sha256": "84973a9fbf300d29296c2b9e8b64b4e56f3491fbfa463851add72781e0997281",
-          "bytes": 222382,
+          "sha256": "f98fa264df9ae52bc83213d0edce487cda2fdd7cf5c8ee61a1fa42220ad8e7ce",
+          "bytes": 280438,
           "probe": {
             "status": "ready",
             "requestedBackend": "webgl",
@@ -71,23 +71,23 @@
             "time": 0.12,
             "drawCalls": 3,
             "triangles": 2049,
-            "activeSprites": 110,
+            "activeSprites": 121,
             "activePages": 1,
             "textures": 4,
-            "attackAlive": 10,
-            "hitAlive": 10,
-            "deathAlive": 10,
+            "attackAlive": 11,
+            "hitAlive": 11,
+            "deathAlive": 11,
             "errors": []
           },
           "difference": {
-            "changedPixelRatio": 0.0146328125,
-            "meanRgbDelta": 0.7558816550925926
+            "changedPixelRatio": 0.020020399305555554,
+            "meanRgbDelta": 0.9393210358796297
           }
         },
         {
           "name": "webgl-overview-03.png",
-          "sha256": "f413d629f7ffe8915efed40a614df2db99d9089f4b098305a90640697b724176",
-          "bytes": 206724,
+          "sha256": "c827b60b405b816a498249312122e66d448f14cdcec7da3a817d2dd9e4b5920d",
+          "bytes": 259893,
           "probe": {
             "status": "ready",
             "requestedBackend": "webgl",
@@ -97,23 +97,23 @@
             "time": 0.18,
             "drawCalls": 3,
             "triangles": 2049,
-            "activeSprites": 100,
+            "activeSprites": 110,
             "activePages": 1,
             "textures": 4,
-            "attackAlive": 10,
-            "hitAlive": 10,
+            "attackAlive": 11,
+            "hitAlive": 11,
             "deathAlive": 0,
             "errors": []
           },
           "difference": {
-            "changedPixelRatio": 0.016094618055555555,
-            "meanRgbDelta": 0.7547573784722222
+            "changedPixelRatio": 0.022171440972222223,
+            "meanRgbDelta": 0.969376880787037
           }
         },
         {
           "name": "webgl-overview-04.png",
-          "sha256": "429af15eac044c133d71e2611fb6f0d610ac30c4c6ae293f7e82f425ce7c8623",
-          "bytes": 206564,
+          "sha256": "44ca2c376dab6217f76d79f225e58cf14cf73ec76d1852ac3c33bf559abbe08e",
+          "bytes": 259361,
           "probe": {
             "status": "ready",
             "requestedBackend": "webgl",
@@ -123,34 +123,34 @@
             "time": 0.24,
             "drawCalls": 3,
             "triangles": 2049,
-            "activeSprites": 100,
+            "activeSprites": 110,
             "activePages": 1,
             "textures": 4,
-            "attackAlive": 10,
-            "hitAlive": 10,
+            "attackAlive": 11,
+            "hitAlive": 11,
             "deathAlive": 0,
             "errors": []
           },
           "difference": {
-            "changedPixelRatio": 0.008071614583333333,
-            "meanRgbDelta": 0.34413194444444445
+            "changedPixelRatio": 0.011722222222222222,
+            "meanRgbDelta": 0.46895182291666665
           }
         }
       ],
       "before": {
         "name": "webgl-before-v1.png",
-        "sha256": "e5e4950d6b4c01e9d52b2a09056e76f09abb4ae7c93773c4c0f51a907ffb2cec",
-        "bytes": 33268
+        "sha256": "aa635387e47dc1550ce2d4dbf7a35e72f5900266d053f5bdbb98a03404391357",
+        "bytes": 35775
       },
       "after": {
         "name": "webgl-after-v2.png",
-        "sha256": "206bb9f44bceb498d85d226f50cdbbd106d733847cd2cad2361c06545b8aa763",
-        "bytes": 128188
+        "sha256": "a914e6e4af079cf2053bdfb38d5685a756cf9b520b9dcfc511b32a86aff0192d",
+        "bytes": 177317
       },
       "dense": {
         "name": "webgl-dense-350.png",
-        "sha256": "56bfc05e84394bde53efad29db1196632bbd327865f8788cc94931df63b3013c",
-        "bytes": 223110,
+        "sha256": "10c559839dcd15dc83bbdd67b4c68e2a8d31ed43f3ba87b4f6311916c77aa884",
+        "bytes": 287094,
         "probe": {
           "status": "ready",
           "requestedBackend": "webgl",
@@ -175,8 +175,8 @@
       "frames": [
         {
           "name": "webgpu-overview-00.png",
-          "sha256": "f67a2f0bf58bcdebce66298ea7153dc3da2cb0620354ea2a0da9edf60e1a471b",
-          "bytes": 222364,
+          "sha256": "e3bd82a2e5fa7d50b616018d7bdebbd3cfe5bace9a7658bc03c289e2f52b35b5",
+          "bytes": 281188,
           "probe": {
             "status": "ready",
             "requestedBackend": "webgpu",
@@ -186,20 +186,20 @@
             "time": 0,
             "drawCalls": 3,
             "triangles": 2049,
-            "activeSprites": 110,
+            "activeSprites": 121,
             "activePages": 1,
             "textures": 4,
-            "attackAlive": 10,
-            "hitAlive": 10,
-            "deathAlive": 10,
+            "attackAlive": 11,
+            "hitAlive": 11,
+            "deathAlive": 11,
             "errors": []
           },
           "difference": null
         },
         {
           "name": "webgpu-overview-01.png",
-          "sha256": "6b8c5a8164c02dc7aeecc3c052a3e6955377146c7197d8f18545f2ac9b33cbff",
-          "bytes": 226072,
+          "sha256": "6ba0626cdd2ba5990ae34ef728f76161b38e112b293a0bc6b02ec69b4c6f3aca",
+          "bytes": 283882,
           "probe": {
             "status": "ready",
             "requestedBackend": "webgpu",
@@ -209,23 +209,23 @@
             "time": 0.06,
             "drawCalls": 3,
             "triangles": 2049,
-            "activeSprites": 110,
+            "activeSprites": 121,
             "activePages": 1,
             "textures": 4,
-            "attackAlive": 10,
-            "hitAlive": 10,
-            "deathAlive": 10,
+            "attackAlive": 11,
+            "hitAlive": 11,
+            "deathAlive": 11,
             "errors": []
           },
           "difference": {
-            "changedPixelRatio": 0.013733940972222223,
-            "meanRgbDelta": 0.7027175925925926
+            "changedPixelRatio": 0.01966623263888889,
+            "meanRgbDelta": 0.8717839988425926
           }
         },
         {
           "name": "webgpu-overview-02.png",
-          "sha256": "c2c1cc6b8522bdbbd89a7e67f02608e14f60630628cb5bea02cd280efd0b0647",
-          "bytes": 223784,
+          "sha256": "2f5b088bd24c4b3b10b4b67ad041ed0e4154b22d4a652b259d85bad6ec199bd1",
+          "bytes": 282012,
           "probe": {
             "status": "ready",
             "requestedBackend": "webgpu",
@@ -235,23 +235,23 @@
             "time": 0.12,
             "drawCalls": 3,
             "triangles": 2049,
-            "activeSprites": 110,
+            "activeSprites": 121,
             "activePages": 1,
             "textures": 4,
-            "attackAlive": 10,
-            "hitAlive": 10,
-            "deathAlive": 10,
+            "attackAlive": 11,
+            "hitAlive": 11,
+            "deathAlive": 11,
             "errors": []
           },
           "difference": {
-            "changedPixelRatio": 0.014828125,
-            "meanRgbDelta": 0.7396300636574074
+            "changedPixelRatio": 0.020520399305555555,
+            "meanRgbDelta": 0.9150005787037037
           }
         },
         {
           "name": "webgpu-overview-03.png",
-          "sha256": "f58f459274996cc98657b69f21e90ce65cbe3ccf7f9995a91b11df1cf4081ec1",
-          "bytes": 208113,
+          "sha256": "ef0dbd6ec844787664613048bfccb9c530008df864dcf62cda8f35d7bc5757ec",
+          "bytes": 261507,
           "probe": {
             "status": "ready",
             "requestedBackend": "webgpu",
@@ -261,23 +261,23 @@
             "time": 0.18,
             "drawCalls": 3,
             "triangles": 2049,
-            "activeSprites": 100,
+            "activeSprites": 110,
             "activePages": 1,
             "textures": 4,
-            "attackAlive": 10,
-            "hitAlive": 10,
+            "attackAlive": 11,
+            "hitAlive": 11,
             "deathAlive": 0,
             "errors": []
           },
           "difference": {
-            "changedPixelRatio": 0.016215711805555557,
-            "meanRgbDelta": 0.7405899884259259
+            "changedPixelRatio": 0.022631944444444444,
+            "meanRgbDelta": 0.944732494212963
           }
         },
         {
           "name": "webgpu-overview-04.png",
-          "sha256": "547265bf05d2101f3e87421f1e565dae752e1ddb4331fe309b31e05a426a1724",
-          "bytes": 207807,
+          "sha256": "4aeda3257eb99d0867da161739adbeed16c09f79a9d6e76db83ae823d444daad",
+          "bytes": 261321,
           "probe": {
             "status": "ready",
             "requestedBackend": "webgpu",
@@ -287,34 +287,34 @@
             "time": 0.24,
             "drawCalls": 3,
             "triangles": 2049,
-            "activeSprites": 100,
+            "activeSprites": 110,
             "activePages": 1,
             "textures": 4,
-            "attackAlive": 10,
-            "hitAlive": 10,
+            "attackAlive": 11,
+            "hitAlive": 11,
             "deathAlive": 0,
             "errors": []
           },
           "difference": {
-            "changedPixelRatio": 0.008235677083333334,
-            "meanRgbDelta": 0.3318621238425926
+            "changedPixelRatio": 0.01225,
+            "meanRgbDelta": 0.44858347800925924
           }
         }
       ],
       "before": {
         "name": "webgpu-before-v1.png",
-        "sha256": "93b820f3fbb79286dbf0105ebe428af1a63c1daa96b71be9793a361ec0b7f777",
-        "bytes": 33281
+        "sha256": "84397f4df4e82d48d262b5f91e09b563c50372cc7862d928036d99ea3690327c",
+        "bytes": 35814
       },
       "after": {
         "name": "webgpu-after-v2.png",
-        "sha256": "1fe46ca904511032a714aa0cb6046c8a545643297c7928b71428d09e5a8b966e",
-        "bytes": 128345
+        "sha256": "50e43cc94dfadb3029b814bda26dab4caf166b2a2e91776356f24499c91758f1",
+        "bytes": 177685
       },
       "dense": {
         "name": "webgpu-dense-350.png",
-        "sha256": "129ed7c841636b2e92bdccd5bb50e875fa375c1e591a9ce5203953a24b167335",
-        "bytes": 224651,
+        "sha256": "bf8d304324c7b0c2b1047b2ffa0e683dd8608a34521db962ed1fd8de4f8a15c5",
+        "bytes": 288601,
         "probe": {
           "status": "ready",
           "requestedBackend": "webgpu",

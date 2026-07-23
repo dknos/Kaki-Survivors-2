@@ -314,7 +314,10 @@ async function setupForestHorde(qa) {
     // Bootstrap failure deliberately falls through to the v1 atlas/GLB path.
   }
 
-  const tierIds = ['ant', 'beetle', 'ladybug', 'grasshopper', 'butterfly', 'bee', 'wasp', 'cockroach', 'caterpillar', 'mantis'];
+  const tierIds = [
+    'ant', 'beetle', 'ladybug', 'grasshopper', 'butterfly', 'bee',
+    'wasp', 'cockroach', 'caterpillar', 'mantis', 'spider',
+  ];
   const tiers = tierIds.map((id) => ENEMY_TIERS.find((tier) => tier.glb === id)).filter(Boolean);
   const center = state.hero.pos;
   let spawned = 0;

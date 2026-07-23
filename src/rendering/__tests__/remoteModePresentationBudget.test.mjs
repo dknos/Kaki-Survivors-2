@@ -7,7 +7,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const read = (relative) => fs.readFileSync(path.join(ROOT, relative), 'utf8');
 
-test('remote arena modes cap oversized post-processing buffers and restore resolution', () => {
+test('remote arena modes cap oversized buffers without blurring ordinary Monster viewports', () => {
   const bulletHell = read('src/bullethell/index.js');
   const racing = read('src/racing/index.js');
 
@@ -15,7 +15,8 @@ test('remote arena modes cap oversized post-processing buffers and restore resol
   assert.match(bulletHell, /currentScale \* Math\.sqrt\(REMOTE_ARENA_MAX_RENDER_PIXELS \/ pixels\)/);
   assert.match(bulletHell, /_restoreRemoteArenaResolution\(\)/);
   assert.match(racing, /REMOTE_ARENA_MAX_RENDER_PIXELS = 1920 \* 1080/);
-  assert.match(racing, /Math\.min\(currentScale, 0\.8, pixelCapScale\)/);
+  assert.match(racing, /Math\.min\(currentScale, pixelCapScale\)/);
+  assert.doesNotMatch(racing, /Math\.min\(currentScale, 0\.8,/);
   assert.match(racing, /setDynamicResolutionScale\(session\.savedDynamicResolutionScale \|\| 1\)/);
 });
 

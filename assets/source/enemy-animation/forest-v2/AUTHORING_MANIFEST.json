@@ -3,15 +3,28 @@
   "generatedBy": "tools/enemy-sprite-bake/author_forest_animation.py",
   "blenderVersion": "5.1.1",
   "originalAssetsModified": false,
-  "wasp": {
-    "source": "assets/breakroom/Wasp.glb",
-    "authoringPath": "sample-source-clips",
-    "clips": [
-      "WaspArmature|Wasp_Flying",
-      "WaspArmature|Wasp_Attack",
-      "WaspArmature|Wasp_Death"
-    ]
-  },
+  "sourceClipAssets": [
+    {
+      "species": "wasp",
+      "source": "assets/breakroom/Wasp.glb",
+      "authoringPath": "sample-source-clips",
+      "clips": [
+        "WaspArmature|Wasp_Flying",
+        "WaspArmature|Wasp_Attack",
+        "WaspArmature|Wasp_Death"
+      ]
+    },
+    {
+      "species": "spider",
+      "source": "assets/breakroom/Spider.glb",
+      "authoringPath": "sample-source-clips",
+      "clips": [
+        "SpiderArmature|Spider_Walk",
+        "SpiderArmature|Spider_Attack",
+        "SpiderArmature|Spider_Death"
+      ]
+    }
+  ],
   "assets": [
     {
       "species": "ant",

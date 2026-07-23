@@ -5,6 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { resolveChromiumArgs } from './webgpu/chromiumProfiles.mjs';
 
 const SCRIPT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const ROOT = process.env.KK_CAMERA_BENCH_ROOT
@@ -22,6 +23,10 @@ const CAMERA_MODES = String(process.env.MODES || 'isometric,chase,driver_fpv')
   .split(',')
   .filter((mode) => ['isometric', 'chase', 'driver_fpv'].includes(mode));
 const MONSTER_ASSETS = process.env.MONSTER_ASSETS === 'full' ? 'full' : '';
+const CAPTURE_DIR = process.env.CAPTURE_DIR ? path.resolve(process.env.CAPTURE_DIR) : '';
+const RAW_RENDER = process.env.RAW_RENDER === '1';
+const HIDE_HUD = process.env.HIDE_HUD === '1';
+const RENDERER_DIAGNOSTICS = process.env.RENDERER_DIAGNOSTICS === '1';
 const PLAYWRIGHT = '/home/nemoclaw/node_modules/playwright';
 const CHROMIUM = '/home/nemoclaw/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome';
 const require = createRequire(import.meta.url);
@@ -80,22 +85,27 @@ try {
   browser = await chromium.launch({
     headless: true,
     executablePath: CHROMIUM,
-    args: BACKEND === 'webgpu'
-      ? ['--no-sandbox', '--disable-dev-shm-usage', '--enable-unsafe-webgpu', '--use-angle=vulkan', '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan']
-      : ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'],
+    args: resolveChromiumArgs(BACKEND),
   });
   const context = await browser.newContext({
     viewport: { width: WIDTH, height: HEIGHT },
     deviceScaleFactor: DPR,
   });
   const page = await context.newPage();
+  const browserDiagnostics = { errors: [], consoleErrors: [], warnings: [] };
+  page.on('pageerror', (error) => browserDiagnostics.errors.push(error.message));
+  page.on('console', (message) => {
+    if (message.type() === 'error') browserDiagnostics.consoleErrors.push(message.text());
+    if (message.type() === 'warning') browserDiagnostics.warnings.push(message.text());
+  });
   await page.route(/fonts\.(?:googleapis|gstatic)\.com/, (route) => route.fulfill({ status: 204, body: '' }));
   await page.addInitScript(() => {
     localStorage.setItem('kks_introSeen', '1');
     localStorage.setItem('kks_racing_camera_mode_v1', 'chase');
   });
   const monsterAssetsQuery = MONSTER_ASSETS ? `&monsterAssets=${MONSTER_ASSETS}` : '';
-  await page.goto(`${ORIGIN}/index.html?qa=${QA_SCENE}&renderer=${BACKEND}${monsterAssetsQuery}`, {
+  const diagnosticsQuery = RENDERER_DIAGNOSTICS ? '&rendererDiagnostics=1' : '';
+  await page.goto(`${ORIGIN}/index.html?qa=${QA_SCENE}&renderer=${BACKEND}${monsterAssetsQuery}${diagnosticsQuery}`, {
     waitUntil: 'load',
     timeout: 120000,
   });
@@ -109,6 +119,12 @@ try {
     assets: window.__kkRacing?.snapshot?.()?.assets?.ids || [],
     performance: window.__kkRacing?.snapshot?.()?.performance || null,
   }));
+  if (RAW_RENDER) {
+    await page.evaluate(() => {
+      const service = window.__kkRendererService;
+      service.pipeline.render = (scene, camera) => service.renderer.render(scene, camera);
+    });
+  }
   await page.evaluate(() => {
     const manager = window.kkState.racing.cameraManager;
     const originalUpdate = manager.update;
@@ -127,8 +143,13 @@ try {
   });
 
   const rows = [];
+  if (CAPTURE_DIR) fs.mkdirSync(CAPTURE_DIR, { recursive: true });
   for (const mode of CAMERA_MODES) {
-    await page.evaluate((nextMode) => window.__kkRacing.setCameraMode(nextMode), mode);
+    await page.evaluate((nextMode) => {
+      if (window.__kkRacing.snapshot().camera.mode !== nextMode) {
+        window.__kkRacing.setCameraMode(nextMode);
+      }
+    }, mode);
     await page.waitForFunction((nextMode) => window.__kkRacing.snapshot().camera.mode === nextMode, mode);
     await page.evaluate(() => new Promise((resolve) => {
       let remaining = 20;
@@ -167,6 +188,55 @@ try {
             raycasts: probe.raycasts,
             collision: window.__kkRacing.snapshot().camera.collision || null,
             render: window.__kkRendererService?.getDiagnostics?.() || null,
+            recovery: window.__kkRendererService?.recovery?.getState?.() || null,
+            sceneState: (() => {
+              const session = window.kkState?.racing;
+              const kart = session?.cars?.[0]?.physics;
+              const camera = window.__kkRendererService?.pipeline?.getCamera?.();
+              const badTransforms = [];
+              let maxInstanceElement = 0;
+              session?.root?.traverse?.((node) => {
+                const world = node.matrixWorld?.elements;
+                if (world && world.some((value) => !Number.isFinite(value))) {
+                  badTransforms.push(`${node.name || node.type}:world`);
+                }
+                const values = node.isInstancedMesh ? node.instanceMatrix?.array : null;
+                if (!values) return;
+                for (let index = 0; index < values.length; index += 1) {
+                  const value = values[index];
+                  if (!Number.isFinite(value)) {
+                    badTransforms.push(`${node.name || node.type}:instance:${Math.floor(index / 16)}`);
+                    break;
+                  }
+                  maxInstanceElement = Math.max(maxInstanceElement, Math.abs(value));
+                }
+              });
+              return {
+                rootVisible: session?.root?.visible ?? null,
+                kart: kart ? { x: kart.x, y: kart.y, z: kart.z, speed: kart.speed, grounded: kart.grounded } : null,
+                camera: camera ? {
+                  x: camera.position.x, y: camera.position.y, z: camera.position.z,
+                  near: camera.near, far: camera.far,
+                } : null,
+                trafficAttached: !!session?.monsterArena?.trafficModelsAttached,
+                storyDressingAttached: !!session?.monsterArenaView?.storyDressingAttached,
+                badTransforms,
+                maxInstanceElement,
+                callout: (() => {
+                  const element = document.querySelector('.kkr-callout');
+                  if (!element) return null;
+                  const rect = element.getBoundingClientRect();
+                  const style = getComputedStyle(element);
+                  return {
+                    className: element.className,
+                    text: element.textContent,
+                    opacity: style.opacity,
+                    filter: style.filter,
+                    rect: { x: rect.x, y: rect.y, width: rect.width, height: rect.height },
+                  };
+                })(),
+              };
+            })(),
             breakdown: [...groups.entries()]
               .map(([name, value]) => ({ name, ...value }))
               .sort((a, b) => b.triangles - a.triangles)
@@ -176,6 +246,16 @@ try {
       };
       requestAnimationFrame(step);
     }), FRAMES);
+    const screenshot = CAPTURE_DIR
+      ? path.join(CAPTURE_DIR, `${BACKEND}-${MONSTER_ASSETS || 'runtime'}-${mode}.png`)
+      : '';
+    if (HIDE_HUD) {
+      await page.evaluate(() => {
+        const hud = document.querySelector('.kkr-hud');
+        if (hud) hud.style.display = 'none';
+      });
+    }
+    if (screenshot) await page.screenshot({ path: screenshot });
     rows.push({
       mode,
       cameraUpdate: summarize(measured.durations),
@@ -190,6 +270,9 @@ try {
       dynamicResolutionScale: measured.render?.dynamicResolutionScale ?? null,
       gpuMemoryBytes: measured.render?.gpuMemoryBytes ?? null,
       renderTargets: measured.render?.renderTargets ?? null,
+      recovery: measured.recovery,
+      sceneState: measured.sceneState,
+      screenshot,
       breakdown: measured.breakdown,
     });
   }
@@ -197,10 +280,12 @@ try {
     backend: actualBackend,
     scene: QA_SCENE,
     assetTier: MONSTER_ASSETS || 'performance',
+    rawRender: RAW_RENDER,
     viewport: [WIDTH, HEIGHT],
     dpr: DPR,
     frames: FRAMES,
     startup,
+    browserDiagnostics,
     rows,
   }, null, 2));
 } finally {

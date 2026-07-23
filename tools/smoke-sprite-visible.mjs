@@ -96,6 +96,9 @@ async function main() {
   });
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await ctx.newPage();
+  await page.route(/fonts\.(?:googleapis|gstatic)\.com/, (route) => (
+    route.fulfill({ status: 204, body: '' })
+  ));
 
   const consoleErrors = [];
   const pageErrors = [];
