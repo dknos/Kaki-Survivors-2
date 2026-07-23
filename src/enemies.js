@@ -240,7 +240,7 @@ function _syncEnemySprite(e, fromX, fromZ, dt) {
   const dz = ep.z - fromZ;
   if (dt > 0) {
     const invDt = 1 / dt;
-    setEnemySpriteMotion(atlasId, e._spriteSlot, dx * invDt, dz * invDt, Math.hypot(dx, dz) * invDt);
+    setEnemySpriteMotion(atlasId, e._spriteSlot, dx * invDt, dz * invDt, Math.sqrt(dx * dx + dz * dz) * invDt);
   } else {
     setEnemySpriteMotion(atlasId, e._spriteSlot, 0, 0, 0);
   }
@@ -575,7 +575,7 @@ export function spawnEnemy(tierConfig, x, z) {
       spriteAtlasId = FOREST_ENEMY_ATLAS_ID;
       let vx = (state.hero?.pos?.x ?? x) - x;
       let vz = (state.hero?.pos?.z ?? z) - z;
-      const magnitude = Math.hypot(vx, vz);
+      const magnitude = Math.sqrt(vx * vx + vz * vz);
       if (magnitude > 0.0001) {
         const speed = tierConfig.spd || 1;
         vx = vx / magnitude * speed;
@@ -1210,7 +1210,12 @@ export function killEnemy(enemy) {
   if (enemy.isTotem) {
     state.enemies.spatial.remove(enemy);
     const idx = state.enemies.active.indexOf(enemy);
-    if (idx >= 0) state.enemies.active.splice(idx, 1);
+    if (idx >= 0) {
+      const arr = state.enemies.active;
+      const last = arr.length - 1;
+      if (idx !== last) arr[idx] = arr[last];
+      arr.pop();
+    }
     import('./totems.js').then(({ onTotemKilled }) => onTotemKilled(enemy));
     return;
   }
@@ -1218,7 +1223,12 @@ export function killEnemy(enemy) {
   if (enemy.isPylon) {
     state.enemies.spatial.remove(enemy);
     const idx = state.enemies.active.indexOf(enemy);
-    if (idx >= 0) state.enemies.active.splice(idx, 1);
+    if (idx >= 0) {
+      const arr = state.enemies.active;
+      const last = arr.length - 1;
+      if (idx !== last) arr[idx] = arr[last];
+      arr.pop();
+    }
     import('./pylons.js').then(({ onPylonKilled }) => onPylonKilled(enemy));
     return;
   }
@@ -1226,7 +1236,12 @@ export function killEnemy(enemy) {
   if (enemy.isBell) {
     state.enemies.spatial.remove(enemy);
     const idx = state.enemies.active.indexOf(enemy);
-    if (idx >= 0) state.enemies.active.splice(idx, 1);
+    if (idx >= 0) {
+      const arr = state.enemies.active;
+      const last = arr.length - 1;
+      if (idx !== last) arr[idx] = arr[last];
+      arr.pop();
+    }
     import('./bells.js').then(({ onBellKilled }) => onBellKilled(enemy));
     return;
   }
@@ -1244,7 +1259,12 @@ export function killEnemy(enemy) {
     if (sfx && sfx.eliteDeath) sfx.eliteDeath();
     state.enemies.spatial.remove(enemy);
     const idx = state.enemies.active.indexOf(enemy);
-    if (idx >= 0) state.enemies.active.splice(idx, 1);
+    if (idx >= 0) {
+      const arr = state.enemies.active;
+      const last = arr.length - 1;
+      if (idx !== last) arr[idx] = arr[last];
+      arr.pop();
+    }
     import('./spawnDirector.js').then(({ onNemesisKilled }) => onNemesisKilled(enemy));
     return;
   }
@@ -2382,7 +2402,7 @@ export function setControlledEnemyXZ(enemy, x, z) {
         const dx = x - oldX;
         const dz = z - oldZ;
         const moved = Math.abs(dx) + Math.abs(dz) > 0.0001;
-        const magnitude = Math.hypot(dx, dz);
+        const magnitude = Math.sqrt(dx * dx + dz * dz);
         const speed = moved ? Math.max(0, enemy.spd || 0) : 0;
         const factor = magnitude > 0.0001 ? speed / magnitude : 0;
         setEnemySpriteMotion(atlasId, enemy._spriteSlot, dx * factor, dz * factor, speed);
