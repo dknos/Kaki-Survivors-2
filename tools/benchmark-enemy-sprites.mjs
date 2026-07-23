@@ -11,6 +11,12 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const OUTPUT = path.resolve(ROOT, process.argv[2] || 'docs/enemy-animation/evidence/BENCHMARK_350.json');
 const PLAYWRIGHT = '/home/nemoclaw/node_modules/playwright';
 const CHROMIUM = '/home/nemoclaw/.cache/ms-playwright/chromium-1208/chrome-linux64/chrome';
+const PAIRED_TRIALS = 3;
+
+function median(values) {
+  const sorted = [...values].sort((a, b) => a - b);
+  return sorted[Math.floor(sorted.length / 2)];
+}
 
 function startServer() {
   const server = http.createServer((request, response) => {
@@ -39,7 +45,7 @@ function startServer() {
   });
 }
 
-async function benchmarkBackend(chromium, origin, backend) {
+async function benchmarkTrial(chromium, origin, backend, trial) {
   const browser = await chromium.launch({
     executablePath: CHROMIUM,
     headless: true,
@@ -66,33 +72,71 @@ async function benchmarkBackend(chromium, origin, backend) {
       errors: window.__kkEnemyAnimationQA.errors,
     }));
     if (status.status !== 'ready' || status.backend !== backend) throw new Error(JSON.stringify(status));
-    const cases = [];
-    for (const atlasMode of ['v1', 'v2']) {
-      const result = await page.evaluate(
-        (mode) => window.__kkEnemyAnimationQA.benchmark({ atlasMode: mode, iterations: 5000, frames: 240 }),
+    const order = trial % 2 === 0 ? ['v1', 'v2'] : ['v2', 'v1'];
+    const results = {};
+    for (const atlasMode of order) {
+      results[atlasMode] = await page.evaluate(
+        (mode) => window.__kkEnemyAnimationQA.benchmark({
+          atlasMode: mode,
+          iterations: 5000,
+          frames: 120,
+        }),
         atlasMode,
       );
-      cases.push(result);
     }
     if (errors.length) throw new Error(`${backend}: ${errors.join('; ')}`);
-    const before = cases[0];
-    const after = cases[1];
-    const fpsChangePercent = ((after.frameMs.sustainedFps / before.frameMs.sustainedFps) - 1) * 100;
-    const cpuAnimationChangePercent = ((after.cpuAnimationMs.mean / before.cpuAnimationMs.mean) - 1) * 100;
     return {
-      backend,
-      before,
-      after,
-      comparison: {
-        fpsChangePercent,
-        cpuAnimationChangePercent,
-        withinFivePercentFpsBudget: fpsChangePercent >= -5,
-      },
+      trial,
+      order,
+      results,
+      fpsChangePercent: (
+        (results.v2.frameMs.sustainedFps / results.v1.frameMs.sustainedFps) - 1
+      ) * 100,
     };
   } finally {
-    await context.close();
-    await browser.close();
+    await context.close().catch(() => {});
+    await browser.close().catch(() => {});
   }
+}
+
+async function benchmarkBackend(chromium, origin, backend) {
+  // Software Chromium quantizes many samples into 50/66/83 ms buckets.
+  // A single always-v1-then-v2 run can therefore mistake scheduler drift for
+  // an atlas regression. Use fresh-browser paired trials with alternating
+  // order and gate on their median paired delta.
+  const trials = [];
+  for (let trial = 0; trial < PAIRED_TRIALS; trial++) {
+    console.error(`[enemy-sprite-benchmark] ${backend} paired trial ${trial + 1}/${PAIRED_TRIALS}`);
+    trials.push(await benchmarkTrial(chromium, origin, backend, trial));
+  }
+  const fpsChangePercent = median(trials.map((trial) => trial.fpsChangePercent));
+  const representative = trials.reduce((best, trial) => (
+    Math.abs(trial.fpsChangePercent - fpsChangePercent)
+      < Math.abs(best.fpsChangePercent - fpsChangePercent)
+      ? trial
+      : best
+  ));
+  const before = representative.results.v1;
+  const after = representative.results.v2;
+  const cpuAnimationChangePercent = ((after.cpuAnimationMs.mean / before.cpuAnimationMs.mean) - 1) * 100;
+  return {
+    backend,
+    before,
+    after,
+    pairedTrials: trials.map((trial) => ({
+      trial: trial.trial,
+      order: trial.order,
+      v1Fps: trial.results.v1.frameMs.sustainedFps,
+      v2Fps: trial.results.v2.frameMs.sustainedFps,
+      fpsChangePercent: trial.fpsChangePercent,
+    })),
+    comparison: {
+      fpsChangePercent,
+      cpuAnimationChangePercent,
+      method: `median of ${PAIRED_TRIALS} fresh-browser paired trials with alternating order`,
+      withinFivePercentFpsBudget: fpsChangePercent >= -5,
+    },
+  };
 }
 
 async function main() {
@@ -103,7 +147,7 @@ async function main() {
   const report = {
     generatedAt: new Date().toISOString(),
     scenario: 'isolated deterministic 350-enemy atlas comparison',
-    environment: 'headless Chromium software WebGL2/WebGPU; FPS is comparative, not physical-GPU throughput',
+    environment: 'headless Chromium software WebGL2/WebGPU; paired median FPS is comparative, not physical-GPU throughput',
     cases: [],
   };
   try {

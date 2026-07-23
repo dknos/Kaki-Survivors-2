@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /**
- * Machine-readable audit for the ten Forest enemy source GLBs.
+ * Machine-readable audit for every Forest v2 enemy source GLB.
  *
  * This intentionally parses GLB JSON/accessor metadata directly so the audit
  * can run in CI without a browser, native glTF SDK, or Blender install.
@@ -18,7 +18,7 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const SPECIES = Object.freeze([
   'Ant', 'Beetle', 'Ladybug', 'Grasshopper', 'Cockroach',
-  'Mantis', 'Wasp', 'Bee', 'Butterfly', 'Caterpillar',
+  'Mantis', 'Wasp', 'Bee', 'Butterfly', 'Caterpillar', 'Spider',
 ]);
 
 const COMPONENT_WORDS = Object.freeze({
@@ -32,6 +32,12 @@ const COMPONENT_WORDS = Object.freeze({
 
 const PROJECT_ATTRIBUTION = Object.freeze({
   Wasp: {
+    author: 'Quaternius',
+    license: 'CC0',
+    source: 'Quaternius Ultimate Monsters bundle',
+    recordedIn: ['README.md:113', 'src/ui.js:8130'],
+  },
+  Spider: {
     author: 'Quaternius',
     license: 'CC0',
     source: 'Quaternius Ultimate Monsters bundle',

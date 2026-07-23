@@ -6,14 +6,14 @@
     {
       "id": 0,
       "image": "forest_enemies_v2.png",
-      "frameWidth": 128,
-      "frameHeight": 128,
+      "frameWidth": 112,
+      "frameHeight": 112,
       "cols": 20,
-      "rows": 18,
-      "frameCount": 360
+      "rows": 20,
+      "frameCount": 396
     }
   ],
-  "frameCount": 360,
+  "frameCount": 396,
   "directionCount": 4,
   "stateCount": 3,
   "directions": [
@@ -1429,6 +1429,144 @@
         "source": "Poly Pizza",
         "sourceAsset": "assets/breakroom/Caterpillar.glb"
       }
+    },
+    {
+      "id": 10,
+      "name": "spider",
+      "fallbackState": 0,
+      "defaultDirection": 0,
+      "motionKind": 11,
+      "nominalSpeed": 4.2,
+      "playbackRate": {
+        "min": 0.55,
+        "max": 1.75
+      },
+      "authoring": "source-animation-clips",
+      "states": [
+        {
+          "id": 0,
+          "name": "move",
+          "fps": 12,
+          "loop": true,
+          "completion": "loop",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 360,
+              "to": 365,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 366,
+              "to": 371,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 372,
+              "to": 377,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 366,
+              "to": 371,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 1,
+          "name": "attack",
+          "fps": 18,
+          "loop": false,
+          "completion": "fallback",
+          "fallbackState": 0,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 378,
+              "to": 380,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 381,
+              "to": 383,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 384,
+              "to": 386,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 381,
+              "to": 383,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        },
+        {
+          "id": 2,
+          "name": "death",
+          "fps": 18,
+          "loop": false,
+          "completion": "release",
+          "fallbackState": null,
+          "directions": [
+            {
+              "id": 0,
+              "page": 0,
+              "from": 387,
+              "to": 389,
+              "mirror": false
+            },
+            {
+              "id": 1,
+              "page": 0,
+              "from": 390,
+              "to": 392,
+              "mirror": false
+            },
+            {
+              "id": 2,
+              "page": 0,
+              "from": 393,
+              "to": 395,
+              "mirror": false
+            },
+            {
+              "id": 3,
+              "page": 0,
+              "from": 390,
+              "to": 392,
+              "mirror": true,
+              "sourceDirection": 1
+            }
+          ]
+        }
+      ],
+      "attribution": {
+        "author": "Quaternius",
+        "license": "CC0",
+        "source": "Ultimate Monsters bundle",
+        "sourceAsset": "assets/breakroom/Spider.glb"
+      }
     }
   ],
   "pixelsPerWorldUnit": 48,
@@ -1446,7 +1584,7 @@
   "framePadding": {
     "gutterPixels": 3,
     "alphaDilationPixels": 2,
-    "contentPixels": 122,
+    "contentPixels": 106,
     "placement": "inside-cell"
   },
   "texture": {
@@ -1459,8 +1597,8 @@
     "wrapT": "clamp-to-edge"
   },
   "memoryEstimate": {
-    "colorBytesBaseLevel": 23592960,
-    "colorBytesWithMipmaps": 31457280,
+    "colorBytesBaseLevel": 20070400,
+    "colorBytesWithMipmaps": 26760534,
     "compression": "none"
   },
   "fallbackState": 0,
@@ -1469,7 +1607,7 @@
     "baker": "tools/enemy-sprite-bake/bake.html",
     "runner": "tools/enemy-sprite-bake/run.mjs",
     "authoringScript": "tools/enemy-sprite-bake/author_forest_animation.py",
-    "internalResolution": 488,
+    "internalResolution": 424,
     "supersample": 4,
     "deterministicSeed": 0,
     "directionsBaked": 3,

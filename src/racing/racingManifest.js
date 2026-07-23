@@ -13,7 +13,7 @@ export const RALLY_ASSET_MANIFEST = Object.freeze({
   mightyMeowsterBody: Object.freeze({ url: 'assets/racing/models/mighty-meowster-body-v1.glb', kind: 'model' }),
   cyberKakiBody: Object.freeze({ url: 'assets/racing/models/cyber-kaki-body-v1.glb', kind: 'model' }),
   tipsyTumblerBody: Object.freeze({ url: 'assets/racing/monster-arena/models/tipsy-tumbler-monster-truck-v2.glb', kind: 'model' }),
-  arenaTrafficKit: Object.freeze({ url: 'assets/racing/models/arena-traffic-kit-v1.glb', kind: 'model' }),
+  arenaTrafficKit: Object.freeze({ url: 'assets/racing/models/arena-traffic-kit-runtime-v2.glb', kind: 'model' }),
   crashVehicleKit: Object.freeze({ url: 'assets/racing/crash/kaki-crash-kit-v1.glb', kind: 'model' }),
   crashVehicleKitV2: Object.freeze({ url: 'assets/racing/crash/kaki-catastrophe-vehicles-v2.glb', kind: 'model' }),
   crashEnvironmentV2: Object.freeze({ url: 'assets/racing/crash/pawprint-moonpaw-environment-v2.glb', kind: 'model' }),
@@ -107,24 +107,23 @@ export function rallyAssetIds(
   if (mode === 'crash') {
     return ['decalAtlas', 'crashVehicleKitV2', 'crashEnvironmentV2', 'skyTwilight'];
   }
-  // Monster Smash's procedural/instanced arena is the release presentation:
-  // unlike the optional Blender replacements it stays below the exterior-view
-  // draw-call budget and is ready before the countdown starts. The full models
-  // remain available for explicit visual QA, but must not add 5.5 MB of GLBs,
-  // hundreds of draw calls, and background parsing to normal gameplay.
+  // Release Monster Smash uses the decimated, instanced traffic kit plus a
+  // bounded selection of authored arena props. The expensive full stadium and
+  // 3D audience remain opt-in, but ordinary play no longer falls all the way
+  // back to flat placeholder crushables and dressing.
   if (mode === 'monster') {
     const bodyAsset = monsterVehicleId === 'cyber'
       ? 'cyberKakiBody'
       : monsterVehicleId === 'tipsy'
-        ? (monsterProductionAssets ? 'tipsyTumblerBody' : null)
+        ? 'tipsyTumblerBody'
         : 'mightyMeowsterBody';
     return [
       'monsterDecal',
       'monsterKeyArt',
-      ...(bodyAsset ? [bodyAsset] : []),
+      bodyAsset,
+      'arenaTrafficKit',
+      'monsterEnvironmentKit',
       ...(monsterProductionAssets ? [
-        'arenaTrafficKit',
-        'monsterEnvironmentKit',
         'monsterAudienceBank',
       ] : []),
       'monsterArenaBackdrop',

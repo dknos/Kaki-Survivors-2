@@ -10,36 +10,58 @@ Distinct from `tools/sprite-gen/` — that pipeline computes **FX** pixel-art by
 formula against the 8-color palette. This one bakes the existing full-color
 character GLBs, so a 2D trash mob matches the 3D elite of the same tier.
 
-## Run
+## Forest v2 workflow
 
 ```bash
-node tools/enemy-sprite-bake/run.mjs            # bake all 23 trash tiers
-node tools/enemy-sprite-bake/run.mjs zombie     # bake one
-node tools/enemy-sprite-bake/run.mjs zombie,orc # subset
+node tools/inspect-forest-enemies.mjs \
+  --json docs/enemy-animation/FOREST_SOURCE_AUDIT.json
+
+# Rebuild the non-destructive morph/rigid-component source derivatives when
+# their authored poses change. Original assets/breakroom files stay untouched.
+blender --background --python tools/enemy-sprite-bake/author_forest_animation.py
+
+# Deterministically sample source clips/authored poses, pack the atlas, and run
+# frame-bound, grounding, luminance, silhouette, and Spider-facing validation.
+node tools/enemy-sprite-bake/run.mjs
+
+# Regenerate the WebGL2/WebGPU motion sequence and dense-swarm evidence.
+node tools/capture-enemy-animation-showcase.mjs
+node tools/benchmark-enemy-sprites.mjs
 ```
 
-Output: `assets/sprites/enemies_v1.png` + `assets/sprites/enemies_v1.json`.
+Primary output:
+
+- `assets/sprites/forest_enemies_v2.png`
+- `assets/sprites/forest_enemies_v2.json`
+- `docs/enemy-animation/SILHOUETTE_VALIDATION.json`
+- `docs/enemy-animation/evidence/showcase/`
+- `docs/enemy-animation/evidence/BENCHMARK_350.json`
+
+`assets/sprites/enemies_v1.*` remains the bootstrap and non-Forest fallback.
+The v2 roster is the ten authored Forest creatures plus Spider, whose real
+walk/attack/death clips and red face marker make directional validation exact.
 
 ## Contract
 
-- **Roster names** in `bake.html` MUST match both the `ENEMY_TIERS` glb keys in
-  `src/config.js` and the asset-map keys in `src/assets.js`. The `anim` name the
-  sprite system looks up == the tier's glb key.
+- **Roster names and numeric IDs** in `bake.html` MUST match
+  `_FOREST_SPRITE_SPECIES` in `src/enemies.js`.
 - **Camera pitch ~47°** matches the gameplay ortho cam `(hp.x+40, 60, hp.z+40)`.
   `billboard: cylinder` only rotates around Y, so the baked pitch IS the pose.
-- **alphaTest 0.5** → opaque depth-writing cutout billboards (no blend halos in
-  a dense horde). FX atlases stay blended; do not copy this to FX.
-- After adding a tier here, add its name to `_SPRITE_KEYS` in `src/enemies.js`.
+- Supersampled 4× renders are downsampled into 112×112 cells with three-pixel
+  gutters and alpha dilation. V2 uses linear filtering and mipmaps; intentional
+  pixel-art FX atlases retain their own nearest-filter metadata.
+- Depth-writing alpha-tested cutouts keep dense hordes sortable. FX atlases
+  stay blended; do not copy the enemy cutout policy to FX.
+- After adding a species, update the audit, authoring manifest, v2 validator,
+  showcase row count, and `_FOREST_SPRITE_SPECIES`.
 
 ## Determinism
 
-NOT byte-identical across machines. Unlike the FX pipeline
-(`docs/SPRITE_GEN_PIPELINE.md`, which computes every pixel by formula and
-enforces an md5sum contract), this baker renders GLBs through
-ANGLE/swiftshader — GPU/driver-dependent rasterization, so re-runs produce
-visually-equivalent but not bit-equal PNGs. Do NOT apply the FX md5sum
-determinism check here. Re-bake only when the roster or camera changes;
-review the PNG visually.
+Pose sampling, packing, lighting, camera, guttering, and manifest generation are
+deterministic. Raster bytes may differ slightly across GPU/driver versions, so
+validation uses normalized silhouettes and visual metrics rather than an
+FX-style checksum. The checked-in evidence is generated through the pinned
+Chromium/SwiftShader profile in `run.mjs`.
 
 ## Deps
 

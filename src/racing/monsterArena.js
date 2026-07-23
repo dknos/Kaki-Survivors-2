@@ -1267,6 +1267,56 @@ export function attachMonsterEnvironmentKit(arena, gltf) {
   return arena.environmentKitAttached;
 }
 
+/**
+ * Default-release authored dressing. This intentionally keeps the cheap
+ * procedural stadium shell and gameplay landmarks, then adds only the small
+ * story props that materially improve depth and material variety. All props
+ * remain instanced and do not cast individual real-time shadows.
+ */
+export function attachMonsterStoryDressing(arena, gltf) {
+  if (!arena || !gltf?.scene || arena.storyDressingAttached || arena.environmentKitAttached) return false;
+  const root = new THREE.Group();
+  root.name = `${arena.definition.id}-runtime-story-dressing`;
+  const story = _storyModulePlacements(arena.definition);
+  const meshes = [];
+  const add = (name, placements, options = {}) => {
+    meshes.push(..._instanceEnvironmentModule(gltf, name, placements, root, {
+      ...options,
+      cast: false,
+    }));
+  };
+  add('ArenaKit_Container', story.containerPlacements);
+  add('ArenaKit_TireStack', story.tireStacks);
+  add('ArenaKit_FuelDrum', story.drums);
+  add('ArenaKit_Crate', story.crates);
+  add('ArenaKit_Cone', story.cones);
+  add('ArenaKit_Bollard', story.bollards);
+  add('ArenaKit_ToolCart', story.toolCarts);
+  add('ArenaKit_Scaffold', story.scaffolds);
+  add('ArenaKit_SpeakerCluster', story.speakers);
+  add('ArenaKit_ServiceGate', story.gates);
+  add('ArenaKit_Camera', story.cameras);
+  add('ArenaKit_BannerFrame', story.banners);
+  if (meshes.length < 10) {
+    root.removeFromParent();
+    root.clear();
+    return false;
+  }
+
+  arena.group.add(root);
+  // Crown Chaos already has three temporary primitive containers. Replace
+  // those overlaps while retaining its neon rings and every gameplay marker.
+  if (arena.definition.dressing !== 'pyramid-yard' && arena.dressing?.fallbackGroup) {
+    for (const child of arena.dressing.fallbackGroup.children) {
+      if (child.name.includes('container')) child.visible = false;
+    }
+  }
+  arena.storyDressingRoot = root;
+  arena.storyDressingMeshes = meshes;
+  arena.storyDressingAttached = true;
+  return true;
+}
+
 /** Add a visible hero bank to the camera-facing east grandstand. */
 export function attachMonsterAudience(arena, gltf) {
   if (!arena || !gltf?.scene || arena.audienceAttached) return false;
@@ -1484,6 +1534,8 @@ export function monsterArenaRenderSnapshot(arena) {
     hasExterior: !!arena?.exterior?.backdrop,
     productionEnvironmentAttached: !!arena?.environmentKitAttached,
     productionEnvironmentMeshes: arena?.environmentKitMeshes?.length || 0,
+    runtimeStoryDressingAttached: !!arena?.storyDressingAttached,
+    runtimeStoryDressingMeshes: arena?.storyDressingMeshes?.length || 0,
     groundDecals: arena?.groundDressing?.decals?.length || 0,
     crowdCards: arena?.stadium?.crowds?.count || 0,
     audienceBanks: arena?.audienceBanks?.length || 0,

@@ -137,6 +137,14 @@ function parseModel(buffer, url) {
   return { format: 'glb' };
 }
 
+function parseGlbJson(buffer, label) {
+  parseModel(buffer, label);
+  const jsonLength = buffer.readUInt32LE(12);
+  expect(buffer.toString('ascii', 16, 20) === 'JSON', `${label} first GLB chunk is not JSON`);
+  expect(20 + jsonLength <= buffer.length, `${label} JSON chunk exceeds its file bounds`);
+  return JSON.parse(buffer.toString('utf8', 20, 20 + jsonLength).replace(/\0+$/u, ''));
+}
+
 function validateDimensions(info, label) {
   expect(Number.isInteger(info.width) && info.width > 0, `${label} has invalid width ${info.width}`);
   expect(Number.isInteger(info.height) && info.height > 0, `${label} has invalid height ${info.height}`);
@@ -195,6 +203,25 @@ await check('course mappings reference only defined manifest entries', async () 
       expect(new Set(ids).size === ids.length, `${family}/${courseId} repeats a manifest id`);
       for (const id of ids) expect(RALLY_ASSET_MANIFEST[id], `${family}/${courseId} references undefined ${id}`);
     }
+  }
+});
+
+await check('optimized Monster traffic retains embedded CC BY provenance', async () => {
+  const trafficUrl = RALLY_ASSET_MANIFEST.arenaTrafficKit?.url;
+  expect(trafficUrl === 'assets/racing/models/arena-traffic-kit-runtime-v2.glb',
+    `arenaTrafficKit does not select the optimized runtime asset: ${trafficUrl}`);
+  const trafficPath = assertLocalUrl('arenaTrafficKitProvenance', trafficUrl);
+  const gltf = parseGlbJson(await readFile(trafficPath), trafficUrl);
+  const extras = gltf.scenes?.[gltf.scene ?? 0]?.extras;
+  expect(extras?.derivativeSource === 'assets/racing/models/arena-traffic-kit-v1.glb',
+    'optimized traffic GLB does not identify its preserved derivative source');
+  for (const source of ['One', 'Two']) {
+    expect(extras?.[`source${source}Author`] === 'asian3dmodel',
+      `optimized traffic GLB source ${source} author is missing`);
+    expect(extras?.[`source${source}License`] === 'CC-BY-4.0',
+      `optimized traffic GLB source ${source} license is missing`);
+    expect(/^https:\/\/sketchfab\.com\/3d-models\//u.test(extras?.[`source${source}Url`] || ''),
+      `optimized traffic GLB source ${source} URL is missing`);
   }
 });
 

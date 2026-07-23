@@ -314,6 +314,13 @@ exact production prompt and chroma-key conversion notes are recorded in
   and
   [Pack Traffic Bussid Part 2](https://sketchfab.com/3d-models/pack-traffic-bussid-part-2-6a55c5170f6c4cafbdad2a042aeef4fd).
   Both source URLs and the license are also embedded in the derived GLB.
+- `assets/racing/models/arena-traffic-kit-runtime-v2.glb` is the production
+  runtime derivative of that preserved v1 kit. It reduces 15,025 source
+  triangles to 6,729, caps embedded texture edges at 512 px, and is generated
+  reproducibly with
+  `blender --background --python tools/optimize-monster-runtime-assets.py`.
+  It retains the v1 kit's CC BY 4.0 source attribution and does not replace or
+  modify the source file.
 
 The user-supplied Sketchfab audience is now also represented by
 `assets/racing/monster-arena/models/arena-audience-bank-v1.glb`, an optimized

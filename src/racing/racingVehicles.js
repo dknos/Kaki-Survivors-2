@@ -1023,6 +1023,67 @@ export function buildMonsterTruckVisual(options = {}) {
   };
 }
 
+function _styleAuthoredMonsterMaterial(material, vehicleId) {
+  if (!material?.color) return;
+  const name = material.name || '';
+  if (vehicleId === 'cyber') {
+    if (name === 'BODY') {
+      material.color.setHex(0x526b7d);
+      material.metalness = 0.72;
+      material.roughness = 0.3;
+    } else if (name === 'GLASS') {
+      material.color.setHex(0x123848);
+      material.metalness = 0.12;
+      material.roughness = 0.14;
+    } else if (name === 'BAMPERS' || name === 'Kaki_Underbody') {
+      material.color.setHex(0x111827);
+      material.metalness = 0.58;
+      material.roughness = 0.42;
+    } else if (name === 'Kaki_Stainless') {
+      material.color.setHex(0x71899a);
+      material.metalness = 0.8;
+      material.roughness = 0.26;
+    } else if (name === 'LIGHT' || name === 'Kaki_Cyan_Light') {
+      material.color.setHex(0x59e9ff);
+      material.emissive?.setHex(0x0e8096);
+      material.emissiveIntensity = 1.15;
+    } else if (name === 'BACK LIGHT' || name === 'Kaki_Pink_Light') {
+      material.color.setHex(0xff3979);
+      material.emissive?.setHex(0x8f103e);
+      material.emissiveIntensity = 1.1;
+    }
+  } else {
+    if (name === 'Meowster Candy Magenta') {
+      material.color.setHex(0xc02c82);
+      material.metalness = 0.24;
+      material.roughness = 0.37;
+    } else if (name === 'Meowster Warm Cream') {
+      material.color.setHex(0xf1b979);
+      material.metalness = 0.06;
+      material.roughness = 0.5;
+    } else if (name === 'Meowster Deep Violet') {
+      material.color.setHex(0x401762);
+      material.metalness = 0.18;
+      material.roughness = 0.42;
+    } else if (name === 'Meowster Chassis') {
+      material.color.setHex(0x171423);
+      material.metalness = 0.66;
+      material.roughness = 0.38;
+    } else if (name === 'Meowster Cyan Glass') {
+      material.color.setHex(0x123f52);
+      material.metalness = 0.08;
+      material.roughness = 0.16;
+    } else if (name === 'Meowster Cyan Light') {
+      material.emissive?.setHex(0x087f94);
+      material.emissiveIntensity = 1.1;
+    } else if (name === 'Meowster Rose Light') {
+      material.emissive?.setHex(0x8f103f);
+      material.emissiveIntensity = 1.05;
+    }
+  }
+  material.needsUpdate = true;
+}
+
 /**
  * Mighty Meowster keeps the proven running gear and swaps only its authored
  * body. This preserves tire/suspension truth while removing the last hero
@@ -1048,6 +1109,7 @@ export function buildMightyMeowsterVisual(options = {}) {
     ...visual.flames,
     ...visual.suspension,
     ...visual.exhausts,
+    ...visual.decalPanels,
     visual.driver,
     visual.driverShadowProxy,
   ].filter(Boolean));
@@ -1080,12 +1142,14 @@ export function attachMightyMeowsterModel(visual, gltf, owned = {}) {
     if (Array.isArray(object.material)) {
       object.material = object.material.map((material) => {
         const copy = material.clone();
+        _styleAuthoredMonsterMaterial(copy, 'meowster');
         copy.userData.raceOwned = true;
         owned.materials?.add?.(copy);
         return copy;
       });
     } else if (object.material) {
       object.material = object.material.clone();
+      _styleAuthoredMonsterMaterial(object.material, 'meowster');
       object.material.userData.raceOwned = true;
       owned.materials?.add?.(object.material);
     }
@@ -1144,6 +1208,7 @@ export function buildCyberTruckVisual(options = {}) {
     ...visual.flames,
     ...visual.suspension,
     ...visual.exhausts,
+    ...visual.decalPanels,
     visual.driver,
     visual.driverShadowProxy,
   ].filter(Boolean));
@@ -1176,12 +1241,14 @@ export function attachCyberTruckModel(visual, gltf, owned = {}) {
     if (Array.isArray(object.material)) {
       object.material = object.material.map((material) => {
         const copy = material.clone();
+        _styleAuthoredMonsterMaterial(copy, 'cyber');
         copy.userData.raceOwned = true;
         owned.materials?.add?.(copy);
         return copy;
       });
     } else if (object.material) {
       object.material = object.material.clone();
+      _styleAuthoredMonsterMaterial(object.material, 'cyber');
       object.material.userData.raceOwned = true;
       owned.materials?.add?.(object.material);
     }

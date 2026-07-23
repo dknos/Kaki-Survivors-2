@@ -531,6 +531,174 @@
           "src/ui.js:8131"
         ]
       }
+    },
+    {
+      "species": "spider",
+      "filePath": "assets/breakroom/Spider.glb",
+      "fileBytes": 126412,
+      "sha256": "c04a05bfc3dacacbd72bf4f188630b92feefb6e9bc00d4de24ca92acaf19eac9",
+      "triangleCount": 2710,
+      "meshCount": 1,
+      "meshNodeCount": 1,
+      "primitiveCount": 2,
+      "materialCount": 2,
+      "usedMaterialCount": 2,
+      "nodeCount": 40,
+      "nodeHierarchy": [
+        "Root",
+        "  Body",
+        "    FrontLeg.L",
+        "      FrontLeg2.L",
+        "        FrontLeg3.L",
+        "    MidFrontLeg.L",
+        "      MidFrontLeg2.L",
+        "        MidFrontLeg3.L",
+        "    BackLeg.L",
+        "      BackLeg2.L",
+        "        BackLeg3.L",
+        "    MidBackLeg.L",
+        "      MidBackLeg2.L",
+        "        MidBackLeg3.L",
+        "    FrontLeg.R",
+        "      FrontLeg2.R",
+        "        FrontLeg3.R",
+        "    MidFrontLeg.R",
+        "      MidFrontLeg2.R",
+        "        MidFrontLeg3.R",
+        "    BackLeg.R",
+        "      BackLeg2.R",
+        "        BackLeg3.R",
+        "    MidBackLeg.R",
+        "      MidBackLeg2.R",
+        "        MidBackLeg3.R",
+        "    Abdomen",
+        "    Thorax",
+        "      Head",
+        "  PoleTarget.L",
+        "  FrontFoot.L",
+        "  MidFrontFoot.L",
+        "  BackFoot.L",
+        "  MidBackFoot.L",
+        "  PoleTarget.R",
+        "  FrontFoot2.R",
+        "  MidFrontFoot.R",
+        "  BackFoot.R",
+        "  MidBackFoot.R",
+        "Cube [mesh:0, skin:0]"
+      ],
+      "skinCount": 1,
+      "boneCount": 39,
+      "morphTargetCount": 0,
+      "morphMeshes": [],
+      "animationClips": [
+        {
+          "name": "SpiderArmature|Spider_Attack",
+          "durationSeconds": 0.75,
+          "channels": 37,
+          "targetPaths": [
+            "translation",
+            "rotation"
+          ]
+        },
+        {
+          "name": "SpiderArmature|Spider_Death",
+          "durationSeconds": 1.041667,
+          "channels": 37,
+          "targetPaths": [
+            "translation",
+            "rotation"
+          ]
+        },
+        {
+          "name": "SpiderArmature|Spider_Idle",
+          "durationSeconds": 4.166667,
+          "channels": 34,
+          "targetPaths": [
+            "translation",
+            "rotation"
+          ]
+        },
+        {
+          "name": "SpiderArmature|Spider_Jump",
+          "durationSeconds": 0.708333,
+          "channels": 36,
+          "targetPaths": [
+            "translation",
+            "rotation"
+          ]
+        },
+        {
+          "name": "SpiderArmature|Spider_Walk",
+          "durationSeconds": 0.833333,
+          "channels": 36,
+          "targetPaths": [
+            "translation",
+            "rotation"
+          ]
+        }
+      ],
+      "namedComponents": {
+        "limbs": [
+          "FrontLeg.L",
+          "FrontLeg2.L",
+          "FrontLeg3.L",
+          "MidFrontLeg.L",
+          "MidFrontLeg2.L",
+          "MidFrontLeg3.L",
+          "BackLeg.L",
+          "BackLeg2.L",
+          "BackLeg3.L",
+          "MidBackLeg.L",
+          "MidBackLeg2.L",
+          "MidBackLeg3.L",
+          "FrontLeg.R",
+          "FrontLeg2.R",
+          "FrontLeg3.R",
+          "MidFrontLeg.R",
+          "MidFrontLeg2.R",
+          "MidFrontLeg3.R",
+          "BackLeg.R",
+          "BackLeg2.R",
+          "BackLeg3.R",
+          "MidBackLeg.R",
+          "MidBackLeg2.R",
+          "MidBackLeg3.R",
+          "FrontFoot.L",
+          "MidFrontFoot.L",
+          "BackFoot.L",
+          "MidBackFoot.L",
+          "FrontFoot2.R",
+          "MidFrontFoot.R",
+          "BackFoot.R",
+          "MidBackFoot.R"
+        ],
+        "wings": [],
+        "antennae": [],
+        "shell": [],
+        "head": [
+          "Head"
+        ],
+        "bodySections": [
+          "Body",
+          "Abdomen",
+          "Thorax"
+        ]
+      },
+      "structure": {
+        "hasUsableClip": true,
+        "hasSeparateRigidComponents": false,
+        "fusedStaticMesh": false,
+        "selectedAuthoringPath": "sample-source-clip"
+      },
+      "attribution": {
+        "author": "Quaternius",
+        "license": "CC0",
+        "source": "Quaternius Ultimate Monsters bundle",
+        "recordedIn": [
+          "README.md:113",
+          "src/ui.js:8130"
+        ]
+      }
     }
   ]
 }

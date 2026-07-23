@@ -28,7 +28,7 @@ const title = document.querySelector('#title');
 const legend = document.querySelector('#legend');
 const species = [
   'ant', 'beetle', 'ladybug', 'grasshopper', 'cockroach',
-  'mantis', 'wasp', 'bee', 'butterfly', 'caterpillar',
+  'mantis', 'wasp', 'bee', 'butterfly', 'caterpillar', 'spider',
 ];
 const probe = {
   status: 'booting',
@@ -98,8 +98,8 @@ function buildOverview() {
   legend.textContent = 'V1 remains available as fallback · v2 uses one shared page and deterministic numeric states';
   const firstX = -14.4;
   const columnStep = 3.2;
-  const firstY = 8.55;
-  const rowStep = 1.9;
+  const firstY = 8.85;
+  const rowStep = 1.72;
   for (let speciesId = 0; speciesId < species.length; speciesId++) {
     const y = firstY - speciesId * rowStep;
     const oldX = firstX;
@@ -284,7 +284,7 @@ async function benchmark(options = {}) {
   renderOnce();
   const atlas = atlasMode === 'v1'
     ? { width: 4 * 128, height: 23 * 128, mipmaps: false }
-    : { width: 20 * 128, height: 18 * 128, mipmaps: true };
+    : { width: 20 * 112, height: 20 * 112, mipmaps: true };
   const baseBytes = atlas.width * atlas.height * 4;
   const textureBytes = Math.round(baseBytes * (atlas.mipmaps ? 4 / 3 : 1));
   const meanFrameMs = frameTimes.reduce((sum, value) => sum + value, 0) / frameTimes.length;

@@ -15,7 +15,10 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { DRACOLoader } from 'three/addons/loaders/DRACOLoader.js';
 
-const CELL = 128;
+// 112 px remains comfortably above the 20-50 px gameplay footprint while
+// leaving room for the directional Spider addition under the 32 MiB
+// uncompressed+mipmap budget (20x20 cells = 26.8 MiB).
+const CELL = 112;
 const GUTTER = 3;
 const DILATION = 2;
 const CONTENT = CELL - GUTTER * 2;
@@ -44,16 +47,20 @@ const STATE_DEFS = Object.freeze([
 const D = '/assets/source/enemy-animation/forest-v2/';
 const B = '/assets/breakroom/';
 const ROSTER = Object.freeze([
-  { id: 0, name: 'ant', path: D + 'ant-authored.glb', source: B + 'Ant.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 1, moveFps: 15, nominalSpeed: 3.8, rateMin: 0.55, rateMax: 1.7, faceYaw: 0, authoring: 'morph' },
-  { id: 1, name: 'beetle', path: D + 'beetle-authored.glb', source: B + 'Beetle.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 2, moveFps: 8, nominalSpeed: 1.9, rateMin: 0.45, rateMax: 1.45, faceYaw: 0, authoring: 'morph' },
-  { id: 2, name: 'ladybug', path: D + 'ladybug-authored.glb', source: B + 'Ladybug.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 3, moveFps: 10, nominalSpeed: 2.4, rateMin: 0.5, rateMax: 1.55, faceYaw: 0, authoring: 'morph' },
-  { id: 3, name: 'grasshopper', path: D + 'grasshopper-authored.glb', source: B + 'Grasshopper.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 4, moveFps: 8, nominalSpeed: 4.4, rateMin: 0.4, rateMax: 1.6, faceYaw: -Math.PI / 2, authoring: 'morph' },
-  { id: 4, name: 'cockroach', path: D + 'cockroach-authored.glb', source: B + 'Cockroach.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 5, moveFps: 16, nominalSpeed: 4.8, rateMin: 0.6, rateMax: 1.8, faceYaw: 0, authoring: 'morph' },
-  { id: 5, name: 'mantis', path: D + 'mantis-authored.glb', source: B + 'Mantis.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 6, moveFps: 7, nominalSpeed: 2.0, rateMin: 0.4, rateMax: 1.45, faceYaw: 0, authoring: 'morph' },
-  { id: 6, name: 'wasp', path: B + 'Wasp.glb', source: B + 'Wasp.glb', author: 'Quaternius', license: 'CC0', sourceSite: 'Ultimate Monsters bundle', motionKind: 7, moveFps: 18, nominalSpeed: 2.8, rateMin: 0.7, rateMax: 1.8, faceYaw: -Math.PI / 2, authoring: 'clip', clips: { move: 'Wasp_Flying', attack: 'Wasp_Attack', death: 'Wasp_Death' } },
-  { id: 7, name: 'bee', path: D + 'bee-authored.glb', source: B + 'Bee.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 8, moveFps: 18, nominalSpeed: 2.8, rateMin: 0.7, rateMax: 1.75, faceYaw: -Math.PI / 2, authoring: 'rigid' },
-  { id: 8, name: 'butterfly', path: D + 'butterfly-authored.glb', source: B + 'Butterfly.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 9, moveFps: 8, nominalSpeed: 2.6, rateMin: 0.45, rateMax: 1.4, faceYaw: 0, authoring: 'morph' },
-  { id: 9, name: 'caterpillar', path: D + 'caterpillar-authored.glb', source: B + 'Caterpillar.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 10, moveFps: 7, nominalSpeed: 1.0, rateMin: 0.4, rateMax: 1.45, faceYaw: 0, authoring: 'morph' },
+  { id: 0, name: 'ant', path: D + 'ant-authored.glb', source: B + 'Ant.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 1, moveFps: 15, nominalSpeed: 3.8, rateMin: 0.55, rateMax: 1.7, faceYaw: 0, authoring: 'morph', grounded: true },
+  { id: 1, name: 'beetle', path: D + 'beetle-authored.glb', source: B + 'Beetle.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 2, moveFps: 8, nominalSpeed: 1.9, rateMin: 0.45, rateMax: 1.45, faceYaw: 0, authoring: 'morph', grounded: true },
+  { id: 2, name: 'ladybug', path: D + 'ladybug-authored.glb', source: B + 'Ladybug.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 3, moveFps: 10, nominalSpeed: 2.4, rateMin: 0.5, rateMax: 1.55, faceYaw: 0, authoring: 'morph', grounded: true },
+  { id: 3, name: 'grasshopper', path: D + 'grasshopper-authored.glb', source: B + 'Grasshopper.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 4, moveFps: 8, nominalSpeed: 4.4, rateMin: 0.4, rateMax: 1.6, faceYaw: -Math.PI / 2, authoring: 'morph', grounded: true },
+  { id: 4, name: 'cockroach', path: D + 'cockroach-authored.glb', source: B + 'Cockroach.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 5, moveFps: 16, nominalSpeed: 4.8, rateMin: 0.6, rateMax: 1.8, faceYaw: 0, authoring: 'morph', grounded: true },
+  { id: 5, name: 'mantis', path: D + 'mantis-authored.glb', source: B + 'Mantis.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 6, moveFps: 7, nominalSpeed: 2.0, rateMin: 0.4, rateMax: 1.45, faceYaw: 0, authoring: 'morph', grounded: true },
+  { id: 6, name: 'wasp', path: B + 'Wasp.glb', source: B + 'Wasp.glb', author: 'Quaternius', license: 'CC0', sourceSite: 'Ultimate Monsters bundle', motionKind: 7, moveFps: 18, nominalSpeed: 2.8, rateMin: 0.7, rateMax: 1.8, faceYaw: -Math.PI / 2, authoring: 'clip', clips: { move: 'Wasp_Flying', attack: 'Wasp_Attack', death: 'Wasp_Death' }, hoverPixels: 7 },
+  { id: 7, name: 'bee', path: D + 'bee-authored.glb', source: B + 'Bee.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 8, moveFps: 18, nominalSpeed: 2.8, rateMin: 0.7, rateMax: 1.75, faceYaw: -Math.PI / 2, authoring: 'rigid', hoverPixels: 7 },
+  { id: 8, name: 'butterfly', path: D + 'butterfly-authored.glb', source: B + 'Butterfly.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 9, moveFps: 8, nominalSpeed: 2.6, rateMin: 0.45, rateMax: 1.4, faceYaw: 0, authoring: 'morph', hoverPixels: 8 },
+  { id: 9, name: 'caterpillar', path: D + 'caterpillar-authored.glb', source: B + 'Caterpillar.glb', author: 'Poly by Google', license: 'CC-BY', sourceSite: 'Poly Pizza', motionKind: 10, moveFps: 7, nominalSpeed: 1.0, rateMin: 0.4, rateMax: 1.45, faceYaw: 0, authoring: 'morph', grounded: true },
+  // Spider's red face markers establish glTF +Z as forward. Keep it on the
+  // common Forest axis: a quarter-turn offset makes its toward/right rows
+  // diagonal/front-facing and reads as backward motion in gameplay.
+  { id: 10, name: 'spider', path: B + 'Spider.glb', source: B + 'Spider.glb', author: 'Quaternius', license: 'CC0', sourceSite: 'Ultimate Monsters bundle', motionKind: 11, moveFps: 12, nominalSpeed: 4.2, rateMin: 0.55, rateMax: 1.75, faceYaw: 0, authoring: 'clip', clips: { move: 'Spider_Walk', attack: 'Spider_Attack', death: 'Spider_Death' }, grounded: true },
 ]);
 
 const draco = new DRACOLoader();
@@ -94,10 +101,19 @@ function prepareMaterials(model, def) {
       if ('roughness' in material) material.roughness = Math.max(0.76, material.roughness ?? 0.76);
       if ('metalness' in material) material.metalness = Math.min(0.08, material.metalness ?? 0.08);
       if ('emissiveIntensity' in material) material.emissiveIntensity = 0;
-      if (material.color && ['ant', 'beetle', 'cockroach'].includes(def.name)) {
+      if (material.color && def.name === 'ant') {
+        // The source ant is almost mathematically black. The previous generic
+        // HSL floor over-corrected it into a pale pink/white plastic toy.
+        // Two restrained burgundy values preserve its authored segmentation
+        // while remaining legible against Forest grass.
+        material.color.setHex(/8/.test(material.name) ? 0x49232d : 0x8a3b4d);
+      } else if (material.color && def.name === 'spider') {
+        const isRedMarking = material.color.r > material.color.g * 2.2;
+        material.color.setHex(isRedMarking ? 0xa92b35 : 0x303341);
+      } else if (material.color && ['beetle', 'cockroach'].includes(def.name)) {
         const hsl = { h: 0, s: 0, l: 0 };
         material.color.getHSL(hsl);
-        if (hsl.l < 0.24) material.color.setHSL(hsl.h, hsl.s, 0.24);
+        if (hsl.l < 0.12) material.color.setHSL(hsl.h, Math.max(0.28, hsl.s), 0.12);
       }
       if (material.transparent) material.side = THREE.DoubleSide;
       material.toneMapped = true;
@@ -147,7 +163,7 @@ function frameModel(model) {
   model.position.y += size.y * 0.5;
   model.updateMatrixWorld(true);
   captureBaseTransforms(model);
-  const maxDim = Math.max(size.x, size.y, size.z) * 1.28;
+  const maxDim = Math.max(size.x, size.y, size.z) * 1.12;
   const half = maxDim * 0.5;
   const camera = new THREE.OrthographicCamera(-half, half, half, -half, 0.01, 200);
   const elevation = Math.atan2(60, Math.hypot(40, 40));
@@ -291,11 +307,61 @@ function dilateStableEdges(context) {
   context.putImageData(image, 0, 0);
 }
 
-function drawDownsampled(renderer, atlasContext, frameCanvas, frameContext, frameIndex) {
+function opaqueBounds(context) {
+  const image = context.getImageData(0, 0, CELL, CELL);
+  let minY = CELL;
+  let maxY = -1;
+  for (let y = 0; y < CELL; y++) {
+    for (let x = 0; x < CELL; x++) {
+      if (image.data[(y * CELL + x) * 4 + 3] < 128) continue;
+      minY = Math.min(minY, y);
+      maxY = Math.max(maxY, y);
+    }
+  }
+  return { minY, maxY };
+}
+
+function shiftFrameY(context, offsetY) {
+  if (!offsetY) return;
+  const image = context.getImageData(0, 0, CELL, CELL);
+  context.clearRect(0, 0, CELL, CELL);
+  context.putImageData(image, 0, offsetY);
+}
+
+function gradeDarkGroundSpecies(context, speciesName) {
+  if (!['beetle', 'cockroach', 'spider'].includes(speciesName)) return;
+  const image = context.getImageData(0, 0, CELL, CELL);
+  const cool = speciesName === 'spider';
+  for (let index = 0; index < image.data.length; index += 4) {
+    if (image.data[index + 3] < 32) continue;
+    const red = image.data[index];
+    const green = image.data[index + 1];
+    const blue = image.data[index + 2];
+    // Keep the spider's red face markings saturated while lifting only the
+    // charcoal body. Beetle/roach receive a warm reflected-ground fill.
+    if (cool && red > green * 1.75 && red > blue * 1.45) continue;
+    const luminance = red * 0.2126 + green * 0.7152 + blue * 0.0722;
+    const lift = Math.max(0, Math.min(1, (105 - luminance) / 105));
+    image.data[index] = Math.min(255, red + lift * (cool ? 20 : 40));
+    image.data[index + 1] = Math.min(255, green + lift * (cool ? 22 : 24));
+    image.data[index + 2] = Math.min(255, blue + lift * (cool ? 30 : 12));
+  }
+  context.putImageData(image, 0, 0);
+}
+
+function drawDownsampled(renderer, atlasContext, frameCanvas, frameContext, frameIndex, record, state, direction, pose) {
   frameContext.clearRect(0, 0, CELL, CELL);
   frameContext.imageSmoothingEnabled = true;
   frameContext.imageSmoothingQuality = 'high';
   frameContext.drawImage(renderer.domElement, 0, 0, INTERNAL, INTERNAL, GUTTER, GUTTER, CONTENT, CONTENT);
+  const bounds = opaqueBounds(frameContext);
+  if (bounds.maxY < 0) throw new Error(`${record.def.name}: rendered an empty frame`);
+  if (state.id === 0 && pose === 0) record.baselineBottom[direction.id] = bounds.maxY;
+  const baselineBottom = record.baselineBottom[direction.id];
+  if (!Number.isFinite(baselineBottom)) throw new Error(`${record.def.name}: missing direction baseline`);
+  const targetBottom = CELL - GUTTER - 2 - (record.def.hoverPixels || 0);
+  shiftFrameY(frameContext, targetBottom - baselineBottom);
+  gradeDarkGroundSpecies(frameContext, record.def.name);
   dilateStableEdges(frameContext);
   const col = frameIndex % COLS;
   const row = Math.floor(frameIndex / COLS);
@@ -307,7 +373,10 @@ async function loadRecord(def) {
   const model = gltf.scene;
   prepareMaterials(model, def);
   const { camera, size } = frameModel(model);
-  const record = { def, gltf, model, camera, size, scene: createScene(model), mixer: null, rigidWing: null, rigidBodies: [] };
+  const record = {
+    def, gltf, model, camera, size, scene: createScene(model),
+    mixer: null, rigidWing: null, rigidBodies: [], baselineBottom: [],
+  };
   if (def.authoring === 'clip') record.mixer = new THREE.AnimationMixer(model);
   if (def.authoring === 'rigid') {
     model.traverse((object) => {
@@ -370,7 +439,7 @@ function disposeRecord(record) {
         for (let pose = 0; pose < state.frames; pose++) {
           setPose(record, state, pose, direction);
           renderer.render(record.scene, record.camera);
-          drawDownsampled(renderer, atlasContext, frameCanvas, frameContext, frameIndex++);
+          drawDownsampled(renderer, atlasContext, frameCanvas, frameContext, frameIndex++, record, state, direction, pose);
         }
         directionRecords.push({ id: direction.id, page: 0, from, to: frameIndex - 1, mirror: false });
       }
