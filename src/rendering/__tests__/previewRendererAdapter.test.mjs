@@ -68,6 +68,7 @@ test('prefers the injected WebGPURenderer and blocks frames until init resolves'
   const adapter = createPreviewRendererAdapter({
     THREE: { WebGPURenderer: FakeWebGPURenderer },
     mount,
+    preferredBackend: 'webgpu',
     rendererOptions: { alpha: true },
     canvasClassName: 'preview-canvas',
     canvasStyle: 'position:absolute',
@@ -94,7 +95,7 @@ test('prefers the injected WebGPURenderer and blocks frames until init resolves'
   assert.deepEqual(adapter.getDiagnostics(), {
     state: 'ready',
     backend: 'webgpu',
-    requestedBackend: 'auto',
+    requestedBackend: 'webgpu',
     rendererType: 'webgpu-renderer',
     initialized: true,
     destroyed: false,

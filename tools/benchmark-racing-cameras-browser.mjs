@@ -15,6 +15,9 @@ const ORIGIN = `http://127.0.0.1:${PORT}`;
 const BACKEND = /^(?:webgpu|webgl)$/.test(process.env.BACKEND || '') ? process.env.BACKEND : 'webgl';
 const QA_SCENE = /^[a-z0-9-]+$/.test(process.env.SCENE || '') ? process.env.SCENE : 'monster-smash';
 const FRAMES = Math.max(1, Number(process.env.FRAMES || 180));
+const WIDTH = Math.max(640, Number(process.env.WIDTH || 1280));
+const HEIGHT = Math.max(360, Number(process.env.HEIGHT || 720));
+const DPR = Math.max(1, Number(process.env.DPR || 1));
 const CAMERA_MODES = String(process.env.MODES || 'isometric,chase,driver_fpv')
   .split(',')
   .filter((mode) => ['isometric', 'chase', 'driver_fpv'].includes(mode));
@@ -81,7 +84,10 @@ try {
       ? ['--no-sandbox', '--disable-dev-shm-usage', '--enable-unsafe-webgpu', '--use-angle=vulkan', '--enable-features=Vulkan,VulkanFromANGLE,DefaultANGLEVulkan']
       : ['--no-sandbox', '--disable-dev-shm-usage', '--use-gl=swiftshader', '--enable-webgl', '--ignore-gpu-blocklist'],
   });
-  const context = await browser.newContext({ viewport: { width: 1280, height: 720 } });
+  const context = await browser.newContext({
+    viewport: { width: WIDTH, height: HEIGHT },
+    deviceScaleFactor: DPR,
+  });
   const page = await context.newPage();
   await page.route(/fonts\.(?:googleapis|gstatic)\.com/, (route) => route.fulfill({ status: 204, body: '' }));
   await page.addInitScript(() => {
@@ -139,12 +145,32 @@ try {
         frameDeltas.push(now - previous);
         previous = now;
         if (frameDeltas.length >= frameCount) {
+          const root = window.kkState?.racing?.root || null;
+          const groups = new Map();
+          root?.traverse?.((node) => {
+            if (!node.isMesh || !node.geometry || !node.visible) return;
+            let branch = node;
+            while (branch.parent && branch.parent !== root) branch = branch.parent;
+            const key = branch.name || branch.type || '(unnamed)';
+            const elements = node.geometry.index?.count
+              || node.geometry.attributes?.position?.count
+              || 0;
+            const instances = node.isInstancedMesh ? node.count : 1;
+            const previous = groups.get(key) || { meshes: 0, triangles: 0 };
+            previous.meshes += 1;
+            previous.triangles += Math.floor(elements / 3) * instances;
+            groups.set(key, previous);
+          });
           resolve({
             durations: [...probe.durations],
             frameDeltas,
             raycasts: probe.raycasts,
             collision: window.__kkRacing.snapshot().camera.collision || null,
             render: window.__kkRendererService?.getDiagnostics?.() || null,
+            breakdown: [...groups.entries()]
+              .map(([name, value]) => ({ name, ...value }))
+              .sort((a, b) => b.triangles - a.triangles)
+              .slice(0, 20),
           });
         } else requestAnimationFrame(step);
       };
@@ -159,12 +185,20 @@ try {
       collision: measured.collision,
       drawCalls: measured.render?.drawCalls ?? null,
       triangles: measured.render?.triangles ?? null,
+      rendererFps: measured.render?.fps ?? null,
+      resolution: measured.render?.resolution ?? null,
+      dynamicResolutionScale: measured.render?.dynamicResolutionScale ?? null,
+      gpuMemoryBytes: measured.render?.gpuMemoryBytes ?? null,
+      renderTargets: measured.render?.renderTargets ?? null,
+      breakdown: measured.breakdown,
     });
   }
   console.log(JSON.stringify({
     backend: actualBackend,
     scene: QA_SCENE,
     assetTier: MONSTER_ASSETS || 'performance',
+    viewport: [WIDTH, HEIGHT],
+    dpr: DPR,
     frames: FRAMES,
     startup,
     rows,

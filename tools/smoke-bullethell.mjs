@@ -213,6 +213,7 @@ async function exitAudit(page) {
       notice: document.querySelectorAll('#kk-bh-notice').length,
       rewardLabels: document.querySelectorAll('.kk-bh-reward-label').length,
       envY: s.envGroup ? s.envGroup.position.y : null,
+      envVisible: s.envGroup ? s.envGroup.visible : null,
       groundVisible: ground ? ground.visible : null,
       bgRestored: !original || s.scene.background === original.bg,
       fogRestored: !original || s.scene.fog === original.fog,
@@ -231,6 +232,7 @@ function assertExit(a, failures, label, expectedMode) {
     failures.push(`${label}: owned DOM leaked (hud=${a.hud}, flash=${a.flash}, notice=${a.notice}, labels=${a.rewardLabels})`);
   }
   if (a.envY !== null && Math.abs(a.envY) > 1e-6) failures.push(`${label}: envGroup remained parked at y=${a.envY}`);
+  if (a.envVisible === false) failures.push(`${label}: overworld environment remained hidden`);
   if (a.groundVisible === false) failures.push(`${label}: overworld ground remained hidden`);
   if (!a.bgRestored || !a.fogRestored) failures.push(`${label}: scene background/fog not restored`);
   if (a.remoteAnchors > 0) failures.push(`${label}: ${a.remoteAnchors} visible scene objects remain near Bullet Hell arena`);
@@ -240,6 +242,7 @@ function assertExit(a, failures, label, expectedMode) {
 async function runDesktop(browser, failures, telemetry) {
   const ctx = await browser.newContext({ viewport: { width: 1280, height: 720 } });
   const page = await ctx.newPage();
+  await page.route(/fonts\.(?:googleapis|gstatic)\.com/, (route) => route.fulfill({ status: 204, body: '' }));
   instrumentPage(page, telemetry);
 
   try {
@@ -272,13 +275,13 @@ async function runDesktop(browser, failures, telemetry) {
         active: !!window.__kkBh?.active,
         hero: [s.hero.pos.x, s.hero.pos.z],
         envY: s.envGroup ? s.envGroup.position.y : null,
+        envVisible: s.envGroup ? s.envGroup.visible : null,
         groundVisible: ground ? ground.visible : null,
       };
     });
     if (entry.mode !== 'bullethell' || !entry.active) failures.push(`entry invalid: ${JSON.stringify(entry)}`);
     if (Math.hypot(entry.hero[0] - 480, entry.hero[1] - 480) > 0.01) failures.push(`entry hero not centered: [${entry.hero}]`);
-    if (entry.envY !== null && entry.envY > -199) failures.push(`entry env not parked: y=${entry.envY}`);
-    if (entry.groundVisible !== false) failures.push(`entry overworld ground was not hidden (${entry.groundVisible})`);
+    if (entry.envVisible !== null && entry.envVisible !== false) failures.push(`entry overworld environment remained renderable`);
 
     const desktopLayout = await compactAudit(page, false);
     assertCompact(desktopLayout, failures, 'desktop entry');
@@ -297,10 +300,21 @@ async function runDesktop(browser, failures, telemetry) {
       // without turning the smoke into a frame-rate benchmark.
       if (b.liveBulletCount() < 1 && foes[0]) foes[0].def.fire(foes[0]);
       const peakBullets = b.liveBulletCount();
+      let heroTriangles = 0;
+      window.kkState.hero.mesh?.traverse?.((node) => {
+        if (!node.isMesh || !node.geometry) return;
+        const geometry = node.geometry;
+        const elements = geometry.index?.count || geometry.attributes?.position?.count || 0;
+        const instances = node.isInstancedMesh ? node.count : 1;
+        heroTriangles += Math.floor(elements / 3) * instances;
+      });
+      const render = window.__kkRendererService?.getDiagnostics?.() || null;
       return {
         wave: window.__kkBh.wave,
         foes: foes.length,
         bullets: peakBullets,
+        heroTriangles,
+        render: render ? { drawCalls: render.drawCalls, triangles: render.triangles } : null,
         sprites: foes.filter((f) => f.isSprite).map((f) => {
           const image = f.bodyMat && f.bodyMat.map && f.bodyMat.map.image;
           return {
@@ -312,6 +326,9 @@ async function runDesktop(browser, failures, telemetry) {
       };
     });
     if (combat.wave !== 1 || combat.foes < 1 || combat.bullets < 1) failures.push(`wave-one combat missing: ${JSON.stringify(combat)}`);
+    if (combat.heroTriangles < 1 || combat.heroTriangles > 50_000) {
+      failures.push(`runtime hero exceeded the Bullet Hell geometry budget: ${JSON.stringify(combat)}`);
+    }
     if (!combat.sprites.length || combat.sprites.some((s) => s.width < 1 || s.height < 1)) {
       failures.push(`wave-one generated foe art unavailable: ${JSON.stringify(combat.sprites)}`);
     }
@@ -504,6 +521,7 @@ async function runMobile(browser, failures, telemetry) {
     deviceScaleFactor: 1,
   });
   const page = await ctx.newPage();
+  await page.route(/fonts\.(?:googleapis|gstatic)\.com/, (route) => route.fulfill({ status: 204, body: '' }));
   instrumentPage(page, telemetry);
   try {
     await waitForBoot(page);

@@ -1,0 +1,170 @@
+{
+  "schemaVersion": 1,
+  "generator": "tools/optimize-runtime-avatars.py",
+  "blenderVersion": "5.1.1",
+  "method": "Blender Decimate COLLAPSE with triangulated Draco output",
+  "assets": [
+    {
+      "source": "assets/breakroom/tower-castle-plain.glb",
+      "output": "assets/breakroom/runtime-avatars/tower-castle-plain.glb",
+      "sourceBytes": 14962560,
+      "outputBytes": 909768,
+      "sourceTriangles": 400502,
+      "runtimeTriangles": 36000,
+      "targetTriangles": 36000,
+      "reductionPercent": 91.01,
+      "sourceSha256": "0d307f9c2f2d0ac1dce1b9cbf5e952c24c3863fdc63c259d220a04a0a202bd8e",
+      "outputSha256": "778017e0bd0c2b2dfef220a68ff27ac378f6c9bec7372106f4ececac78b8eb7e"
+    },
+    {
+      "source": "assets/breakroom/sote.glb",
+      "output": "assets/breakroom/runtime-avatars/sote.glb",
+      "sourceBytes": 1291700,
+      "outputBytes": 402788,
+      "sourceTriangles": 400261,
+      "runtimeTriangles": 36000,
+      "targetTriangles": 36000,
+      "reductionPercent": 91.01,
+      "sourceSha256": "9a139e78788179782089545c2f4e63657666a0470c679dc4a082932cb4dbd686",
+      "outputSha256": "164e7b72537dffd3a519cf97d885a2f708ea58472619b90849e18dc7a583dd2f"
+    },
+    {
+      "source": "assets/breakroom/cowboykaki.glb",
+      "output": "assets/breakroom/runtime-avatars/cowboykaki.glb",
+      "sourceBytes": 1807956,
+      "outputBytes": 483220,
+      "sourceTriangles": 494239,
+      "runtimeTriangles": 40000,
+      "targetTriangles": 40000,
+      "reductionPercent": 91.91,
+      "sourceSha256": "5332a3c27c3b1ae633ee78582712e4c57332fc81f6b28c6f9181d46dad1d1720",
+      "outputSha256": "1b5536b02b89a6a95fc7021c46918f834c89494fb20b3223ad71567635bbe678"
+    },
+    {
+      "source": "assets/breakroom/pipes.glb",
+      "output": "assets/breakroom/runtime-avatars/pipes.glb",
+      "sourceBytes": 246556,
+      "outputBytes": 365800,
+      "sourceTriangles": 31704,
+      "runtimeTriangles": 31704,
+      "targetTriangles": 32000,
+      "reductionPercent": 0.0,
+      "sourceSha256": "05a417cbb67b1d0230d5093f5fb22bce90504007e88866a14aaa97eaf2823d92",
+      "outputSha256": "e31f6035b612aaf3a2dda17dcd68fc10b4be9c1b10881283f9230c3d83566b51"
+    },
+    {
+      "source": "assets/breakroom/bomdia.glb",
+      "output": "assets/breakroom/runtime-avatars/bomdia.glb",
+      "sourceBytes": 1766448,
+      "outputBytes": 458108,
+      "sourceTriangles": 486063,
+      "runtimeTriangles": 39999,
+      "targetTriangles": 40000,
+      "reductionPercent": 91.77,
+      "sourceSha256": "9bde78b32d5d77e418527865c9f49344b147b1236ca02040af91edf3afa69919",
+      "outputSha256": "dbcdc0143dcacf6e5cf0a7dd0e67ce7fa7e56a73fa4d805e4db2a2fd2a7b71df"
+    },
+    {
+      "source": "assets/breakroom/mothman.glb",
+      "output": "assets/breakroom/runtime-avatars/mothman.glb",
+      "sourceBytes": 1810784,
+      "outputBytes": 514476,
+      "sourceTriangles": 470350,
+      "runtimeTriangles": 40000,
+      "targetTriangles": 40000,
+      "reductionPercent": 91.5,
+      "sourceSha256": "02ccb798fddba168848a6385025f991bf22aaa9c48a166f69e3186bae0b65c0f",
+      "outputSha256": "14e09946ed70cd9d835f8cdfff8dcc10b6922d9f991e4539a2fd91215f9378de"
+    },
+    {
+      "source": "assets/breakroom/camper.glb",
+      "output": "assets/breakroom/runtime-avatars/camper.glb",
+      "sourceBytes": 1741628,
+      "outputBytes": 462704,
+      "sourceTriangles": 482684,
+      "runtimeTriangles": 39999,
+      "targetTriangles": 40000,
+      "reductionPercent": 91.71,
+      "sourceSha256": "fddc493c9eb44b8252a53b1768f6f516f4255818e9f8d41660eeb4a94c94a4ba",
+      "outputSha256": "a3ce0bcfcba0f58e0c0d9595caa4fed3b075805f80ecb2fa9d7b15525a53c52b"
+    },
+    {
+      "source": "assets/breakroom/spacekitty.glb",
+      "output": "assets/breakroom/runtime-avatars/spacekitty.glb",
+      "sourceBytes": 1805116,
+      "outputBytes": 435600,
+      "sourceTriangles": 501450,
+      "runtimeTriangles": 40000,
+      "targetTriangles": 40000,
+      "reductionPercent": 92.02,
+      "sourceSha256": "e46afd57c86d164dd3db0a59da902185b3a1c0c81dcb8ba7fc5e30885771cf02",
+      "outputSha256": "013ccf923e08a58cc2a0acd04978c33aa25e02ab95c3f330b8ac56322dc546c7"
+    },
+    {
+      "source": "assets/breakroom/radcat.glb",
+      "output": "assets/breakroom/runtime-avatars/radcat.glb",
+      "sourceBytes": 1649104,
+      "outputBytes": 478672,
+      "sourceTriangles": 449996,
+      "runtimeTriangles": 39999,
+      "targetTriangles": 40000,
+      "reductionPercent": 91.11,
+      "sourceSha256": "c8432a5eee8ac2ebcc68d41ae9c33ae4f1c385f2cb200371d5d7da09f506da30",
+      "outputSha256": "50b741d735eff2363b5a6c6f6c1d36e3ae7b041b6f4a88c213639f1f8e538cf5"
+    },
+    {
+      "source": "assets/breakroom/mona.glb",
+      "output": "assets/breakroom/runtime-avatars/mona.glb",
+      "sourceBytes": 2231968,
+      "outputBytes": 544612,
+      "sourceTriangles": 580117,
+      "runtimeTriangles": 40000,
+      "targetTriangles": 40000,
+      "reductionPercent": 93.1,
+      "sourceSha256": "cafdda7b2218d7beab88911e23710e5f40eca229b63b48cc03caa22ab28da34e",
+      "outputSha256": "d7b44a723ece0a76618e84a2561b202d43e4216aa4e597567d9a6e95fe2b4689"
+    },
+    {
+      "source": "assets/breakroom/bezelbug.glb",
+      "output": "assets/breakroom/runtime-avatars/bezelbug.glb",
+      "sourceBytes": 2302480,
+      "outputBytes": 632436,
+      "sourceTriangles": 577005,
+      "runtimeTriangles": 40000,
+      "targetTriangles": 40000,
+      "reductionPercent": 93.07,
+      "sourceSha256": "4c91c0ac357f90c4d808786198ede1e9c34644a40da7762cbd648a8a8c88fa9a",
+      "outputSha256": "5973bdc22d7ea41f51f1e8c20bd1dcccb702133711e7bfd5af54943e05107bdc"
+    },
+    {
+      "source": "assets/breakroom/rockerkaki.glb",
+      "output": "assets/breakroom/runtime-avatars/rockerkaki.glb",
+      "sourceBytes": 2079928,
+      "outputBytes": 512464,
+      "sourceTriangles": 561393,
+      "runtimeTriangles": 40000,
+      "targetTriangles": 40000,
+      "reductionPercent": 92.87,
+      "sourceSha256": "8477227784ae7cf4f4683b4561be34b7d2f09c1d8e5dbca8b8acec0fe257c2ed",
+      "outputSha256": "9fbf425a3d7afd2fb910acdc9faa25e7dc95cbc5b09b7288e7922073533948fe"
+    },
+    {
+      "source": "assets/breakroom/borgirboss.glb",
+      "output": "assets/breakroom/runtime-avatars/borgirboss.glb",
+      "sourceBytes": 2764764,
+      "outputBytes": 701384,
+      "sourceTriangles": 733132,
+      "runtimeTriangles": 48000,
+      "targetTriangles": 48000,
+      "reductionPercent": 93.45,
+      "sourceSha256": "4330d377d12b75d26190de85a621ffe2e5b7dc4e64afccaaec53952668b70da8",
+      "outputSha256": "56e562d07c5a2fb1fe8e50e82892f141e1f3e6395036b123386e6c0d91584555"
+    }
+  ],
+  "totals": {
+    "sourceTriangles": 6168896,
+    "runtimeTriangles": 511701,
+    "sourceBytes": 36460992,
+    "runtimeBytes": 6902032
+  }
+}

@@ -12,6 +12,15 @@ license is CC-BY (Poly by Google), the credit line goes in `src/ui.js`
 Hero, enemies, pickups, primitive props from earlier milestones. See
 `ASSETS.md` for the original drop-in list. Not duplicated here.
 
+### Runtime avatar derivatives (2026-07-22)
+
+`assets/breakroom/runtime-avatars/` contains gameplay-ready derivatives of the
+existing project avatar GLBs. The originals remain untouched beside them and
+retain their existing attribution/license records. The checked-in Blender
+script `tools/optimize-runtime-avatars.py` applies silhouette-preserving
+decimation plus Draco compression; `AVATAR_OPTIMIZATION.json` records source
+and output hashes, byte sizes, and triangle counts for all 13 models.
+
 ## Pre-existing — `assets/sprites/`
 
 - `forrest_ground_01/` — Poly Haven, CC0. Forest stage ground PBR pack

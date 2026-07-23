@@ -247,11 +247,17 @@ async function desktopRun(browser, diagnostics) {
     'Monster lease omitted production traffic, audience, environment, floor, or VFX assets',
   );
   assert(spawn.assets.error === '', `rally asset lease failed: ${spawn.assets.error}`);
-  const productionAssets = await page.evaluate(() => ({
-    backgroundMatches: window.kkState.scene.background === window.kkState.racing.assetLease.textures.monsterArenaBackdrop,
-    backdropLoaded: !!window.kkState.racing.assetLease.textures.monsterArenaBackdrop?.image,
-  }));
-  assert(productionAssets.backgroundMatches && productionAssets.backdropLoaded, 'Grok exterior did not replace the flat Monster scene background');
+  const productionAssets = await page.evaluate(() => {
+    const exterior = window.kkState.racing.monsterArenaView?.exterior;
+    return {
+      backdropLoaded: !!exterior?.backdropTexture?.image,
+      curvedBackdropVisible: !!exterior?.backdrop?.parent
+        && exterior.backdrop.visible
+        && exterior.backdropMaterial?.userData?.tslMaterialFamily === 'racing-curved-horizon',
+    };
+  });
+  assert(productionAssets.curvedBackdropVisible && productionAssets.backdropLoaded,
+    'Grok exterior did not populate the world-anchored curved horizon');
 
   await page.keyboard.down('KeyA');
   await page.waitForTimeout(90);
@@ -767,10 +773,13 @@ async function exteriorOnlyRun(browser, diagnostics) {
         mappedUv: mappedUv ? [mappedUv.x, mappedUv.y] : null,
       };
     });
+    const exterior = window.kkState.racing.monsterArenaView.exterior;
     return {
     snapshot: window.__kkRacing.snapshot(),
-    backgroundMatches: window.kkState.scene.background === window.kkState.racing.assetLease.textures.monsterArenaBackdrop,
-    backdropWalls: window.kkState.racing.monsterArenaView.exterior.backdrop.children.map((mesh) => {
+    backgroundMatches: !!exterior.backdropTexture?.image
+      && !!exterior.backdrop?.parent
+      && exterior.backdropMaterial?.userData?.tslMaterialFamily === 'racing-curved-horizon',
+    backdropWalls: [exterior.backdrop].map((mesh) => {
       mesh.geometry.computeBoundingBox();
       const { min, max } = mesh.geometry.boundingBox;
       const projected = [
@@ -810,7 +819,7 @@ async function main() {
   try {
     if (process.env.KKS_MONSTER_CAPTURE_ONLY === '1') {
       const exterior = await exteriorOnlyRun(browser, diagnostics);
-      assert(exterior.backgroundMatches, 'capture-only run lost the production exterior background');
+      assert(exterior.backgroundMatches, 'capture-only run lost the production curved-horizon exterior');
       assert(diagnostics.errors.length === 0 && diagnostics.badResponses.length === 0, `capture-only diagnostics failed: ${JSON.stringify(diagnostics)}`);
       console.log(JSON.stringify({ status: 'PASS', captureOnly: true, exterior, screenshot: SHOTS.exterior }, null, 2));
       return;
