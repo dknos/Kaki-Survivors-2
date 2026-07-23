@@ -466,13 +466,13 @@ function _loadPairs(pairs) {
  * carousel / menu splash. Particle textures + fxAwait stay in main.js because
  * they're synchronous or non-GLB. Anything else is deferred to Tier 2/3.
  *
- * Note on the 'hero' donor: tower-castle-plain.glb is ~15 MB and is only
+ * Note on the 'hero' donor: the authored tower-castle-plain.glb is ~15 MB and
+ * its gameplay-ready derivative under runtime-avatars/ is only
  * used as the fallback mesh for AVATARS entries with `glb: null` — namely
  * `kitty` (default), `rune_kitten`, `mire_kitten`, `shroud_kitten`. We keep
  * it in Tier 1 because the carousel previews those avatars at boot via
- * `cloneCached('hero')`. A smaller-donor swap would change the default
- * kitty's silhouette → out of scope for a pure preload-tier refactor.
- * Tracked in HANDOFF: "hero donor is 15 MB, four avatars depend on it."
+ * `cloneCached('hero')`. The derivative retains the default kitty silhouette
+ * while avoiding a 400k-triangle mesh in every gameplay and preview frame.
  */
 export function preloadEssential(selectedAvatarId = 'kitty') {
   const selectedAvatar = (AVATARS || []).find(a => a && a.id === selectedAvatarId);

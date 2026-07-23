@@ -12,7 +12,10 @@ export const WORLD = {
 };
 
 export const HERO = {
-  glb: 'tower-castle-plain.glb',  // donor model from original game (uncompressed copy)
+  // Authored source remains at assets/breakroom/tower-castle-plain.glb. The
+  // runtime copy preserves its silhouette at gameplay size with 36k rather
+  // than 400k triangles; see tools/optimize-runtime-avatars.py.
+  glb: 'runtime-avatars/tower-castle-plain.glb',
   targetHeight: 3.6,        // auto-fit: scale = targetHeight / bbox.y. Re-exports w/ different units survive.
   scale: 1.0,               // optional multiplier on top of auto-fit, for art tuning
   speed: 8.0,               // units/sec
@@ -516,7 +519,7 @@ export const AVATARS = [
   {
     id: 'sote',  name: 'Sote',       icon: '🐺',
     desc: 'Heavy-built Rodin-baked silhouette. Same gameplay, new look.',
-    glb: 'sote.glb',
+    glb: 'runtime-avatars/sote.glb',
     tint: 0xffffff, scaleMul: 1.00,
     baseArchetype: 'kitty',             // Balanced base; bespoke kit lands in Phase F
     signatureWeapon: 'sig_sote_warhowl',
@@ -525,7 +528,7 @@ export const AVATARS = [
   {
     id: 'cowboy', name: 'CowboyKaki', icon: '🤠',
     desc: 'Spurs, brim, and a slow draw. Same kitty, frontier loadout.',
-    glb: 'cowboykaki.glb',
+    glb: 'runtime-avatars/cowboykaki.glb',
     tint: 0xffffff, scaleMul: 1.00,
     baseArchetype: 'sniper',            // Headhunter + autoaim
     signatureWeapon: 'sig_cowboy_sixshooter',
@@ -534,7 +537,7 @@ export const AVATARS = [
   {
     id: 'pipes', name: 'Pipes', icon: '🥸',
     desc: 'Team-lead avatar. Mustache, red shirt, runs the room.',
-    glb: 'pipes.glb',
+    glb: 'runtime-avatars/pipes.glb',
     tint: 0xffffff, scaleMul: 1.00,
     baseArchetype: 'boom',              // Charged Coil + chain lightning
     signatureWeapon: 'sig_pipes_arcwrench',
@@ -543,7 +546,7 @@ export const AVATARS = [
   {
     id: 'bomdia', name: 'Bom Dia', icon: '☀️',
     desc: 'Bom Dia — green twin-tails, idol energy at sunrise.',
-    glb: 'bomdia.glb',
+    glb: 'runtime-avatars/bomdia.glb',
     tint: 0xffffff, scaleMul: 1.00,
     baseArchetype: 'clockwork',         // Tempo + orbitals (absorbs Clockwork)
     signatureWeapon: 'sig_bomdia_sunburst',
@@ -552,7 +555,7 @@ export const AVATARS = [
   {
     id: 'mothman', name: 'Mothman', icon: '🦋',
     desc: 'Mothman — pink-winged cryptid, eyes like brake lights.',
-    glb: 'mothman.glb',
+    glb: 'runtime-avatars/mothman.glb',
     tint: 0xffffff, scaleMul: 1.00,
     baseArchetype: 'webspinner',        // Lingering Silk + web
     signatureWeapon: 'sig_mothman_dustcloak',
@@ -561,7 +564,7 @@ export const AVATARS = [
   {
     id: 'camper', name: 'Camper', icon: '⛺',
     desc: 'Camper — blue pigtails, bedroll, never lost in the woods.',
-    glb: 'camper.glb',
+    glb: 'runtime-avatars/camper.glb',
     tint: 0xffffff, scaleMul: 1.00,
     baseArchetype: 'phoenix',           // Ember Burst + autoaim (absorbs Phoenix)
     signatureWeapon: 'sig_camper_signalfire',
@@ -570,7 +573,7 @@ export const AVATARS = [
   {
     id: 'space', name: 'Space Kitty', icon: '🚀',
     desc: 'Space Kitty — vacuum-rated whiskers, zero-G stride.',
-    glb: 'spacekitty.glb',
+    glb: 'runtime-avatars/spacekitty.glb',
     tint: 0xffffff, scaleMul: 1.00,
     baseArchetype: 'kitty',             // Balanced base; orbital sat kit lands Phase D
     signatureWeapon: 'sig_space_satellites',
@@ -579,7 +582,7 @@ export const AVATARS = [
   {
     id: 'radcat', name: 'Radcat', icon: '☢️',
     desc: 'Geiger-line stray. Oil-slick coat, cyan spine piping, dosimeter eyes.',
-    glb: 'radcat.glb',
+    glb: 'runtime-avatars/radcat.glb',
     tint: 0xffffff, scaleMul: 1.00,
     baseArchetype: 'kitty',             // Balanced base; DoT zone kit lands Phase F
     signatureWeapon: 'sig_radcat_fallout',
@@ -588,7 +591,7 @@ export const AVATARS = [
   {
     id: 'mona', name: 'Mona', icon: '🎨',
     desc: 'Painted, not born. Madonna della Falena — the paint moved.',
-    glb: 'mona.glb',
+    glb: 'runtime-avatars/mona.glb',
     tint: 0xffffff, scaleMul: 1.00,
     baseArchetype: 'kitty',             // Balanced base; paint AoE kit lands Phase F
     signatureWeapon: 'sig_mona_brushstroke',
@@ -597,7 +600,7 @@ export const AVATARS = [
   {
     id: 'bezelbug', name: 'BezelBug', icon: '💎',
     desc: 'BezelBug — gem-encrusted exoskeleton, rivet-set wings.',
-    glb: 'bezelbug.glb',
+    glb: 'runtime-avatars/bezelbug.glb',
     tint: 0xffffff, scaleMul: 1.00,
     baseArchetype: 'kitty',             // Balanced base; gem-shard kit lands Phase F
     signatureWeapon: 'sig_bezelbug_facet',
@@ -606,7 +609,7 @@ export const AVATARS = [
   {
     id: 'rocker', name: 'RockerKaki', icon: '🎸',
     desc: 'RockerKaki — leathers, hair-spray halo, amp turned to eleven.',
-    glb: 'rockerkaki.glb',
+    glb: 'runtime-avatars/rockerkaki.glb',
     tint: 0xffffff, scaleMul: 1.00,
     baseArchetype: 'kitty',             // Balanced base; sonic-wave kit lands Phase F
     signatureWeapon: 'sig_rocker_powerchord',
@@ -615,7 +618,7 @@ export const AVATARS = [
   {
     id: 'borgirboss', name: 'BorgirBoss', icon: '🍔',
     desc: 'BorgirBoss — burger dump truck hauling a rack of rocket launchers.',
-    glb: 'borgirboss.glb',
+    glb: 'runtime-avatars/borgirboss.glb',
     tint: 0xffffff, scaleMul: 1.15,
     baseArchetype: 'boom',              // big silhouette + signature ranged barrage
     signatureWeapon: 'sig_borgirboss_rocketrack',

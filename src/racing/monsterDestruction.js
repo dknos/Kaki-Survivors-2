@@ -137,7 +137,10 @@ function _roundedDeckGeometry(width, length, height, radius = 0.24, bevel = 0.07
   shape.quadraticCurveTo(-halfWidth, -halfLength, -halfWidth + corner, -halfLength);
   const geometry = new THREE.ExtrudeGeometry(shape, {
     depth: height,
-    curveSegments: 3,
+    // These pooled wrecks read at roughly 4-20 screen pixels. One quadratic
+    // subdivision keeps the rounded silhouette while avoiding thousands of
+    // sub-pixel triangles across 122 targets.
+    curveSegments: 1,
     steps: 1,
     bevelEnabled: bevel > 0,
     bevelSegments: 1,
@@ -163,7 +166,9 @@ function _roundedPanelGeometry(width, height, depth, radius = 0.1) {
   shape.quadraticCurveTo(-halfWidth, halfHeight, -halfWidth, halfHeight - radius);
   shape.lineTo(-halfWidth, -halfHeight + radius);
   shape.quadraticCurveTo(-halfWidth, -halfHeight, -halfWidth + radius, -halfHeight);
-  const geometry = new THREE.ExtrudeGeometry(shape, { depth, curveSegments: 2, bevelEnabled: true, bevelSegments: 1, bevelSize: 0.02, bevelThickness: 0.02 });
+  // Detachable panels are thin, fast-moving accents. Their bevel was invisible
+  // at gameplay distance but multiplied across two instances per target.
+  const geometry = new THREE.ExtrudeGeometry(shape, { depth, curveSegments: 1, bevelEnabled: false });
   geometry.translate(0, 0, -depth * 0.5);
   geometry.rotateY(Math.PI / 2);
   geometry.computeVertexNormals();
@@ -358,12 +363,12 @@ export function createMonsterDestruction({ definition = CROWN_CHAOS_ARENA, root,
 
   const bodies = _register({ geometry: _roundedDeckGeometry(2.25, 4.15, 0.76, 0.28, 0.07), material: bodyMaterial, count, owned, name: 'arena-destructible-bodies', colors: true, receive: true });
   const roofs = _register({ geometry: _roundedDeckGeometry(1.9, 2.45, 0.58, 0.24, 0.055), material: roofMaterial, count, owned, name: 'arena-destructible-roofs', colors: true });
-  const canopies = _register({ geometry: new THREE.SphereGeometry(0.72, 12, 7, 0, Math.PI * 2, 0, Math.PI * 0.62), material: glassMaterial, count, owned, name: 'arena-destructible-canopies' });
+  const canopies = _register({ geometry: new THREE.SphereGeometry(0.72, 8, 5, 0, Math.PI * 2, 0, Math.PI * 0.62), material: glassMaterial, count, owned, name: 'arena-destructible-canopies' });
   const panels = _register({ geometry: _roundedPanelGeometry(1.7, 0.52, 0.075, 0.1), material: panelMaterial, count: count * 2, owned, name: 'arena-detachable-panels', colors: true });
-  const bumperGeometry = new THREE.CapsuleGeometry(0.1, 1.9, 4, 8);
+  const bumperGeometry = new THREE.CapsuleGeometry(0.1, 1.9, 2, 6);
   bumperGeometry.rotateZ(Math.PI / 2);
   const bumpers = _register({ geometry: bumperGeometry, material: metalMaterial, count: count * 2, owned, name: 'arena-detachable-bumpers' });
-  const wheelGeometry = new THREE.TorusGeometry(0.28, 0.12, 7, 16);
+  const wheelGeometry = new THREE.TorusGeometry(0.28, 0.12, 5, 8);
   wheelGeometry.rotateY(Math.PI / 2);
   const wheels = _register({ geometry: wheelGeometry, material: tireMaterial, count: count * 4, owned, name: 'arena-pop-wheels' });
   const debris = _register({ geometry: new THREE.TetrahedronGeometry(0.24, 0), material: debrisMaterial, count: count * 3, owned, name: 'arena-pooled-metal-debris', colors: true });

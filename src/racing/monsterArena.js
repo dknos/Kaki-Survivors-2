@@ -378,51 +378,73 @@ function _buildRampReadability(definition, group, owned, assetLease) {
   const braceCountFor = (ramp) => Math.max(5, Math.round(ramp.length / 2.5));
   const totalEdgeBeams = definition.ramps.reduce((sum, ramp) => sum + braceCountFor(ramp) * 2, 0);
   const totalSupportPosts = definition.ramps.reduce((sum, ramp) => sum + Math.ceil(braceCountFor(ramp) / 2) * 2, 0);
+  const rampCount = definition.ramps.length;
+  const makeBatch = (geometry, material, count, name, receiveShadow = false) => {
+    const mesh = new THREE.InstancedMesh(geometry, material, count);
+    mesh.name = name;
+    mesh.castShadow = false;
+    mesh.receiveShadow = receiveShadow;
+    return mesh;
+  };
+  // A ramp previously submitted seven individual meshes. All ramps share the
+  // same geometry/material grammar, so batch their transforms and keep the
+  // complete authored look in eight submissions total (including braces).
+  const sides = makeBatch(sideGeometry, sideMaterial, rampCount, 'arena-ramp-retaining-sides-batch', true);
+  const scars = makeBatch(scarGeometry, scarMaterial, rampCount, 'arena-ramp-tire-scars-batch', true);
+  const aprons = makeBatch(apronGeometry, apronMaterial, rampCount, 'arena-ramp-packed-dirt-aprons-batch', true);
+  const lips = makeBatch(lipGeometry, lipMaterial, rampCount, 'arena-ramp-lips-batch');
+  const railMarkers = makeBatch(markerGeometry, railMaterial, rampCount * 2, 'arena-ramp-rail-markers-batch');
+  const lipMarkers = makeBatch(markerGeometry, lipMaterial, rampCount, 'arena-ramp-lip-markers-batch');
   const edgeBeams = new THREE.InstancedMesh(edgeBeamGeometry, railMaterial, totalEdgeBeams);
   const supportPosts = new THREE.InstancedMesh(supportPostGeometry, railMaterial, totalSupportPosts);
   edgeBeams.name = 'arena-ramp-edge-armor-batch';
   supportPosts.name = 'arena-ramp-side-support-batch';
+  edgeBeams.receiveShadow = true;
+  supportPosts.receiveShadow = true;
   let edgeInstance = 0;
   let supportInstance = 0;
-  for (const ramp of definition.ramps) {
-    const groupRamp = new THREE.Group();
-    groupRamp.name = `arena-ramp-readability-${ramp.id}`;
-    groupRamp.position.set(ramp.x, 0, ramp.z);
-    groupRamp.rotation.y = ramp.yaw;
-    const builtSides = new THREE.Mesh(sideGeometry, sideMaterial);
-    builtSides.name = `arena-ramp-retaining-sides-${ramp.id}`;
-    builtSides.scale.set(ramp.width, ramp.height, ramp.length);
-    builtSides.castShadow = false;
-    builtSides.receiveShadow = true;
-    groupRamp.add(builtSides);
-    const tireScars = new THREE.Mesh(scarGeometry, scarMaterial);
-    tireScars.name = `arena-ramp-tire-scars-${ramp.id}`;
-    tireScars.scale.set(ramp.width, ramp.height, ramp.length);
-    tireScars.position.y = 0.055;
-    tireScars.receiveShadow = true;
-    groupRamp.add(tireScars);
-    const apron = new THREE.Mesh(apronGeometry, apronMaterial);
-    apron.name = `arena-ramp-packed-dirt-apron-${ramp.id}`;
-    apron.position.set(0, 0.045, -ramp.length * 0.5 - 0.82);
-    apron.scale.set(ramp.width * 1.2, 1, 2.4);
-    apron.receiveShadow = true;
-    groupRamp.add(apron);
-    const lip = new THREE.Mesh(lipGeometry, lipMaterial);
-    lip.position.set(0, ramp.height + 0.13, ramp.length * 0.5 - 0.12);
-    lip.scale.x = Math.max(0.5, ramp.width - 0.65);
-    lip.castShadow = false;
-    groupRamp.add(lip);
+  let railMarkerInstance = 0;
+  for (let rampIndex = 0; rampIndex < definition.ramps.length; rampIndex += 1) {
+    const ramp = definition.ramps[rampIndex];
+    const rampWorld = _compose(ramp.x, 0, ramp.z, ramp.yaw).clone();
+    sides.setMatrixAt(rampIndex, rampWorld.clone().multiply(
+      _compose(0, 0, 0, 0, ramp.width, ramp.height, ramp.length).clone(),
+    ));
+    scars.setMatrixAt(rampIndex, rampWorld.clone().multiply(
+      _compose(0, 0.055, 0, 0, ramp.width, ramp.height, ramp.length).clone(),
+    ));
+    aprons.setMatrixAt(rampIndex, rampWorld.clone().multiply(
+      _compose(0, 0.045, -ramp.length * 0.5 - 0.82, 0, ramp.width * 1.2, 1, 2.4).clone(),
+    ));
+    lips.setMatrixAt(rampIndex, rampWorld.clone().multiply(_compose(
+      0,
+      ramp.height + 0.13,
+      ramp.length * 0.5 - 0.12,
+      0,
+      Math.max(0.5, ramp.width - 0.65),
+      1,
+      1,
+    ).clone()));
     for (let stripe = 0; stripe < 3; stripe += 1) {
       const t = 0.64 + stripe * 0.1;
       const height = (t * t * (2 - t)) * ramp.height;
-      const marker = new THREE.Mesh(markerGeometry, stripe === 2 ? lipMaterial : railMaterial);
-      marker.position.set(0, height + 0.05, -ramp.length * 0.5 + t * ramp.length);
-      marker.scale.x = ramp.width * (0.66 + stripe * 0.08);
-      marker.rotation.x = -Math.atan2(ramp.height / ramp.length, 1);
-      groupRamp.add(marker);
+      const markerMatrix = rampWorld.clone().multiply(_compose(
+        0,
+        height + 0.05,
+        -ramp.length * 0.5 + t * ramp.length,
+        0,
+        ramp.width * (0.66 + stripe * 0.08),
+        1,
+        1,
+        -Math.atan2(ramp.height / ramp.length, 1),
+      ).clone());
+      if (stripe === 2) lipMarkers.setMatrixAt(rampIndex, markerMatrix);
+      else {
+        railMarkers.setMatrixAt(railMarkerInstance, markerMatrix);
+        railMarkerInstance += 1;
+      }
     }
     const braceSegments = braceCountFor(ramp);
-    const rampWorld = _compose(ramp.x, 0, ramp.z, ramp.yaw).clone();
     for (let segment = 0; segment < braceSegments; segment += 1) {
       const t = (segment + 0.5) / braceSegments;
       const height = (t * t * (2 - t)) * ramp.height;
@@ -452,12 +474,10 @@ function _buildRampReadability(definition, group, owned, assetLease) {
         }
       }
     }
-    group.add(groupRamp);
   }
-  for (const mesh of [edgeBeams, supportPosts]) {
+  for (const mesh of [sides, scars, aprons, lips, railMarkers, lipMarkers, edgeBeams, supportPosts]) {
     mesh.instanceMatrix.needsUpdate = true;
     mesh.castShadow = false;
-    mesh.receiveShadow = true;
     group.add(mesh);
   }
 }

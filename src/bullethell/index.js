@@ -30,6 +30,9 @@ let _boundaryRing = null;  // outer ring — shifts red while a boss is up
 let _bossRingOn = false;
 let _savedBg = null, _savedFog = null;   // overworld sky/fog, restored on exit
 let _savedSceneActive = false;           // originals may both legitimately be null
+let _savedEnvState = null;               // exact visibility/position restored on exit
+let _savedResolutionScale = null;        // remote-mode pixel cap, restored on exit
+let _resolutionScaleApplied = false;
 let _spaceBgTex = null;    // cached deep-space background (built once, reused)
 let _hitboxDot = null;     // the one non-negotiable bullet-hell UI element
 let _grazeRing = null;     // thin ring at the graze radius — makes near-miss zone legible
@@ -39,6 +42,41 @@ let _heroGlow = null;      // soft ground glow under the hero (presence)
 // Live-themeable material refs — swapped/retinted by _applyLevelTheme so a biome
 // change re-skins the standing arena without a rebuild.
 let _floorMat = null, _backdropMat = null, _haloMat = null;
+
+// The post stack owns 15 render targets. At 4K/high-DPR, leaving them uncapped
+// can exhaust integrated-GPU memory and stop canvas presentation while DOM
+// damage numbers keep updating. Preserve native resolution up through 1080p;
+// only oversized buffers are reduced, proportionally and backend-neutrally.
+const REMOTE_ARENA_MAX_RENDER_PIXELS = 1920 * 1080;
+
+function _capRemoteArenaResolution() {
+  const service = state.rendererService;
+  if (!service?.setDynamicResolutionScale) return;
+  const diagnostics = service.getDiagnostics?.() || {};
+  const currentScale = Number(diagnostics.dynamicResolutionScale) || 1;
+  const width = Number(diagnostics.resolution?.width) || 0;
+  const height = Number(diagnostics.resolution?.height) || 0;
+  _savedResolutionScale = currentScale;
+  _resolutionScaleApplied = false;
+  const pixels = width * height;
+  if (!(pixels > REMOTE_ARENA_MAX_RENDER_PIXELS)) return;
+  const nextScale = Math.max(
+    0.4,
+    currentScale * Math.sqrt(REMOTE_ARENA_MAX_RENDER_PIXELS / pixels),
+  );
+  if (nextScale < currentScale - 0.005) {
+    service.setDynamicResolutionScale(nextScale);
+    _resolutionScaleApplied = true;
+  }
+}
+
+function _restoreRemoteArenaResolution() {
+  if (_resolutionScaleApplied && state.rendererService?.setDynamicResolutionScale) {
+    try { state.rendererService.setDynamicResolutionScale(_savedResolutionScale || 1); } catch (_) {}
+  }
+  _savedResolutionScale = null;
+  _resolutionScaleApplied = false;
+}
 
 // Arena textures — cached per filename, reused across entries AND biomes (never
 // disposed; small webps). exitBulletHell's material.dispose() leaves these
@@ -674,21 +712,31 @@ export function enterBulletHell(scene, campaign = null) {
     if (state.run) state.run._finaleCarry = null;          // consume once
   } catch (_) {}
   state.mode = 'bullethell';
-  // Park the overworld (same trick catacomb/interior use).
-  if (state.envGroup) state.envGroup.position.y = -200;
+  _capRemoteArenaResolution();
+  // Remove the overworld from scene traversal while this remote arena is live.
+  // Merely translating it down (the old path) still submitted large ground and
+  // stage meshes whose bounding volumes intersected the Bullet Hell frustum.
+  // Preserve the exact incoming state because campaign handoffs may enter from
+  // another mode that already parked the environment.
+  const envGroup = state.envGroup || null;
+  const envGround = envGroup?.userData?.ground || null;
+  _savedEnvState = envGroup ? {
+    group: envGroup,
+    visible: envGroup.visible,
+    y: envGroup.position.y,
+    ground: envGround,
+    groundVisible: envGround?.visible,
+  } : null;
+  if (envGroup) envGroup.visible = false;
   // Swap the overworld sky/fog for a deep-space backdrop so the arena floats in
   // a nebula instead of a flat black void (restored verbatim on exit). Fog is
-  // recolored to deep space (not removed) so the huge parked overworld ground
-  // fades into the nebula beyond the arena instead of showing as grass; the
-  // arena itself (r=24, close to the camera) stays clear. We also hide the
-  // ground mesh outright as a belt-and-suspenders guard.
+  // recolored to deep space (not removed) so remote arena geometry fades into
+  // the nebula; the arena itself (r=24, close to the camera) stays clear.
   _savedBg = scene.background;
   _savedFog = scene.fog;
   _savedSceneActive = true;
   scene.background = _spaceBg();
   scene.fog = new THREE.Fog(0x0b0718, 52, 150);
-  const _grd = state.envGroup && state.envGroup.userData && state.envGroup.userData.ground;
-  if (_grd) { bh._groundHidden = _grd; _grd.visible = false; }
   // Snapshot hero fields the mode/items mutate.
   bh._heroSnap = { hp: state.hero.hp, hpMax: state.hero.hpMax };
   state.hero.hp = state.hero.hpMax;
@@ -902,7 +950,18 @@ export function exitBulletHell(scene) {
   // (menu idle render, town, run) frames them.
   state.hero.pos.set(0, 0, 0);
   state.hero.vel.set(0, 0, 0);
-  if (state.envGroup) state.envGroup.position.y = 0;
+  _restoreRemoteArenaResolution();
+  if (_savedEnvState) {
+    const saved = _savedEnvState;
+    if (saved.group === state.envGroup) {
+      saved.group.position.y = saved.y;
+      saved.group.visible = saved.visible;
+      if (saved.ground && typeof saved.groundVisible === 'boolean') {
+        saved.ground.visible = saved.groundVisible;
+      }
+    }
+    _savedEnvState = null;
+  }
   // Restore the overworld sky/fog exactly as they were on entry.
   if (_savedSceneActive) {
     scene.background = _savedBg;
@@ -910,7 +969,6 @@ export function exitBulletHell(scene) {
     _savedBg = null; _savedFog = null;
     _savedSceneActive = false;
   }
-  if (bh._groundHidden) { bh._groundHidden.visible = true; bh._groundHidden = null; }
   if (typeof window !== 'undefined') {
     delete window.__kkBh;
     delete window.__kkBhWarp;

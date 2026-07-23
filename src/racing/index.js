@@ -134,6 +134,7 @@ const MINIMAP_H = 164;
 const _cameraTarget = new THREE.Vector3(RACE_CX, 0, RACE_CZ);
 const STANDARD_CAMERA = Object.freeze({ offset: 22, height: 34, frustum: 16.5, lookAtBase: 0.72 });
 const MONSTER_CAMERA = Object.freeze({ offset: 27, height: 41, frustum: 20.5, lookAtBase: 1.2 });
+const REMOTE_ARENA_MAX_RENDER_PIXELS = 1920 * 1080;
 const SURFACE_FEEL = Object.freeze({
   forest: Object.freeze({ id: 'mud', grip: 0.84, drag: 0.22 }),
   twilight: Object.freeze({ id: 'wet', grip: 0.76, drag: 0.12 }),
@@ -2163,7 +2164,17 @@ export function enterRacing(scene, courseId = 'forest', options = {}) {
         state.rendererService.getDiagnostics?.().dynamicResolutionScale,
       ) || 1;
       session.savedDynamicResolutionScale = currentScale;
-      const monsterScale = Math.min(currentScale, 0.8);
+      const diagnostics = state.rendererService.getDiagnostics?.() || {};
+      const width = Number(diagnostics.resolution?.width) || 0;
+      const height = Number(diagnostics.resolution?.height) || 0;
+      const pixels = width * height;
+      const pixelCapScale = pixels > REMOTE_ARENA_MAX_RENDER_PIXELS
+        ? currentScale * Math.sqrt(REMOTE_ARENA_MAX_RENDER_PIXELS / pixels)
+        : currentScale;
+      // Keep the established 0.8 Monster presentation scale and additionally
+      // bound 4K/high-DPR buffers, where the 15-target post stack can otherwise
+      // lose the device/context while HUD updates continue.
+      const monsterScale = Math.max(0.4, Math.min(currentScale, 0.8, pixelCapScale));
       if (monsterScale < currentScale) {
         state.rendererService.setDynamicResolutionScale(monsterScale);
         session.monsterRenderScaleApplied = true;

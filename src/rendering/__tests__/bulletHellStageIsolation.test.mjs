@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..');
 const source = fs.readFileSync(path.join(ROOT, 'src/main.js'), 'utf8');
+const bulletSource = fs.readFileSync(path.join(ROOT, 'src/bullethell/index.js'), 'utf8');
 
 function between(startMarker, endMarker) {
   const start = source.indexOf(startMarker);
@@ -36,4 +37,12 @@ test('normal Survivors entry still preloads before installing stage scenery', ()
     /function applyMetaUpgrades\(\{ installStageScene = true \} = \{\}\)/,
   );
   assert.match(source, /if \(installStageScene && stage && state\.scene\)/);
+});
+
+test('Bullet Hell removes the overworld from rendering and restores its exact state', () => {
+  assert.match(bulletSource, /_savedEnvState = envGroup \? \{/);
+  assert.match(bulletSource, /if \(envGroup\) envGroup\.visible = false;/);
+  assert.match(bulletSource, /saved\.group\.position\.y = saved\.y;/);
+  assert.match(bulletSource, /saved\.group\.visible = saved\.visible;/);
+  assert.doesNotMatch(bulletSource, /state\.envGroup\.position\.y = -200/);
 });

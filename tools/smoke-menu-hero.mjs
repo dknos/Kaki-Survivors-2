@@ -133,6 +133,37 @@ async function main() {
     if (!real.canvasFound) failures.push('real-model: no <canvas> mounted in .kkv2-hero (splash did not render the hero model)');
     if (real.canvasFound && !(real.canvasW > 0 && real.canvasH > 0)) failures.push(`real-model: canvas backing store is ${real.canvasW}x${real.canvasH} (RO/setSize never ran)`);
     if (real.svgPresent)   failures.push('real-model: SVG silhouette still present alongside the model (should be model OR svg, not both)');
+    await page.screenshot({ path: '/tmp/kks-menu-hero-runtime.png', fullPage: false });
+
+    // Decode every generated Draco asset through the production loader. The
+    // static budget test validates GLB metadata/hashes; this catches a broken
+    // compressed payload before a player selects that avatar.
+    const roster = await page.evaluate(async () => {
+      const assets = await import('./src/assets.js');
+      const { AVATARS } = await import('./src/config.js');
+      const results = [];
+      for (const avatar of AVATARS.filter((entry) => entry.glb)) {
+        const key = `__runtime_avatar_smoke_${avatar.id}`;
+        await assets.lazyLoadGLTF(key, assets.BASE + avatar.glb);
+        const gltf = assets.GLTF_CACHE[key];
+        let meshes = 0;
+        let triangles = 0;
+        gltf?.scene?.traverse?.((node) => {
+          if (!node.isMesh || !node.geometry) return;
+          meshes += 1;
+          const elements = node.geometry.index?.count || node.geometry.attributes?.position?.count || 0;
+          triangles += Math.floor(elements / 3);
+        });
+        results.push({ id: avatar.id, loaded: !!gltf?.scene, meshes, triangles });
+        assets.disposeCachedGLTF(key);
+      }
+      return results;
+    });
+    console.log('  runtime roster:', JSON.stringify(roster));
+    if (roster.length !== 12 || roster.some((entry) => !entry.loaded || entry.meshes < 1
+        || entry.triangles < 1 || entry.triangles > 48_000)) {
+      failures.push(`runtime roster failed Draco decode/budget checks: ${JSON.stringify(roster)}`);
+    }
 
     // ── Assertion 2: graceful fallback (no hero GLTF -> null) ──────────
     const fb = await page.evaluate(async () => {
@@ -171,6 +202,7 @@ async function main() {
     process.exit(1);
   }
   console.log('[smoke-menu-hero] PASS — main menu renders the real hero model, SVG kept as graceful fallback');
+  console.log('  screenshot: /tmp/kks-menu-hero-runtime.png');
   process.exit(0);
 }
 
